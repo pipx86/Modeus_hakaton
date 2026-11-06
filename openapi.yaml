@@ -1,0 +1,428 @@
+openapi: 3.0.3
+info:
+  title: Modeus activity-descriptor API
+  version: 0.1.0
+  description: Contract for the multi-agent activity-descriptor backend (card 1).
+servers:
+  - url: /api/v1
+tags:
+  - name: system
+  - name: sources
+  - name: evidences
+  - name: runs
+  - name: nodes
+paths:
+  "/health":
+    get:
+      tags: [system]
+      summary: Service liveness probe
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  "/sources":
+    get:
+      tags: [sources]
+      summary: List sources
+      operationId: listSources
+      responses:
+        "200":
+          description: Array of sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Source"
+    post:
+      tags: [sources]
+      summary: Create a source
+      operationId: createSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, title]
+              additionalProperties: false
+              properties:
+                type:
+                  $ref: "#/components/schemas/SourceType"
+                title:
+                  type: string
+                  minLength: 1
+                content:
+                  type: string
+      responses:
+        "201":
+          description: Created source (server-assigned id)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Source"
+  "/sources/{id}":
+    get:
+      tags: [sources]
+      summary: Get one source
+      operationId: getSource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Source"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [sources]
+      summary: Delete a source
+      operationId: deleteSource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted, no content
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/evidences":
+    get:
+      tags: [evidences]
+      summary: List evidences (filter by node_id or source_id)
+      operationId: listEvidences
+      parameters:
+        - name: node_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of evidences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Evidence"
+    post:
+      tags: [evidences]
+      summary: Attach an evidence to a node
+      operationId: createEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_id, quote]
+              additionalProperties: false
+              properties:
+                source_id:
+                  type: string
+                  minLength: 1
+                quote:
+                  type: string
+      responses:
+        "201":
+          description: Created evidence (server-assigned id)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evidence"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/evidences/{id}/approve":
+    post:
+      tags: [evidences]
+      summary: Approve an evidence
+      operationId: approveEvidence
+      description: Confirmation status is stored server-side; no body returned.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Approved, no content
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs":
+    get:
+      tags: [runs]
+      summary: List runs
+      operationId: listRuns
+      responses:
+        "200":
+          description: Array of runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Run"
+    post:
+      tags: [runs]
+      summary: Start a run (triggers agents)
+      operationId: createRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profession]
+              additionalProperties: false
+              properties:
+                profession:
+                  type: string
+                  minLength: 1
+      responses:
+        "201":
+          description: Created run (status pending)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+  "/runs/{id}":
+    get:
+      tags: [runs]
+      summary: Get run status
+      operationId: getRun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs/{id}/tree":
+    get:
+      tags: [runs]
+      summary: Get activity tree produced by a run
+      operationId: getRunTree
+      description: Flat array of nodes; client rebuilds hierarchy via parent_id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/nodes/{id}":
+    patch:
+      tags: [nodes]
+      summary: Edit a node (rename / move / describe)
+      operationId: patchNode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                type:
+                  $ref: "#/components/schemas/NodeType"
+                title:
+                  type: string
+                  minLength: 1
+                description:
+                  type: string
+                parent_id:
+                  type: string
+                evidence:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: "#/components/schemas/Evidence"
+      responses:
+        "200":
+          description: Updated node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed (e.g. EVIDENCE_REQUIRED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    NodeType:
+      type: string
+      enum: [role, function, task, action]
+    SourceType:
+      type: string
+      enum: [vacancy, interview, standard, document]
+    RunStatus:
+      type: string
+      enum: [pending, running, done, failed]
+    Evidence:
+      type: object
+      required: [id, source_id, quote]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+        source_id:
+          type: string
+          minLength: 1
+        quote:
+          type: string
+    Node:
+      type: object
+      required: [id, type, title, evidence]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+        type:
+          $ref: "#/components/schemas/NodeType"
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        parent_id:
+          type: string
+        evidence:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Evidence"
+    Source:
+      type: object
+      required: [id, type, title]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+        type:
+          $ref: "#/components/schemas/SourceType"
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Run:
+      type: object
+      required: [id, status, profession]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        profession:
+          type: string
+          minLength: 1
+        root_node_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
