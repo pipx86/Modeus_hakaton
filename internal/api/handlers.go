@@ -27,7 +27,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
 
-	return requireAuth(mux)
+	root := http.NewServeMux()
+	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	root.Handle("/", requireAuth(mux))
+	return root
 }
 
 func requireAuth(next http.Handler) http.Handler {

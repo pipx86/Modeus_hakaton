@@ -29,6 +29,9 @@ type memStore struct {
 	seq            int
 }
 
+// NewMemoryStore creates a temporary store for local development. It does not persist data.
+func NewMemoryStore() Store { return newMemStore() }
+
 func newMemStore() *memStore {
 	return &memStore{
 		runs:           map[string]*domain.Run{},

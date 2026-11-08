@@ -324,3 +324,11 @@ func TestExportRun(t *testing.T) {
 		t.Fatalf("ожидали 401, получили %d", rr.Code)
 	}
 }
+
+func TestHealthPublic(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	rr := do(t, h, "GET", "/api/v1/health", "", "")
+	if rr.Code != http.StatusOK || rr.Body.String() != "{\"status\":\"ok\"}\n" {
+		t.Fatalf("unexpected health: %d %s", rr.Code, rr.Body.String())
+	}
+}
