@@ -27,6 +27,13 @@ func Orchestrate(
 		return nil
 	}
 
+	if run.Status == RunPending {
+		run.Status = RunRunning
+		if err := store.Save(run); err != nil {
+			return fail(run, store, fmt.Errorf("save on start: %w", err))
+		}
+	}
+
 	for _, st := range steps {
 		target := st.Name()
 
@@ -57,11 +64,13 @@ func Orchestrate(
 		return fail(run, store, fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, run.Stage, StageDone))
 	}
 	run.Stage = StageDone
+	run.Status = RunDone
 	return store.Save(run)
 }
 
 func fail(run *Run, store Store, reason error) error {
 	run.Stage = StageFailed
+	run.Status = RunFailed
 	_ = store.Save(run)
 	return reason
 }

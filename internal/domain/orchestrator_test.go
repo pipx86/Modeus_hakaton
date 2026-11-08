@@ -123,3 +123,28 @@ func TestOrchestrateIdempotent(t *testing.T) {
 		t.Fatalf("повторный запуск сломал done: %s", run.Stage)
 	}
 }
+
+func TestOrchestrateSyncsStatusWithStage(t *testing.T) {
+	ok := []Step{
+		&fakeStep{stage: StageInterview},
+		&fakeStep{stage: StageAnalysis},
+		&fakeStep{stage: StageSynthesis},
+		&fakeStep{stage: StageReview},
+	}
+	run := &Run{ID: "rs", Status: RunPending, Profession: "cook", Stage: StageCreated}
+	if err := Orchestrate(context.Background(), run, ok, &memStore{}, 0, time.Second); err != nil {
+		t.Fatalf("успешный прогон упал: %v", err)
+	}
+	if run.Stage != StageDone || run.Status != RunDone {
+		t.Fatalf("успех обязан синхронизировать поля: stage=%s status=%s", run.Stage, run.Status)
+	}
+
+	bad := []Step{&fakeStep{stage: StageInterview, failTimes: 99}}
+	run2 := &Run{ID: "rf", Status: RunPending, Profession: "cook", Stage: StageCreated}
+	if err := Orchestrate(context.Background(), run2, bad, &memStore{}, 0, time.Second); err == nil {
+		t.Fatalf("сбой обязан вернуть ошибку")
+	}
+	if run2.Stage != StageFailed || run2.Status != RunFailed {
+		t.Fatalf("сбой обязан синхронизировать поля: stage=%s status=%s", run2.Stage, run2.Status)
+	}
+}
