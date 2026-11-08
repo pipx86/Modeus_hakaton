@@ -71,6 +71,7 @@ type Run struct {
 	RootNodeID *string    `json:"root_node_id,omitempty"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	Stage      Stage      `json:"stage,omitempty"`
 }
 
 type Stage string
