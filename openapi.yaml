@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Modeus activity-descriptor API
   version: 0.1.0
-  description: Contract for the multi-agent activity-descriptor backend (card 1).
+  description: Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19).
 servers:
   - url: /api/v1
 tags:
@@ -11,12 +11,15 @@ tags:
   - name: evidences
   - name: runs
   - name: nodes
+security:
+  - bearerAuth: []
 paths:
   "/health":
     get:
       tags: [system]
       summary: Service liveness probe
       operationId: getHealth
+      security: []
       responses:
         "200":
           description: Service is up
@@ -38,6 +41,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Source"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [sources]
       summary: Create a source
@@ -65,6 +74,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Source"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/sources/{id}":
     get:
       tags: [sources]
@@ -83,6 +104,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Source"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
           content:
@@ -102,6 +129,12 @@ paths:
       responses:
         "204":
           description: Deleted, no content
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
           content:
@@ -133,6 +166,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Evidence"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [evidences]
       summary: Attach an evidence to a node
@@ -158,6 +197,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Evidence"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: Validation failed
           content:
@@ -179,8 +230,20 @@ paths:
       responses:
         "204":
           description: Approved, no content
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Evidence already approved
           content:
             application/json:
               schema:
@@ -199,6 +262,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Run"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [runs]
       summary: Start a run (triggers agents)
@@ -222,6 +291,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/runs/{id}":
     get:
       tags: [runs]
@@ -240,6 +321,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
           content:
@@ -267,8 +354,101 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Node"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs/{id}/answers":
+    get:
+      tags: [runs]
+      summary: List evidence answers collected by a run
+      operationId: getRunAnswers
+      description: Flat array of evidences gathered across the run's nodes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of evidences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Evidence"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs/{id}/export":
+    get:
+      tags: [runs]
+      summary: Export run result (tree) in a chosen format
+      operationId: exportRun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: Exported payload
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Malformed request or unsupported format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Run not finished yet, nothing to export
           content:
             application/json:
               schema:
@@ -313,8 +493,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Node"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Run already finished, node locked
           content:
             application/json:
               schema:
@@ -326,6 +524,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     HealthResponse:
       type: object
