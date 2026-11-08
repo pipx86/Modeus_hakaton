@@ -72,3 +72,36 @@ type Run struct {
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 }
+
+type Stage string
+
+const (
+	StageCreated   Stage = "created"
+	StageInterview Stage = "interview"
+	StageAnalysis  Stage = "analysis"
+	StageSynthesis Stage = "synthesis"
+	StageReview    Stage = "review"
+	StageDone      Stage = "done"
+	StageFailed    Stage = "failed"
+)
+
+var ErrInvalidTransition = errors.New("INVALID_TRANSITION")
+
+var allowedTransitions = map[Stage][]Stage{
+	StageCreated:   {StageInterview, StageFailed},
+	StageInterview: {StageAnalysis, StageFailed},
+	StageAnalysis:  {StageSynthesis, StageFailed},
+	StageSynthesis: {StageReview, StageFailed},
+	StageReview:    {StageDone, StageFailed},
+	StageDone:      {},
+	StageFailed:    {},
+}
+
+func CanTransition(from, to Stage) bool {
+	for _, s := range allowedTransitions[from] {
+		if s == to {
+			return true
+		}
+	}
+	return false
+}
