@@ -15,8 +15,7 @@ import (
 	"time"
 )
 
-// SignatureHeader is the provisional header for a hex-encoded HMAC-SHA256.
-// It and the signed body format must be agreed with the receiving workflow.
+// SignatureHeader contains the lowercase hexadecimal HMAC-SHA256 of the exact request body.
 const SignatureHeader = "X-Webhook-Signature"
 
 type Sender struct {
