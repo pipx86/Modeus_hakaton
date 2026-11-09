@@ -10,10 +10,12 @@ import (
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/idempotency"
 )
 
 type Server struct {
 	store        Store
+	idemStore    idempotency.Store
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 }
@@ -25,9 +27,17 @@ func NewServer(store Store) *Server {
 			hb = time.Duration(n) * time.Second
 		}
 	}
-	return &Server{store: store, ssePoll: 200 * time.Millisecond, sseHeartbeat: hb}
+	return &Server{
+		store:        store,
+		idemStore:    idempotency.NewMemStore(time.Hour), // дефолтный TTL 1 час
+		ssePoll:      200 * time.Millisecond,
+		sseHeartbeat: hb,
+	}
 }
 
+// Routes собирает HTTP-маршрутизатор.
+// Порядок слоёв: root (health) -> auth.JWT -> idempotency -> mux (handlers).
+// Идемпотентность применяется только к POST/PUT/PATCH внутри защищённой зоны.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -43,7 +53,10 @@ func (s *Server) Routes() http.Handler {
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	root.Handle("/", auth.Middleware(mux))
+
+	// Цепочка: JWT -> Idempotency -> Handlers
+	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
+	root.Handle("/", auth.Middleware(protected))
 	return root
 }
 
@@ -207,6 +220,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, errorBody{Code: code, Message: msg})
 }
+
+// --- helpers for live curl demonstration (card 20 acceptance) ---
 
 func NewServerForDemo() *Server { return NewServer(newMemStore()) }
 

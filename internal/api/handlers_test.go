@@ -1,14 +1,15 @@
 package api
 
 import (
+	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/domain"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
-
-	"activity-descriptor/internal/auth"
-	"activity-descriptor/internal/domain"
 )
 
 func do(t *testing.T, h http.Handler, method, path, role, body string) *httptest.ResponseRecorder {
@@ -200,5 +201,62 @@ func TestHealthPublic(t *testing.T) {
 	rr := do(t, h, "GET", "/api/v1/health", "", "")
 	if rr.Code != http.StatusOK || rr.Body.String() != "{\"status\":\"ok\"}\n" {
 		t.Fatalf("unexpected health: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestIdempotentCreateRunRace(t *testing.T) {
+	m := newMemStore()
+	h := NewServer(m).Routes()
+
+	const N = 5
+	var wg sync.WaitGroup
+	codes := make(chan int, N)
+	bodies := make(chan string, N)
+	start := make(chan struct{})
+
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+
+			req := httptest.NewRequest("POST", "/api/v1/runs", strings.NewReader(`{"profession":"cook"}`))
+			req.Header.Set("Authorization", "Bearer "+auth.TokenFor("u-race", auth.RoleTeacher))
+			req.Header.Set("Idempotency-Key", "race-key-123")
+
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			codes <- rr.Code
+			b, _ := io.ReadAll(rr.Body)
+			bodies <- string(b)
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(codes)
+	close(bodies)
+
+	firstBody := ""
+	for b := range bodies {
+		if firstBody == "" {
+			firstBody = b
+		} else if b != firstBody {
+			t.Fatalf("ответы в гонке разошлись: %q vs %q", firstBody, b)
+		}
+	}
+	for c := range codes {
+		if c != http.StatusCreated {
+			t.Fatalf("все ответы обязаны быть 201, поймали %d", c)
+		}
+	}
+
+	m.mu.RLock()
+	count := len(m.runs)
+	m.mu.RUnlock()
+
+	if count != 1 {
+		t.Fatalf("идемпотентность нарушена: ожидали 1 прогон, получили %d", count)
 	}
 }
