@@ -21,6 +21,31 @@ type AgentMessage struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type CompetencyKsa struct {
+	ID           pgtype.UUID        `json:"id"`
+	CompetencyID pgtype.UUID        `json:"competency_id"`
+	Kind         string             `json:"kind"`
+	Title        string             `json:"title"`
+	Description  pgtype.Text        `json:"description"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CompetencyTaxonomyLink struct {
+	CompetencyID   pgtype.UUID `json:"competency_id"`
+	TaxonomyItemID pgtype.UUID `json:"taxonomy_item_id"`
+}
+
+type EducationProgram struct {
+	ID           pgtype.UUID        `json:"id"`
+	Title        string             `json:"title"`
+	Organization pgtype.Text        `json:"organization"`
+	Code         pgtype.Text        `json:"code"`
+	Description  pgtype.Text        `json:"description"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Evidence struct {
 	ID        pgtype.UUID        `json:"id"`
 	NodeID    pgtype.UUID        `json:"node_id"`
@@ -28,6 +53,7 @@ type Evidence struct {
 	Quote     string             `json:"quote"`
 	Approved  bool               `json:"approved"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	RunID     pgtype.UUID        `json:"run_id"`
 }
 
 type IdempotencyKey struct {
@@ -41,6 +67,11 @@ type IdempotencyKey struct {
 	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
 }
 
+type KsaTaxonomyLink struct {
+	KsaID          pgtype.UUID `json:"ksa_id"`
+	TaxonomyItemID pgtype.UUID `json:"taxonomy_item_id"`
+}
+
 type Node struct {
 	ID          pgtype.UUID        `json:"id"`
 	RunID       pgtype.UUID        `json:"run_id"`
@@ -51,6 +82,21 @@ type Node struct {
 	Description pgtype.Text        `json:"description"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProgramCompetency struct {
+	ID          pgtype.UUID        `json:"id"`
+	ProgramID   pgtype.UUID        `json:"program_id"`
+	Code        pgtype.Text        `json:"code"`
+	Title       string             `json:"title"`
+	Description pgtype.Text        `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProgramSource struct {
+	ProgramID pgtype.UUID `json:"program_id"`
+	SourceID  pgtype.UUID `json:"source_id"`
 }
 
 type Role struct {
@@ -72,6 +118,12 @@ type Run struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	ErrorMessage pgtype.Text        `json:"error_message"`
+}
+
+type RunSource struct {
+	RunID     pgtype.UUID        `json:"run_id"`
+	SourceID  pgtype.UUID        `json:"source_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type Snapshot struct {
@@ -96,6 +148,27 @@ type Source struct {
 	ProcessingStatus string             `json:"processing_status"`
 	ProcessingError  pgtype.Text        `json:"processing_error"`
 	ProcessedAt      pgtype.Timestamptz `json:"processed_at"`
+	Provider         pgtype.Text        `json:"provider"`
+}
+
+type Taxonomy struct {
+	ID        pgtype.UUID        `json:"id"`
+	SourceID  pgtype.UUID        `json:"source_id"`
+	Name      string             `json:"name"`
+	Version   pgtype.Text        `json:"version"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TaxonomyItem struct {
+	ID          pgtype.UUID        `json:"id"`
+	TaxonomyID  pgtype.UUID        `json:"taxonomy_id"`
+	ParentID    pgtype.UUID        `json:"parent_id"`
+	Code        pgtype.Text        `json:"code"`
+	Title       string             `json:"title"`
+	Description pgtype.Text        `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {

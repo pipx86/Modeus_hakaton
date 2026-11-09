@@ -28,7 +28,10 @@ func TestSaveMultiLevelTree(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO sources(run_id,type,title) VALUES ($1,'document','test source') RETURNING id`, runID).Scan(&sourceID); err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Exec(ctx, `DELETE FROM sources WHERE id=$1`, sourceID)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM runs WHERE id=$1`, runID)
+		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE id=$1`, sourceID)
+	}()
 	newID := func() pgtype.UUID {
 		var id pgtype.UUID
 		if err := pool.QueryRow(ctx, `SELECT gen_random_uuid()`).Scan(&id); err != nil {

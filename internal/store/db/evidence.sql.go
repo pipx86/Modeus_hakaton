@@ -12,7 +12,7 @@ import (
 )
 
 const createEvidence = `-- name: CreateEvidence :one
-INSERT INTO evidence (id, node_id, source_id, quote, approved) VALUES ($1, $2, $3, $4, $5) RETURNING id, node_id, source_id, quote, approved, created_at
+INSERT INTO evidence (id, node_id, source_id, quote, approved) VALUES ($1, $2, $3, $4, $5) RETURNING id, node_id, source_id, quote, approved, created_at, run_id
 `
 
 type CreateEvidenceParams struct {
@@ -39,6 +39,7 @@ func (q *Queries) CreateEvidence(ctx context.Context, arg CreateEvidenceParams) 
 		&i.Quote,
 		&i.Approved,
 		&i.CreatedAt,
+		&i.RunID,
 	)
 	return i, err
 }
@@ -56,7 +57,7 @@ func (q *Queries) DeleteEvidence(ctx context.Context, id pgtype.UUID) (int64, er
 }
 
 const getEvidence = `-- name: GetEvidence :one
-SELECT id, node_id, source_id, quote, approved, created_at FROM evidence WHERE id = $1
+SELECT id, node_id, source_id, quote, approved, created_at, run_id FROM evidence WHERE id = $1
 `
 
 func (q *Queries) GetEvidence(ctx context.Context, id pgtype.UUID) (Evidence, error) {
@@ -69,12 +70,13 @@ func (q *Queries) GetEvidence(ctx context.Context, id pgtype.UUID) (Evidence, er
 		&i.Quote,
 		&i.Approved,
 		&i.CreatedAt,
+		&i.RunID,
 	)
 	return i, err
 }
 
 const listEvidenceByNode = `-- name: ListEvidenceByNode :many
-SELECT id, node_id, source_id, quote, approved, created_at FROM evidence WHERE node_id = $1 ORDER BY created_at, id
+SELECT id, node_id, source_id, quote, approved, created_at, run_id FROM evidence WHERE node_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListEvidenceByNode(ctx context.Context, nodeID pgtype.UUID) ([]Evidence, error) {
@@ -93,6 +95,7 @@ func (q *Queries) ListEvidenceByNode(ctx context.Context, nodeID pgtype.UUID) ([
 			&i.Quote,
 			&i.Approved,
 			&i.CreatedAt,
+			&i.RunID,
 		); err != nil {
 			return nil, err
 		}
@@ -105,7 +108,7 @@ func (q *Queries) ListEvidenceByNode(ctx context.Context, nodeID pgtype.UUID) ([
 }
 
 const updateEvidence = `-- name: UpdateEvidence :one
-UPDATE evidence SET source_id = $2, quote = $3, approved = $4 WHERE id = $1 RETURNING id, node_id, source_id, quote, approved, created_at
+UPDATE evidence SET source_id = $2, quote = $3, approved = $4 WHERE id = $1 RETURNING id, node_id, source_id, quote, approved, created_at, run_id
 `
 
 type UpdateEvidenceParams struct {
@@ -130,6 +133,7 @@ func (q *Queries) UpdateEvidence(ctx context.Context, arg UpdateEvidenceParams) 
 		&i.Quote,
 		&i.Approved,
 		&i.CreatedAt,
+		&i.RunID,
 	)
 	return i, err
 }

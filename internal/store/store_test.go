@@ -62,7 +62,7 @@ func TestStorePostgres(t *testing.T) {
 	rootID := uuid(t, "00000000-0000-4000-8000-000000000001")
 	evidenceID := uuid(t, "00000000-0000-4000-8000-000000000002")
 	root := TreeNode{ID: rootID, Title: "role", Evidence: []TreeEvidence{{ID: evidenceID, SourceID: sourceID, Quote: "proof"}}}
-	// A broken child must roll back even the valid parent inserted before it.
+	// Дерево с некорректным дочерним узлом должно быть отклонено целиком.
 	bad := root
 	bad.Children = []TreeNode{{ID: uuid(t, "00000000-0000-4000-8000-000000000003"), Title: "child"}}
 	if err := s.SaveTree(ctx, runID, bad); err == nil {
@@ -105,8 +105,8 @@ func TestStorePostgres(t *testing.T) {
 	if err := s.SaveTree(ctx, runID, root); err == nil {
 		t.Fatal("expected duplicate tree to fail")
 	}
-	if n, err := s.DeleteEvidence(ctx, evidenceID); err != nil || n != 1 {
-		t.Fatalf("delete evidence: %d %v", n, err)
+	if _, err := s.DeleteEvidence(ctx, evidenceID); err == nil {
+		t.Fatal("удаление последнего подтверждения должно отклоняться")
 	}
 	if n, err := s.DeleteNode(ctx, rootID); err != nil || n != 1 {
 		t.Fatalf("delete node: %d %v", n, err)

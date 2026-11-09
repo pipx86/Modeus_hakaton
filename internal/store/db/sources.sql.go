@@ -12,8 +12,8 @@ import (
 )
 
 const createSource = `-- name: CreateSource :one
-INSERT INTO sources (id, run_id, type, title, content, source_url, external_id, raw_payload, processing_status, processing_error, processed_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at
+INSERT INTO sources (id, run_id, type, title, content, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider
 `
 
 type CreateSourceParams struct {
@@ -28,6 +28,7 @@ type CreateSourceParams struct {
 	ProcessingStatus string             `json:"processing_status"`
 	ProcessingError  pgtype.Text        `json:"processing_error"`
 	ProcessedAt      pgtype.Timestamptz `json:"processed_at"`
+	Provider         pgtype.Text        `json:"provider"`
 }
 
 func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Source, error) {
@@ -43,6 +44,7 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Sou
 		arg.ProcessingStatus,
 		arg.ProcessingError,
 		arg.ProcessedAt,
+		arg.Provider,
 	)
 	var i Source
 	err := row.Scan(
@@ -59,6 +61,7 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Sou
 		&i.ProcessingStatus,
 		&i.ProcessingError,
 		&i.ProcessedAt,
+		&i.Provider,
 	)
 	return i, err
 }
@@ -76,7 +79,7 @@ func (q *Queries) DeleteSource(ctx context.Context, id pgtype.UUID) (int64, erro
 }
 
 const getSource = `-- name: GetSource :one
-SELECT id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at FROM sources WHERE id = $1
+SELECT id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider FROM sources WHERE id = $1
 `
 
 func (q *Queries) GetSource(ctx context.Context, id pgtype.UUID) (Source, error) {
@@ -96,12 +99,13 @@ func (q *Queries) GetSource(ctx context.Context, id pgtype.UUID) (Source, error)
 		&i.ProcessingStatus,
 		&i.ProcessingError,
 		&i.ProcessedAt,
+		&i.Provider,
 	)
 	return i, err
 }
 
 const listSourcesByRun = `-- name: ListSourcesByRun :many
-SELECT id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at FROM sources WHERE run_id = $1 ORDER BY created_at, id
+SELECT s.id, s.run_id, s.type, s.title, s.content, s.created_at, s.updated_at, s.source_url, s.external_id, s.raw_payload, s.processing_status, s.processing_error, s.processed_at, s.provider FROM sources s JOIN run_sources rs ON rs.source_id = s.id WHERE rs.run_id = $1 ORDER BY s.created_at, s.id
 `
 
 func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]Source, error) {
@@ -127,6 +131,7 @@ func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]So
 			&i.ProcessingStatus,
 			&i.ProcessingError,
 			&i.ProcessedAt,
+			&i.Provider,
 		); err != nil {
 			return nil, err
 		}
@@ -140,8 +145,8 @@ func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]So
 
 const updateSource = `-- name: UpdateSource :one
 UPDATE sources SET run_id=$2, type=$3, title=$4, content=$5, source_url=$6, external_id=$7,
-raw_payload=$8, processing_status=$9, processing_error=$10, processed_at=$11, updated_at=now()
-WHERE id=$1 RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at
+raw_payload=$8, processing_status=$9, processing_error=$10, processed_at=$11, provider=$12, updated_at=now()
+WHERE id=$1 RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider
 `
 
 type UpdateSourceParams struct {
@@ -156,6 +161,7 @@ type UpdateSourceParams struct {
 	ProcessingStatus string             `json:"processing_status"`
 	ProcessingError  pgtype.Text        `json:"processing_error"`
 	ProcessedAt      pgtype.Timestamptz `json:"processed_at"`
+	Provider         pgtype.Text        `json:"provider"`
 }
 
 func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error) {
@@ -171,6 +177,7 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		arg.ProcessingStatus,
 		arg.ProcessingError,
 		arg.ProcessedAt,
+		arg.Provider,
 	)
 	var i Source
 	err := row.Scan(
@@ -187,6 +194,59 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.ProcessingStatus,
 		&i.ProcessingError,
 		&i.ProcessedAt,
+		&i.Provider,
+	)
+	return i, err
+}
+
+const upsertExternalSource = `-- name: UpsertExternalSource :one
+INSERT INTO sources (type, title, content, source_url, provider, external_id, raw_payload)
+SELECT $1,$2,$3,$4,$5,$6,$7
+WHERE $5::text IS NOT NULL AND btrim($5::text) <> ''
+  AND $6::text IS NOT NULL AND btrim($6::text) <> ''
+ON CONFLICT (provider, type, external_id)
+WHERE provider IS NOT NULL AND external_id IS NOT NULL
+DO UPDATE SET title=EXCLUDED.title, content=EXCLUDED.content, source_url=EXCLUDED.source_url,
+    raw_payload=EXCLUDED.raw_payload, updated_at=now()
+RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider
+`
+
+type UpsertExternalSourceParams struct {
+	Type       string      `json:"type"`
+	Title      string      `json:"title"`
+	Content    pgtype.Text `json:"content"`
+	SourceUrl  pgtype.Text `json:"source_url"`
+	Provider   pgtype.Text `json:"provider"`
+	ExternalID pgtype.Text `json:"external_id"`
+	RawPayload []byte      `json:"raw_payload"`
+}
+
+func (q *Queries) UpsertExternalSource(ctx context.Context, arg UpsertExternalSourceParams) (Source, error) {
+	row := q.db.QueryRow(ctx, upsertExternalSource,
+		arg.Type,
+		arg.Title,
+		arg.Content,
+		arg.SourceUrl,
+		arg.Provider,
+		arg.ExternalID,
+		arg.RawPayload,
+	)
+	var i Source
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.Type,
+		&i.Title,
+		&i.Content,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SourceUrl,
+		&i.ExternalID,
+		&i.RawPayload,
+		&i.ProcessingStatus,
+		&i.ProcessingError,
+		&i.ProcessedAt,
+		&i.Provider,
 	)
 	return i, err
 }

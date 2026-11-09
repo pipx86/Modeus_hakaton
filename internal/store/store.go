@@ -40,6 +40,9 @@ func (s *Store) SaveTree(ctx context.Context, runID pgtype.UUID, root TreeNode) 
 	if !runID.Valid {
 		return errors.New("run ID is required")
 	}
+	if err := ValidateTree(root); err != nil {
+		return err
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tree transaction: %w", err)
