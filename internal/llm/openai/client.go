@@ -226,17 +226,30 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 	var decoded chatResponse
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBody))
 	if err := decoder.Decode(&decoded); err != nil {
-		c.logFailure(ctx, "decode error", resp.StatusCode, duration, err)
+		elapsed := time.Since(start)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			c.logFailure(ctx, "decode timeout", resp.StatusCode, elapsed, ctxErr)
+			if errors.Is(ctxErr, context.DeadlineExceeded) {
+				return "", fmt.Errorf("%w: %v", ErrTimeout, ctxErr)
+			}
+			return "", fmt.Errorf("openai: chat cancelled: %w", ctxErr)
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			c.logFailure(ctx, "decode timeout", resp.StatusCode, elapsed, err)
+			return "", fmt.Errorf("%w: %v", ErrTimeout, err)
+		}
+		c.logFailure(ctx, "decode error", resp.StatusCode, elapsed, err)
 		return "", fmt.Errorf("%w: %v", ErrDecode, err)
 	}
 	if decoded.Error != nil {
 		upstream := &UpstreamError{StatusCode: resp.StatusCode, Body: decoded.Error.Message}
-		c.logFailure(ctx, "upstream error", resp.StatusCode, duration, upstream)
+		c.logFailure(ctx, "upstream error", resp.StatusCode, time.Since(start), upstream)
 		return "", upstream
 	}
 	if len(decoded.Choices) == 0 || decoded.Choices[0].Message.Content == "" {
 		err := errors.New("empty response content")
-		c.logFailure(ctx, "empty response", resp.StatusCode, duration, err)
+		c.logFailure(ctx, "empty response", resp.StatusCode, time.Since(start), err)
 		return "", fmt.Errorf("%w: %v", ErrDecode, err)
 	}
 	return decoded.Choices[0].Message.Content, nil

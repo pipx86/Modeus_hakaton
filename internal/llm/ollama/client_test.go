@@ -199,3 +199,25 @@ func TestChatRejectsNilContext(t *testing.T) {
 		t.Fatal("expected error for nil context")
 	}
 }
+
+func TestChatBodyTimeoutIsTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(200 * time.Millisecond)
+		_, _ = io.WriteString(w, successJSON())
+	}))
+	t.Cleanup(srv.Close)
+
+	client := newTestClient(t, srv.URL, 50*time.Millisecond, discardLogger())
+	_, err := client.Chat(context.Background(), userMessage("slow body"))
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("err = %v, want ErrTimeout", err)
+	}
+	if errors.Is(err, ErrDecode) {
+		t.Fatalf("err = %v, must not be ErrDecode", err)
+	}
+}
