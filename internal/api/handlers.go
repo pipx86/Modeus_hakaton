@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
+	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 )
 
@@ -43,19 +43,8 @@ func (s *Server) Routes() http.Handler {
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	root.Handle("/", requireAuth(mux))
+	root.Handle("/", auth.Middleware(mux))
 	return root
-}
-
-func requireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := r.Header.Get("Authorization")
-		if !strings.HasPrefix(h, "Bearer ") || strings.TrimSpace(h[len("Bearer "):]) == "" {
-			writeErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid token")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 type createRunRequest struct {
@@ -68,6 +57,10 @@ type errorBody struct {
 }
 
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+
 	var req createRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Profession == "" {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "profession is required")
@@ -84,6 +77,9 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+		return
+	}
 	id := r.PathValue("id")
 
 	run, err := s.store.GetRun(id)
@@ -100,6 +96,9 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
 	id := r.PathValue("id")
 
 	nodes, err := s.store.GetTree(id)
@@ -119,6 +118,9 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
 	id := r.PathValue("id")
 
 	answers, err := s.store.GetAnswers(id)
@@ -138,6 +140,9 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+		return
+	}
 	id := r.PathValue("id")
 
 	err := s.store.ApproveEvidence(id)
@@ -157,6 +162,9 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
 	id := r.PathValue("id")
 
 	run, err := s.store.GetRun(id)

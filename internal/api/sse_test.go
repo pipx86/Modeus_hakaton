@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 )
 
@@ -56,7 +57,7 @@ func isTimeoutErr(err error) bool {
 	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline") || strings.Contains(msg, "canceled") || strings.Contains(msg, "context canceled")
 }
 
-func doStream(t *testing.T, url, lastEventID string, timeout time.Duration) (*http.Response, context.CancelFunc) {
+func doStream(t *testing.T, url, role string, lastEventID string, timeout time.Duration) (*http.Response, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -64,7 +65,11 @@ func doStream(t *testing.T, url, lastEventID string, timeout time.Duration) (*ht
 		cancel()
 		t.Fatalf("сборка запроса: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer t")
+	if role != "" {
+		auth.EnsureTestSecret()
+		tok, _ := auth.Issue("test-user", auth.Role(role), time.Hour)
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 	if lastEventID != "" {
 		req.Header.Set("Last-Event-ID", lastEventID)
 	}
@@ -85,7 +90,7 @@ func TestSSEStreamToDone(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "", 3*time.Second)
+	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", "", 3*time.Second)
 	defer cancel()
 	defer resp.Body.Close()
 
@@ -132,7 +137,7 @@ func TestSSELastEventIDNoDupes(t *testing.T) {
 		_ = m.SetStage("r1", domain.StageReview)
 	}()
 
-	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "3", 2*time.Second)
+	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", "3", 2*time.Second)
 	defer cancel()
 	defer resp.Body.Close()
 
@@ -154,7 +159,7 @@ func TestSSETerminalClosesImmediately(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "", 2*time.Second)
+	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", "", 2*time.Second)
 	defer cancel()
 	defer resp.Body.Close()
 
@@ -176,7 +181,7 @@ func TestSSEHeartbeat(t *testing.T) {
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "", 2*time.Second)
+	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", "", 2*time.Second)
 	defer cancel()
 	defer resp.Body.Close()
 
@@ -206,7 +211,7 @@ func TestSSEAuthAnd404(t *testing.T) {
 		t.Fatalf("ожидали 401, получили %d", rr.Code)
 	}
 
-	rr = do(t, h, "GET", "/api/v1/runs/nope/events", "Bearer t", "")
+	rr = do(t, h, "GET", "/api/v1/runs/nope/events", "teacher", "")
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("ожидали 404, получили %d", rr.Code)
 	}
