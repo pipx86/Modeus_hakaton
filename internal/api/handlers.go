@@ -4,17 +4,28 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"activity-descriptor/internal/domain"
 )
 
 type Server struct {
-	store Store
+	store        Store
+	ssePoll      time.Duration
+	sseHeartbeat time.Duration
 }
 
 func NewServer(store Store) *Server {
-	return &Server{store: store}
+	hb := 15 * time.Second
+	if v := os.Getenv("SSE_HEARTBEAT_S"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			hb = time.Duration(n) * time.Second
+		}
+	}
+	return &Server{store: store, ssePoll: 200 * time.Millisecond, sseHeartbeat: hb}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -26,6 +37,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/answers", s.handleGetAnswers)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
+	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -186,4 +198,27 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, errorBody{Code: code, Message: msg})
+}
+
+func NewServerForDemo() *Server { return NewServer(newMemStore()) }
+
+func (s *Server) DemoRunID() string {
+	r, _ := s.store.CreateRun("cook")
+	return r.ID
+}
+
+func (s *Server) DemoSetStage(id string, stage domain.Stage) error {
+	ms, ok := s.store.(*memStore)
+	if !ok {
+		return ErrNotFound
+	}
+	return ms.SetStage(id, stage)
+}
+
+func (s *Server) DemoSetStatus(id string, status domain.RunStatus) error {
+	ms, ok := s.store.(*memStore)
+	if !ok {
+		return ErrNotFound
+	}
+	return ms.SetStatus(id, status)
 }

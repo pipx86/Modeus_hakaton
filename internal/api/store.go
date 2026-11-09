@@ -17,6 +17,8 @@ type Store interface {
 	GetTree(runID string) ([]domain.Node, error)
 	GetAnswers(runID string) ([]domain.Evidence, error)
 	ApproveEvidence(id string) error
+	SetStage(id string, stage domain.Stage) error
+	SetStatus(id string, status domain.RunStatus) error
 }
 
 type memStore struct {
@@ -29,7 +31,6 @@ type memStore struct {
 	seq            int
 }
 
-// NewMemoryStore creates a temporary store for local development. It does not persist data.
 func NewMemoryStore() Store { return newMemStore() }
 
 func newMemStore() *memStore {
@@ -118,5 +119,27 @@ func (m *memStore) ApproveEvidence(id string) error {
 	}
 
 	m.approved[id] = true
+	return nil
+}
+
+func (m *memStore) SetStage(id string, stage domain.Stage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.runs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	r.Stage = stage
+	return nil
+}
+
+func (m *memStore) SetStatus(id string, status domain.RunStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.runs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	r.Status = status
 	return nil
 }

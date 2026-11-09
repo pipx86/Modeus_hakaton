@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Modeus activity-descriptor API
   version: 0.1.0
-  description: Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19).
+  description: Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20).
 servers:
   - url: /api/v1
 tags:
@@ -402,7 +402,7 @@ paths:
   "/runs/{id}/export":
     get:
       tags: [runs]
-      summary: Export run result (tree) in a chosen format
+      summary: Export run result (tree)
       operationId: exportRun
       parameters:
         - name: id
@@ -410,31 +410,15 @@ paths:
           required: true
           schema:
             type: string
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [json, csv]
-            default: json
       responses:
         "200":
-          description: Exported payload
+          description: Exported nodes
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/Node"
-            text/csv:
-              schema:
-                type: string
-        "400":
-          description: Malformed request or unsupported format
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         "401":
           description: Missing or invalid token
           content:
@@ -449,6 +433,43 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: Run not finished yet, nothing to export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs/{id}/events":
+    get:
+      tags: [runs]
+      summary: Stream run progress (SSE)
+      operationId: streamRunEvents
+      description: text/event-stream; events per stage; heartbeat; reconnect via Last-Event-ID without duplicates; closes on done/failed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: ID of the last received event; server resumes after it without duplicates.
+      responses:
+        "200":
+          description: Server-sent events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Run not found
           content:
             application/json:
               schema:
@@ -629,3 +650,6 @@ components:
         finished_at:
           type: string
           format: date-time
+        stage:
+          type: string
+          enum: [created, interview, analysis, synthesis, review, done, failed]
