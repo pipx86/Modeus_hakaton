@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"activity-descriptor/internal/auth"
@@ -78,7 +79,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Profession == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Profession) == "" {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "profession is required")
 		return
 	}

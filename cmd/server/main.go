@@ -42,6 +42,10 @@ func run(ctx context.Context, c config) error {
 	if err = pool.Ping(connectCtx); err != nil {
 		return errors.New("cannot connect to PostgreSQL")
 	}
+	var schemaReady bool
+	if err = pool.QueryRow(connectCtx, "SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname='stage' AND NOT attisdropped)").Scan(&schemaReady); err != nil || !schemaReady {
+		return errors.New("база не подготовлена: примените основные миграции, включая 20261110000000_run_stage.sql")
+	}
 	listener, err := net.Listen("tcp", c.address)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)

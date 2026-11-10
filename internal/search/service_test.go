@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,17 +88,28 @@ func TestНастоящаяOllamaДесятьЗапросов(t *testing.T) {
 		model = "nomic-embed-text"
 	}
 	s := Service{Pool: p, Model: embeddings.Ollama{BaseURL: address, Model: model}}
+	corpus := []rune(strings.Repeat("Анализ данных и проверка качества, обработка источников и подготовка отчётов. ", 1200))
+	corpus = corpus[:800+700*99]
+	if _, err := p.Exec(ctx, "UPDATE sources SET content=$2 WHERE id=$1", source, string(corpus)); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := s.IndexSource(ctx, source); err != nil {
 		t.Fatal(err)
+	}
+	var fragments int
+	if err := p.QueryRow(ctx, "SELECT count(*) FROM source_fragments WHERE source_id=$1", source).Scan(&fragments); err != nil || fragments != 100 {
+		t.Fatalf("корпус: %d %v", fragments, err)
 	}
 	// Предварительно загружаем модель; отдельно измеряем десять запросов тёплого сервиса.
 	if _, _, err := s.Search(ctx, run, "анализ", 5); err != nil {
 		t.Fatal(err)
 	}
 	var maximum time.Duration
-	for i := 0; i < 10; i++ {
+	queries := []string{"анализ данных", "проверка качества", "подготовка отчётов", "источники информации", "обработка материалов", "проверка пропусков", "исследование профессии", "планирование задач", "сравнение результатов", "описание действий"}
+	for i, query := range queries {
 		start := time.Now()
-		hits, mode, err := s.Search(ctx, run, "анализ данных", 5)
+		hits, mode, err := s.Search(ctx, run, query, 5)
 		elapsed := time.Since(start)
 		if err != nil || mode != "vector" || len(hits) == 0 {
 			t.Fatalf("%s %v %v", mode, hits, err)
@@ -109,5 +121,5 @@ func TestНастоящаяOllamaДесятьЗапросов(t *testing.T) {
 			t.Fatalf("запрос %d: %s >= 2 секунды", i+1, elapsed)
 		}
 	}
-	t.Logf("10 запросов с настоящей моделью, максимальная задержка: %s; тестовый корпус: один фрагмент", maximum)
+	t.Logf("10 запросов с настоящей моделью, максимальная задержка: %s; тестовый корпус: %d фрагментов", maximum, fragments)
 }
