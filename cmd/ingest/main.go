@@ -142,14 +142,14 @@ func runEducation(args []string) error {
 		if len(b) > 20<<20 {
 			return fmt.Errorf("файл больше 20 МБ")
 		}
-		data, err = ingestion.ReadEducationText(string(b), *title)
+		data, err = ingestion.ExtractEducationText(string(b), *title)
 	case "pdf":
 		var doc ingestion.Standard
 		doc, err = ingestion.ReadStandard(*file, "pdf", *title)
 		if err != nil {
 			return err
 		}
-		data, err = ingestion.ReadEducationText(doc.Content, *title)
+		data, err = ingestion.ExtractEducationText(doc.Content, *title)
 	default:
 		return fmt.Errorf("формат должен быть json, text или pdf")
 	}

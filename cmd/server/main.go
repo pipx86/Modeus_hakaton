@@ -1,9 +1,8 @@
-// Command server starts the development HTTP API and checks PostgreSQL access.
+// Команда server запускает API с постоянным хранилищем PostgreSQL.
 package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log"
@@ -19,37 +18,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type config struct{ address, databaseURL, apiToken string }
+type config struct{ address, databaseURL, jwtSecret string }
 
 func loadConfig() (config, error) {
-	c := config{address: os.Getenv("HTTP_ADDR"), databaseURL: os.Getenv("DATABASE_URL"), apiToken: os.Getenv("API_TOKEN")}
+	c := config{address: os.Getenv("HTTP_ADDR"), databaseURL: os.Getenv("DATABASE_URL"), jwtSecret: os.Getenv("JWT_SECRET")}
 	if c.address == "" {
 		c.address = "127.0.0.1:8080"
 	}
-	if c.databaseURL == "" || strings.TrimSpace(c.apiToken) == "" {
-		return config{}, errors.New("DATABASE_URL and API_TOKEN are required")
+	if c.databaseURL == "" || strings.TrimSpace(c.jwtSecret) == "" {
+		return config{}, errors.New("DATABASE_URL and JWT_SECRET are required")
 	}
 	return c, nil
 }
 
-// authenticate protects the development API with a configured shared token.
-// The public health endpoint is intentionally available without a token.
-func authenticate(next http.Handler, token string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/health" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		header := r.Header.Get("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(header, "Bearer ")), []byte(token)) != 1 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"code":"UNAUTHORIZED","message":"missing or invalid token"}`))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
 func run(ctx context.Context, c config) error {
 	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -65,10 +46,10 @@ func run(ctx context.Context, c config) error {
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	server := &http.Server{Handler: authenticate(api.NewServer(api.NewMemoryStore()).Routes(), c.apiToken), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: api.NewServer(api.NewPGStore(pool)).Routes(), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
-	log.Printf("development API listening on %s (data is stored in memory)", listener.Addr())
+	log.Printf("development API listening on %s (PostgreSQL)", listener.Addr())
 	select {
 	case <-ctx.Done():
 		shutdownCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
