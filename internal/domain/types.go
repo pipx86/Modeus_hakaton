@@ -105,6 +105,10 @@ var allowedTransitions = map[Stage][]Stage{
 }
 
 func CanTransition(from, to Stage) bool {
+	// Resume: разрешаем повторный запуск текущей стадии после перезапуска сервера.
+	if from == to {
+		return true
+	}
 	for _, s := range allowedTransitions[from] {
 		if s == to {
 			return true

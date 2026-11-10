@@ -1,4 +1,3 @@
-// Команда server запускает API с постоянным хранилищем PostgreSQL.
 package main
 
 import (
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"activity-descriptor/internal/api"
+	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -46,13 +47,27 @@ func run(ctx context.Context, c config) error {
 	if err = pool.QueryRow(connectCtx, "SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname='stage' AND NOT attisdropped)").Scan(&schemaReady); err != nil || !schemaReady {
 		return errors.New("база не подготовлена: примените основные миграции, включая 20261110000000_run_stage.sql")
 	}
+
 	listener, err := net.Listen("tcp", c.address)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	server := &http.Server{Handler: api.NewServer(api.NewPGStore(pool)).Routes(), ReadHeaderTimeout: 5 * time.Second}
+
+	pgStore := api.NewPGStore(pool)
+	server := &http.Server{Handler: api.NewServer(pgStore).Routes(), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
+
+	st := store.New(pool)
+	reader := store.NewVacancyAdapter(st)
+	resumer := api.NewResumeProcessor(pgStore, pgStore, reader) // <-- api вместо store
+	go func() {
+		bgCtx := context.Background()
+		if err := resumer.ProcessIncompleteRuns(bgCtx); err != nil {
+			log.Printf("[startup] resume processor warning: %v", err)
+		}
+	}()
+
 	log.Printf("development API listening on %s (PostgreSQL)", listener.Addr())
 	select {
 	case <-ctx.Done():
@@ -69,6 +84,7 @@ func run(ctx context.Context, c config) error {
 		return fmt.Errorf("serve: %w", err)
 	}
 }
+
 func main() {
 	c, err := loadConfig()
 	if err != nil {

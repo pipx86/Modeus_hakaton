@@ -12,6 +12,10 @@ var ErrNotFound = errors.New("NOT_FOUND")
 var ErrAlreadyApproved = errors.New("EVIDENCE_ALREADY_APPROVED")
 var ErrConflict = errors.New("conflict")
 
+type Resumer interface {
+	ListIncompleteRuns() ([]*domain.Run, error)
+}
+
 type Store interface {
 	CreateRun(profession string) (*domain.Run, error)
 	GetRun(id string) (*domain.Run, error)
@@ -31,6 +35,8 @@ type memStore struct {
 	approved       map[string]bool
 	seq            int
 }
+
+func NewMemStoreForTest() Store { return newMemStore() }
 
 func NewMemoryStore() Store { return newMemStore() }
 
@@ -142,5 +148,37 @@ func (m *memStore) SetStatus(id string, status domain.RunStatus) error {
 		return ErrNotFound
 	}
 	r.Status = status
+	return nil
+}
+
+func (m *memStore) ListIncompleteRuns() ([]*domain.Run, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var out []*domain.Run
+	for _, r := range m.runs {
+		if r.Status == domain.RunRunning && r.Stage != domain.StageDone {
+			cp := *r // копия, чтобы не мутировать оригинал при resume
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) Save(r *domain.Run) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if existing, ok := m.runs[r.ID]; ok {
+		existing.Status = r.Status
+		existing.Stage = r.Stage
+		existing.Profession = r.Profession
+		existing.RootNodeID = r.RootNodeID
+		existing.StartedAt = r.StartedAt
+		existing.FinishedAt = r.FinishedAt
+		existing.Data = r.Data // сохраняем skill_freq, level_data и т.д.
+	} else {
+		cp := *r
+		m.runs[r.ID] = &cp
+	}
 	return nil
 }

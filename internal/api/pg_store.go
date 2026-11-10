@@ -9,6 +9,7 @@ import (
 
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/store"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -245,4 +246,34 @@ func (p *PGStore) SaveTree(ctx context.Context, id string, nodes []domain.Node) 
 		}
 	}
 	return translate(err)
+}
+
+// ListIncompleteRuns возвращает все прогоны со status=running и stage!=done.
+func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
+	ctx, cancel := operation()
+	defer cancel()
+
+	rows, err := p.Pool.Query(ctx, `
+		SELECT id::text, profession, status::text, stage::text, started_at, finished_at
+		FROM runs
+		WHERE status = 'running' AND stage <> 'done'
+		ORDER BY created_at ASC`) // Сортируем по колонке БД, даже если её нет в Go-структуре
+	if err != nil {
+		return nil, translate(err)
+	}
+	defer rows.Close()
+
+	var out []*domain.Run
+	for rows.Next() {
+		var r domain.Run
+		// Сканируем те поля, которые реально есть в types.go
+		if err := rows.Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.StartedAt, &r.FinishedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
