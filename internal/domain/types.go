@@ -65,13 +65,16 @@ type Source struct {
 }
 
 type Run struct {
-	ID         string     `json:"id"`
-	Status     RunStatus  `json:"status"`
-	Profession string     `json:"profession"`
-	RootNodeID *string    `json:"root_node_id,omitempty"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	Stage      Stage      `json:"stage,omitempty"`
+	ID               string             `json:"id"`
+	Status           RunStatus          `json:"status"`
+	Profession       string             `json:"profession"`
+	RootNodeID       *string            `json:"root_node_id,omitempty"`
+	StartedAt        *time.Time         `json:"started_at,omitempty"`
+	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
+	Stage            Stage              `json:"stage,omitempty"`
+	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
+	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
+	PerVacancySkills [][]string         `json:"-"`
 }
 
 type Stage string
