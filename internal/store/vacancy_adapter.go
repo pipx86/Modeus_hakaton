@@ -1,26 +1,21 @@
-package ingestion
+package store
 
 import (
+	"activity-descriptor/internal/domain"
 	"context"
 	"errors"
 	"strings"
-
-	"activity-descriptor/internal/domain"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PGVacancyReader читает вакансии из таблицы sources (provider='hh', type='vacancy').
-type PGVacancyReader struct {
-	pool *pgxpool.Pool
+type VacancyAdapter struct {
+	store *Store
 }
 
-func NewPGVacancyReader(pool *pgxpool.Pool) *PGVacancyReader {
-	return &PGVacancyReader{pool: pool}
+func NewVacancyAdapter(s *Store) *VacancyAdapter {
+	return &VacancyAdapter{store: s}
 }
 
-// ByProfession ищет вакансии по заголовку/описанию (ILIKE %profession%) с лимитом.
-func (r *PGVacancyReader) ByProfession(ctx context.Context, profession string, limit int) ([]domain.VacancyRecord, error) {
+func (a *VacancyAdapter) ByProfession(ctx context.Context, profession string, limit int) ([]domain.VacancyRecord, error) {
 	if strings.TrimSpace(profession) == "" {
 		return nil, errors.New("profession is required")
 	}
@@ -28,8 +23,8 @@ func (r *PGVacancyReader) ByProfession(ctx context.Context, profession string, l
 		limit = 100
 	}
 
-	rows, err := r.pool.Query(ctx, `
-		SELECT external_id, title, COALESCE(content,''), COALESCE(source_url,'')
+	rows, err := a.store.pool.Query(ctx, `
+		SELECT external_id::text, title, COALESCE(content,''), COALESCE(source_url,'')
 		FROM sources
 		WHERE provider = 'hh' AND type = 'vacancy'
 		  AND (title ILIKE $1 OR content ILIKE $1)

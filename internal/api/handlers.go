@@ -1,17 +1,19 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/idempotency"
+	"activity-descriptor/internal/steps"
+	"activity-descriptor/internal/store"
 )
 
 type Server struct {
@@ -30,35 +32,31 @@ func NewServer(store Store) *Server {
 	}
 	return &Server{
 		store:        store,
-		idemStore:    idempotency.NewMemStore(time.Hour), // дефолтный TTL 1 час
+		idemStore:    idempotency.NewMemStore(time.Hour),
 		ssePoll:      200 * time.Millisecond,
 		sseHeartbeat: hb,
 	}
 }
 
-// Routes собирает HTTP-маршрутизатор.
-// Порядок слоёв: root (health) -> auth.JWT -> idempotency -> mux (handlers).
-// Идемпотентность применяется только к POST/PUT/PATCH внутри защищённой зоны.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
+	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handlePutTree)
 	mux.HandleFunc("GET /api/v1/runs/{id}/tree", s.handleGetTree)
-	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handleSaveTree)
-	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)
-	mux.HandleFunc("POST /api/v1/sources/{id}/index", s.handleIndexSource)
 	mux.HandleFunc("GET /api/v1/runs/{id}/answers", s.handleGetAnswers)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
+	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)
+	mux.HandleFunc("POST /api/v1/sources/{id}/index", s.handleIndexSource)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Цепочка: JWT -> Idempotency -> Handlers
 	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
 	root.Handle("/", auth.Middleware(protected))
 	return root
@@ -79,7 +77,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Profession) == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Profession == "" {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "profession is required")
 		return
 	}
@@ -88,6 +86,21 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
+	}
+
+	if pgStore, ok := s.store.(*PGStore); ok && pgStore.Pool != nil {
+		st := store.New(pgStore.Pool)
+		reader := store.NewVacancyAdapter(st)
+		realSteps := []domain.Step{
+			&steps.InterviewStep{},
+			&steps.AnalysisStep{},
+			&steps.SynthesisStep{},
+			&steps.ReviewStep{},
+		}
+		go func(r *domain.Run) {
+			bgCtx := context.Background()
+			_ = domain.Orchestrate(bgCtx, r, realSteps, pgStore, reader, 2, 30*time.Second)
+		}(run)
 	}
 
 	writeJSON(w, http.StatusCreated, run)
@@ -110,6 +123,53 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+	id := r.PathValue("id")
+
+	var nodes []domain.Node
+	if err := json.NewDecoder(r.Body).Decode(&nodes); err != nil {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+		return
+	}
+
+	if err := domain.ValidateTree(nodes); err != nil {
+		var tvErr *domain.TreeValidationError
+		if errors.As(err, &tvErr) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"code":    tvErr.Code,
+				"details": tvErr.Details,
+			})
+			return
+		}
+		writeErr(w, http.StatusUnprocessableEntity, "TREE_VALIDATION_FAILED", err.Error())
+		return
+	}
+
+	pgStore, ok := s.store.(*PGStore)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "tree write requires PGStore")
+		return
+	}
+
+	if err := pgStore.SaveTree(r.Context(), id, nodes); err != nil {
+		if errors.Is(err, ErrAlreadyApproved) || errors.Is(err, ErrConflict) {
+			writeErr(w, http.StatusConflict, "ALREADY_EXISTS", "tree already exists for this run")
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
@@ -224,8 +284,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, errorBody{Code: code, Message: msg})
 }
-
-// --- helpers for live curl demonstration (card 20 acceptance) ---
 
 func NewServerForDemo() *Server { return NewServer(newMemStore()) }
 

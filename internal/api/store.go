@@ -10,6 +10,7 @@ import (
 
 var ErrNotFound = errors.New("NOT_FOUND")
 var ErrAlreadyApproved = errors.New("EVIDENCE_ALREADY_APPROVED")
+var ErrConflict = errors.New("conflict")
 
 type Store interface {
 	CreateRun(profession string) (*domain.Run, error)
