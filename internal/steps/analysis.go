@@ -23,6 +23,10 @@ func (a *AnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, vac
 		return fmt.Errorf("run is nil")
 	}
 
+	if run.Data == nil {
+		run.Data = make(map[string]any)
+	}
+
 	texts := make([]string, 0, len(vacancies))
 	for _, v := range vacancies {
 		texts = append(texts, v.Description)
@@ -35,9 +39,10 @@ func (a *AnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, vac
 
 	triple := analysis.ExtractSkills(texts, catalog)
 
-	run.SkillFreq = triple.Freq
-	run.HybridWeightsRaw = triple.WeightsRaw
-	run.PerVacancySkills = triple.PerVacancy
+	run.Data["skill_freq"] = triple.Freq
+	run.Data["hybrid_weights_raw"] = triple.WeightsRaw
+	run.Data["per_vacancy_skills"] = triple.PerVacancy
+	run.Data["source_vacancies"] = vacancies
 
 	return nil
 }

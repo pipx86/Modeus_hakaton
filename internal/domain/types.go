@@ -75,6 +75,9 @@ type Run struct {
 	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
 	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
 	PerVacancySkills [][]string         `json:"-"`
+	LevelData        []map[string]any   `json:"level_data,omitempty"`
+	LevelSkills      [][]string         `json:"-"`
+	Data             map[string]any     `json:"-"`
 }
 
 type Stage string
