@@ -8,9 +8,14 @@ import (
 	"activity-descriptor/internal/domain"
 )
 
+type TreeStorer interface {
+	SaveTree(ctx context.Context, id string, nodes []domain.Node) error
+}
+
 type ReviewStep struct {
 	Profiles []analysis.CandidateProfile
 	TopK     int
+	Store    TreeStorer
 }
 
 func (r *ReviewStep) Name() domain.Stage { return domain.StageReview }
@@ -47,8 +52,19 @@ func (r *ReviewStep) Execute(ctx context.Context, run *domain.Run) error {
 	}
 
 	reports := analysis.ComputeGap(profiles, market, topK)
-
 	run.Data["gap_reports"] = reports
+
+	levelData, _ := run.Data["level_data"].([]map[string]any)
+	nodes, err := analysis.BuildActivityTree(run.Profession, levelData, reports)
+	if err != nil {
+		return fmt.Errorf("build activity tree: %w", err)
+	}
+
+	if r.Store != nil && len(nodes) > 0 {
+		if err := r.Store.SaveTree(ctx, run.ID, nodes); err != nil {
+			return fmt.Errorf("save tree: %w", err)
+		}
+	}
 
 	return nil
 }

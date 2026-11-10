@@ -95,7 +95,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			&steps.InterviewStep{},
 			&steps.AnalysisStep{},
 			&steps.SynthesisStep{},
-			&steps.ReviewStep{TopK: 10},
+			&steps.ReviewStep{TopK: 10, Store: pgStore},
 		}
 		go func(r *domain.Run) {
 			bgCtx := context.Background()
