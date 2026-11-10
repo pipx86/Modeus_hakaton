@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Store exposes sqlc CRUD operations and groups tree writes in one transaction.
+// Store предоставляет запросы sqlc и сохраняет дерево одной транзакцией.
 type Store struct {
 	*db.Queries
 	pool *pgxpool.Pool
@@ -18,7 +18,7 @@ type Store struct {
 
 func New(pool *pgxpool.Pool) *Store { return &Store{Queries: db.New(pool), pool: pool} }
 
-// TreeNode is a node and its descendants. Every node needs at least one source citation.
+// TreeNode содержит узел и потомков; каждый узел требует подтверждение источником.
 type TreeNode struct {
 	ID          pgtype.UUID
 	Title       string
@@ -34,8 +34,8 @@ type TreeEvidence struct {
 	Approved bool
 }
 
-// SaveTree inserts a new tree for a run without a root. It never replaces an existing tree.
-// If any node, citation, or root update fails, all inserts are rolled back.
+// SaveTree создаёт новое дерево исследования без корня; готовое дерево не заменяется.
+// При ошибке узла, подтверждения или записи корня вся транзакция откатывается.
 func (s *Store) SaveTree(ctx context.Context, runID pgtype.UUID, root TreeNode) error {
 	if !runID.Valid {
 		return errors.New("run ID is required")

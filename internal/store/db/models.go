@@ -118,6 +118,7 @@ type Run struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	ErrorMessage pgtype.Text        `json:"error_message"`
+	Stage        string             `json:"stage"`
 }
 
 type RunSource struct {

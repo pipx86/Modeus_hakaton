@@ -11,9 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// RunStatusStore implements the orchestrator's Save method for the runs.status
-// field. The current schema has no stage column, so it does not persist stage
-// or other Run fields and cannot restore orchestration progress after a restart.
+// RunStatusStore сохраняет только общий статус исследования.
+// Для сохранения этапов оркестратора бэкенд использует api.PGStore.
 type RunStatusStore struct {
 	Store   *Store
 	Timeout time.Duration
