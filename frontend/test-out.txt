@@ -1,0 +1,212 @@
+﻿
+> multi-agent-app@0.0.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.0 [39m[90mC:/Users/zyenk/frontend[39m
+
+node.exe : [90mstderr[2m | src/App.test.tsx[2m > [22m[2mrenders app without crashing
+строка:1 знак:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...ithout crashing:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[22m[39mAn update to Dashboard inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link
+/wrap-tests-with-act
+An update to Dashboard inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link
+/wrap-tests-with-act
+
+ [31mтЭп[39m src/App.test.tsx [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 53[2mms[22m[39m
+[31m   [31m├Ч[31m renders app without crashing[39m[32m 51[2mms[22m[39m
+
+[31mтОптОптОптОптОптОптОп[39m[1m[41m Failed Tests 1 [49m[22m[31mтОптОптОптОптОптОптОп[39m
+
+[41m[1m FAIL [22m[49m src/App.test.tsx[2m > [22mrenders app without crashing
+[31m[1mTestingLibraryElementError[22m[39m: Unable to find an element with the text: /EduAgent MVP/i. This could b
+e because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher 
+to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex min-h-screen"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33mclass[39m=[32m"sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-card transition-[width] dura
+tion-150 lg:flex w-64"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex min-h-0 flex-1 flex-col"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-2.5 py-5 px-5"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-prima
+ry-foreground"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"lucide lucide-graduation-cap size-4"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0
+ 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M22 10v6"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M6 12.5V16a6 3 0 0 0 12 0v-3.5"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"min-w-0"[39m
+            [36m>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"truncate text-sm font-semibold leading-tight"[39m
+              [36m>[39m
+                [0m╨Э╨░╨╖╨▓╨░╨╜╨╕╨╡[0m
+              [36m</p>[39m
+              [36m<p[39m
+                [33mclass[39m=[32m"text-xs text-muted-foreground"[39m
+              [36m>[39m
+                [0m╨Р╨╜╨░╨╗╨╕╨╖ ╨┤╨╡╤П╤В╨╡╨╗╤М╨╜╨╛╤Б╤В╨╕[0m
+              [36m</p>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<nav[39m
+            [33mclass[39m=[32m"flex flex-col gap-1 px-3"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<a[39m
+                [33mclass[39m=[32m"flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-c
+olors bg-muted text-foreground"[39m
+                [33mdata-discover[39m=[32m"true"[39m
+                [33mhref[39m=[32m"/"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-flask-conical size-4 shrink-0"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.5
+1-10.08A2 2 0 0 0 10 8V2"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M6.453 15h11.094"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M8.5 2h7"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+                [36m<span>[39m
+                  [0m╨Ш╤Б╤Б╨╗╨╡╨┤╨╛╨▓╨░╨╜╨╕╤П[0m
+                [36m</span>[39m
+              [36m</a>[39m
+            [36m</div>[39m
+            [36m<div>[39m
+              [36m<a[39m
+                [33mclass[39m=[32m"flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-c
+olors text-muted-foreground hover:bg-muted/60 hover:text-foreground"[39m
+                [33mdata-discover[39m=[32m"true"[39m
+                [33mhref[39m=[32m"/research/new"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-plus size-4 shrink-0"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M5 12h14"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 5v14"[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 00:18:31
+[2m   Duration [22m 2.29s[2m (environment 56%, import 24%, setup 12%, transform 4%, tests 3%, worker 1%)[22m
+                  [36m/>[39m
+                [36m</svg>[39m
+                [36m<span>[39m
+                  [0m╨Э╨╛╨▓╨╛╨╡ ╨╕╤Б╤Б╨╗╨╡╨┤╨╛╨▓╨░╨╜╨╕╨╡[0m
+                [36m</span>[39m
+              [36m</a>[39m
+            [36m</div>[39m
+          [36m</nav>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"mt-auto flex flex-col gap-1 border-t p-3"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"group/button inline-flex shrink-0 items-center border border-transparent bg-clip-
+padding font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible
+:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:op
+acity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:borde
+r-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 hover:bg-muted ho
+ver:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50 h-7 rounded-[min(var(
+--radius-md),12px)] text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[
+icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5 w-full justify-start gap-2.5 px-2.5"[39m
+              ...
+[90m [2mтЭп[22m Object.getElementError node_modules/@testing-library/dom/dist/config.js:[2m37:19[22m[39m
+[90m [2mтЭп[22m node_modules/@testing-library/dom/dist/query-helpers.js:[2m76:38[22m[39m
+[90m [2mтЭп[22m node_modules/@testing-library/dom/dist/query-helpers.js:[2m52:17[22m[39m
+[90m [2mтЭп[22m node_modules/@testing-library/dom/dist/query-helpers.js:[2m95:19[22m[39m
+[36m [2mтЭп[22m src/App.test.tsx:[2m9:17[22m[39m
+    [90m  7|[39m [34mtest[39m([32m'renders app without crashing'[39m[33m,[39m () [33m=>[39m {
+    [90m  8|[39m   [34mrender[39m([33m<[39m[33mApp[39m [33m/[39m[33m>[39m)
+    [90m  9|[39m   [34mexpect[39m(screen[33m.[39m[34mgetByText[39m([36m/EduAgent MVP/i[39m))[33m.[39m[34
+mtoBeInTheDocument[39m()
+    [90m   |[39m                 [31m^[39m
+    [90m 10|[39m })
+
+[31m[2mтОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОптОп[1/1]тОп[22m[39m
+
+
