@@ -1,13 +1,11 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/sse"
 )
 
 var stageOrder = []domain.Stage{
@@ -67,58 +65,76 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
-	lastID := 0
+	lastID := ""
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			lastID = n
+		lastID = v
+	}
+
+	events, _ := s.eventStore.GetAfter(lastID, 100)
+	for _, ev := range events {
+		if ev.RunID != id {
+			continue
+		}
+		data, err := ev.Encode()
+		if err != nil {
+			continue
+		}
+		w.Write(data)
+
+		if ev.Type == sse.EventDone || ev.Type == sse.EventError {
+			flusher.Flush()
+			return
 		}
 	}
+	flusher.Flush()
+
+	ch := make(chan *sse.SSEEvent, 16)
+	unsub := s.eventStore.SubscribeLive(func(ev *sse.SSEEvent) {
+		select {
+		case ch <- ev:
+		default:
+		}
+	})
+	defer unsub()
 
 	ctx := r.Context()
-	tick := time.NewTicker(s.ssePoll)
-	defer tick.Stop()
-	beat := time.NewTicker(s.sseHeartbeat)
-	defer beat.Stop()
-
-	send := func(ev sseEvent, sseID int) {
-		data, _ := json.Marshal(ev)
-		fmt.Fprintf(w, "id: %d\nevent: stage\ndata: %s\n\n", sseID, data)
-		flusher.Flush()
-	}
-
-	run, _ := s.store.GetRun(id)
-	cur := run.Stage
-	if idx := stageIndex(cur); idx > lastID {
-		send(sseEvent{Stage: cur, Status: string(run.Status), Pct: stagePct[cur], Message: string(cur)}, idx)
-		lastID = idx
-	}
-	if isTerminal(cur) {
-		return
-	}
+	heartbeat := time.NewTicker(s.sseHeartbeat)
+	defer heartbeat.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-beat.C:
-			fmt.Fprint(w, ": ping\n\n")
-			flusher.Flush()
-		case <-tick.C:
-			run, err := s.store.GetRun(id)
+		case ev := <-ch:
+			if ev.RunID != id {
+				continue
+			}
+			data, err := ev.Encode()
 			if err != nil {
+				continue
+			}
+			if _, err := w.Write(data); err != nil {
 				return
 			}
-			ns := run.Stage
-			idx := stageIndex(ns)
-			if idx > lastID {
-				send(sseEvent{Stage: ns, Status: string(run.Status), Pct: stagePct[ns], Message: string(ns)}, idx)
-				lastID = idx
-			}
-			if isTerminal(ns) {
+			flusher.Flush()
+
+			if ev.Type == sse.EventDone || ev.Type == sse.EventError {
 				return
 			}
+
+		case <-heartbeat.C:
+			hb := sse.NewEvent(id, sse.EventHeartbeat, map[string]any{"ping": true})
+			data, err := hb.Encode()
+			if err != nil {
+				continue
+			}
+			if _, err := w.Write(data); err != nil {
+				return
+			}
+			flusher.Flush()
 		}
 	}
 }

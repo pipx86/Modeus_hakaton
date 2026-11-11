@@ -12,6 +12,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/idempotency"
+	"activity-descriptor/internal/sse"
 	"activity-descriptor/internal/steps"
 	"activity-descriptor/internal/store"
 )
@@ -19,6 +20,7 @@ import (
 type Server struct {
 	store        Store
 	idemStore    idempotency.Store
+	eventStore   sse.EventStore
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 }
@@ -33,6 +35,7 @@ func NewServer(store Store) *Server {
 	return &Server{
 		store:        store,
 		idemStore:    idempotency.NewMemStore(time.Hour),
+		eventStore:   sse.NewMemEventStore(1000),
 		ssePoll:      200 * time.Millisecond,
 		sseHeartbeat: hb,
 	}
@@ -87,6 +90,13 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
+
+	initialEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
+		"stage":   string(domain.StageCreated),
+		"status":  string(domain.RunPending),
+		"message": "Research created",
+	})
+	_ = s.eventStore.Append(initialEvent)
 
 	if pgStore, ok := s.store.(*PGStore); ok && pgStore.Pool != nil {
 		st := store.New(pgStore.Pool)

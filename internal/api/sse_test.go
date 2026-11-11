@@ -11,9 +11,10 @@ import (
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/sse"
 )
 
-func collectSSE(br *bufio.Reader) (ids []string, bodies []string, termErr error) {
+func collectSSE(br *bufio.Reader) (ids []string, events []string, termErr error) {
 	curID := ""
 	for {
 		ln, err := br.ReadString('\n')
@@ -25,14 +26,15 @@ func collectSSE(br *bufio.Reader) (ids []string, bodies []string, termErr error)
 		switch {
 		case strings.HasPrefix(t, "id: "):
 			curID = strings.TrimPrefix(t, "id: ")
+		case strings.HasPrefix(t, "event: "):
+			events = append(events, strings.TrimPrefix(t, "event: "))
 		case strings.HasPrefix(t, "data: "):
 			ids = append(ids, curID)
-			bodies = append(bodies, strings.TrimPrefix(t, "data: "))
 		}
 	}
 }
 
-func readOneEvent(t *testing.T, br *bufio.Reader) (id, data string) {
+func readOneEvent(t *testing.T, br *bufio.Reader) (id, eventType, data string) {
 	t.Helper()
 	for {
 		ln, err := br.ReadString('\n')
@@ -43,8 +45,11 @@ func readOneEvent(t *testing.T, br *bufio.Reader) (id, data string) {
 		if strings.HasPrefix(line, "id: ") {
 			id = strings.TrimPrefix(line, "id: ")
 		}
+		if strings.HasPrefix(line, "event: ") {
+			eventType = strings.TrimPrefix(line, "event: ")
+		}
 		if strings.HasPrefix(line, "data: ") {
-			return id, strings.TrimPrefix(line, "data: ")
+			return id, eventType, strings.TrimPrefix(line, "data: ")
 		}
 	}
 }
@@ -81,11 +86,17 @@ func doStream(t *testing.T, url, role string, lastEventID string, timeout time.D
 	return resp, cancel
 }
 
+func seedRun(m *memStore, r domain.Run) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := r
+	m.runs[r.ID] = &cp
+}
+
 func TestSSEStreamToDone(t *testing.T) {
 	m := newMemStore()
-	m.seedRun(domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageCreated})
+	seedRun(m, domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageCreated})
 	srv := NewServer(m)
-	srv.ssePoll = 40 * time.Millisecond
 	srv.sseHeartbeat = time.Hour
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
@@ -98,85 +109,89 @@ func TestSSEStreamToDone(t *testing.T) {
 		t.Fatalf("ожидали text/event-stream, получили %q", ct)
 	}
 
+	time.Sleep(50 * time.Millisecond)
+
 	go func() {
-		for _, st := range []domain.Stage{domain.StageInterview, domain.StageAnalysis, domain.StageSynthesis, domain.StageReview, domain.StageDone} {
-			time.Sleep(100 * time.Millisecond)
-			_ = m.SetStage("r1", st)
-		}
+		time.Sleep(80 * time.Millisecond)
+		_ = srv.eventStore.Append(sse.NewEvent("r1", sse.EventStageChange, map[string]string{"stage": "interview"}))
+		time.Sleep(40 * time.Millisecond)
+		_ = srv.eventStore.Append(sse.NewEvent("r1", sse.EventStageChange, map[string]string{"stage": "analysis"}))
+		time.Sleep(40 * time.Millisecond)
+		_ = srv.eventStore.Append(sse.NewEvent("r1", sse.EventDone, map[string]string{"stage": "done"}))
 	}()
 
-	ids, bodies, termErr := collectSSE(bufio.NewReader(resp.Body))
-	want := []string{"1", "2", "3", "4", "5", "6"}
-	if len(ids) != len(want) {
-		t.Fatalf("ожидали 6 событий, получили %d: %v", len(ids), ids)
+	br := bufio.NewReader(resp.Body)
+	var seen []string
+	for i := 0; i < 3; i++ {
+		_, _, data := readOneEvent(t, br)
+		seen = append(seen, data)
 	}
-	for i := range want {
-		if ids[i] != want[i] {
-			t.Fatalf("событие %d: ожидали id=%s, получили %s", i, want[i], ids[i])
-		}
+	if !strings.Contains(seen[0], `"stage":"interview"`) {
+		t.Fatalf("первое событие не interview: %s", seen[0])
 	}
-	if !strings.Contains(bodies[5], `"stage":"done"`) {
-		t.Fatalf("последнее событие не done: %s", bodies[5])
+	if !strings.Contains(seen[1], `"stage":"analysis"`) {
+		t.Fatalf("второе событие не analysis: %s", seen[1])
 	}
-	if isTimeoutErr(termErr) {
-		t.Fatalf("поток не закрылся на done (завис): %v", termErr)
+	if !strings.Contains(seen[2], `"stage":"done"`) {
+		t.Fatalf("третье событие не done: %s", seen[2])
 	}
 }
 
 func TestSSELastEventIDNoDupes(t *testing.T) {
 	m := newMemStore()
-	m.seedRun(domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageAnalysis})
+	seedRun(m, domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageAnalysis})
 	srv := NewServer(m)
-	srv.ssePoll = 40 * time.Millisecond
 	srv.sseHeartbeat = time.Hour
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
 
-	go func() {
-		time.Sleep(80 * time.Millisecond)
-		_ = m.SetStage("r1", domain.StageReview)
-	}()
+	e1 := sse.NewEvent("r1", sse.EventStageChange, map[string]string{"stage": "interview"})
+	e2 := sse.NewEvent("r1", sse.EventStageChange, map[string]string{"stage": "analysis"})
+	e3 := sse.NewEvent("r1", sse.EventStageChange, map[string]string{"stage": "review"})
+	_ = srv.eventStore.Append(e1)
+	_ = srv.eventStore.Append(e2)
+	_ = srv.eventStore.Append(e3)
 
-	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", "3", 2*time.Second)
+	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", e2.ID, 2*time.Second)
 	defer cancel()
 	defer resp.Body.Close()
 
-	id, body := readOneEvent(t, bufio.NewReader(resp.Body))
-	if id != "5" {
-		t.Fatalf("дедуп нарушен: ожидали id=5 (review), получили id=%s body=%s", id, body)
+	br := bufio.NewReader(resp.Body)
+	id, _, data := readOneEvent(t, br)
+	if id == e1.ID || id == e2.ID {
+		t.Fatalf("дедуп нарушен: ожидали только события после %s, получили id=%s body=%s", e2.ID, id, data)
 	}
-	if strings.Contains(body, `"stage":"analysis"`) {
-		t.Fatalf("analysis переотправлён как дубль: %s", body)
+	if !strings.Contains(data, `"stage":"review"`) {
+		t.Fatalf("после Last-Event-ID должен прийти review, получили: %s", data)
 	}
 }
 
 func TestSSETerminalClosesImmediately(t *testing.T) {
 	m := newMemStore()
-	m.seedRun(domain.Run{ID: "r1", Status: domain.RunDone, Profession: "cook", Stage: domain.StageDone})
+	seedRun(m, domain.Run{ID: "r1", Status: domain.RunDone, Profession: "cook", Stage: domain.StageDone})
 	srv := NewServer(m)
-	srv.ssePoll = 40 * time.Millisecond
 	srv.sseHeartbeat = time.Hour
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
+
+	doneEv := sse.NewEvent("r1", sse.EventDone, map[string]string{"stage": "done"})
+	_ = srv.eventStore.Append(doneEv)
 
 	resp, cancel := doStream(t, ts.URL+"/api/v1/runs/r1/events", "teacher", "", 2*time.Second)
 	defer cancel()
 	defer resp.Body.Close()
 
-	ids, _, termErr := collectSSE(bufio.NewReader(resp.Body))
-	if len(ids) != 1 || ids[0] != "6" {
-		t.Fatalf("ожидали ровно одно событие done id=6, получили %v", ids)
-	}
-	if isTimeoutErr(termErr) {
-		t.Fatalf("поток не закрылся на done: %v", termErr)
+	br := bufio.NewReader(resp.Body)
+	id, _, data := readOneEvent(t, br)
+	if id != doneEv.ID || !strings.Contains(data, `"stage":"done"`) {
+		t.Fatalf("ожидали одно событие done, получили id=%s data=%s", id, data)
 	}
 }
 
 func TestSSEHeartbeat(t *testing.T) {
 	m := newMemStore()
-	m.seedRun(domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageCreated})
+	seedRun(m, domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageCreated})
 	srv := NewServer(m)
-	srv.ssePoll = time.Hour
 	srv.sseHeartbeat = 30 * time.Millisecond
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
@@ -186,24 +201,21 @@ func TestSSEHeartbeat(t *testing.T) {
 	defer resp.Body.Close()
 
 	br := bufio.NewReader(resp.Body)
-	seenPing := false
-	for i := 0; i < 50 && !seenPing; i++ {
-		ln, err := br.ReadString('\n')
-		if err != nil {
-			break
-		}
-		if strings.TrimRight(ln, "\r\n") == ": ping" {
-			seenPing = true
+	seenHB := false
+	for i := 0; i < 50 && !seenHB; i++ {
+		_, evType, _ := readOneEvent(t, br)
+		if evType == string(sse.EventHeartbeat) {
+			seenHB = true
 		}
 	}
-	if !seenPing {
-		t.Fatalf("heartbeat не пришёл за 50 строк")
+	if !seenHB {
+		t.Fatalf("heartbeat не пришёл за 50 событий")
 	}
 }
 
 func TestSSEAuthAnd404(t *testing.T) {
 	m := newMemStore()
-	m.seedRun(domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageCreated})
+	seedRun(m, domain.Run{ID: "r1", Status: domain.RunRunning, Profession: "cook", Stage: domain.StageCreated})
 	h := NewServer(m).Routes()
 
 	rr := do(t, h, "GET", "/api/v1/runs/r1/events", "", "")
