@@ -78,3 +78,33 @@ func TestMiddlewareRejectsExpiredToken(t *testing.T) {
 		t.Fatalf("ожидали 401 на expired, получили %d", rr.Code)
 	}
 }
+func TestMiddlewareQueryTokenSuccess(t *testing.T) {
+	EnsureTestSecret()
+	tok, _ := Issue("user-1", RoleTeacher, time.Hour)
+
+	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/runs/r1/events?access_token="+tok, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ожидали 200 для valid query-token, получили %d", rec.Code)
+	}
+}
+
+func TestMiddlewareQueryTokenInvalid(t *testing.T) {
+	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/runs/r1/events?access_token=garbage", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("ожидали 401 для invalid query-token, получили %d", rec.Code)
+	}
+}

@@ -19,12 +19,15 @@ func FromContext(ctx context.Context) (Role, bool) {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var tokenStr string
+
 		h := r.Header.Get("Authorization")
-		if !strings.HasPrefix(h, "Bearer ") {
-			writeUnauthorized(w)
-			return
+		if strings.HasPrefix(h, "Bearer ") {
+			tokenStr = strings.TrimSpace(h[len("Bearer "):])
+		} else if q := r.URL.Query().Get("access_token"); q != "" {
+			tokenStr = q
 		}
-		tokenStr := strings.TrimSpace(h[len("Bearer "):])
+
 		if tokenStr == "" {
 			writeUnauthorized(w)
 			return
