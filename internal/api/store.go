@@ -71,6 +71,7 @@ func (m *memStore) CreateRun(profession string) (*domain.Run, error) {
 		Status:     domain.RunPending,
 		Profession: profession,
 		Stage:      domain.StageCreated,
+		Type:       domain.RunTypeBatch,
 	}
 	m.runs[id] = r
 
@@ -166,8 +167,8 @@ func (m *memStore) ListIncompleteRuns() ([]*domain.Run, error) {
 
 	var out []*domain.Run
 	for _, r := range m.runs {
-		if r.Status == domain.RunRunning && r.Stage != domain.StageDone {
-			cp := *r // копия, чтобы не мутировать оригинал при resume
+		if r.Status == domain.RunRunning && r.Stage != domain.StageDone && r.Type == domain.RunTypeBatch {
+			cp := *r
 			out = append(out, &cp)
 		}
 	}

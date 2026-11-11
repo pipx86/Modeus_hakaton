@@ -4,70 +4,134 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
-const headerName = "Idempotency-Key"
+var statusCache sync.Map
 
 type recorder struct {
-	http.ResponseWriter
-	body   bytes.Buffer
-	status int
+	headerMap http.Header
+	body      bytes.Buffer
+	status    int
 }
 
-func (r *recorder) Write(p []byte) (int, error) {
-	n, err := r.body.Write(p)
-	if err != nil {
-		return n, err
+func (r *recorder) Header() http.Header {
+	if r.headerMap == nil {
+		r.headerMap = make(http.Header)
 	}
-	return r.ResponseWriter.Write(p)
+	return r.headerMap
 }
 
 func (r *recorder) WriteHeader(code int) {
 	r.status = code
-	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *recorder) Write(b []byte) (int, error) {
+	return r.body.Write(b)
 }
 
 func Middleware(store Store, ttl time.Duration, next http.Handler) http.Handler {
+	var mu sync.Mutex
+	inFlight := make(map[string]chan struct{})
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := r.Header.Get(headerName)
-		if key == "" || r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodDelete {
+		key := r.Header.Get("Idempotency-Key")
+		if key == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "unreadable body")
-			return
-		}
+		bodyBytes, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
 		hash := HashBody(bodyBytes)
-		entry := &Entry{Key: key, BodyHash: hash, CreatedAt: time.Now(), TTL: ttl}
 
-		existing, ok := store.Put(entry)
-		switch {
-		case !ok && existing != nil:
-			writeErr(w, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "same key with different request body")
-			return
-		case ok && existing != nil && existing.Response != nil:
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(existing.Status)
-			_, _ = w.Write(existing.Response)
-			return
-		}
+		mu.Lock()
+		ch, inflight := inFlight[key]
+		if !inflight {
+			ch = make(chan struct{})
+			inFlight[key] = ch
+			mu.Unlock()
 
-		rec := &recorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
-
-		if rec.status < 500 {
-			_ = store.UpdateResponse(key, append([]byte(nil), rec.body.Bytes()...))
-			if e := store.Get(key); e != nil {
-				e.Status = rec.status
+			entry := &Entry{
+				Key:       key,
+				BodyHash:  hash,
+				CreatedAt: time.Now(),
+				TTL:       ttl,
 			}
+
+			existing, ok := store.Put(entry)
+
+			if !ok && existing != nil {
+				writeErr(w, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "same key with different body")
+				mu.Lock()
+				delete(inFlight, key)
+				close(ch)
+				mu.Unlock()
+				return
+			}
+
+			if ok && existing != nil && existing.Response != nil {
+				statusCode := getStatusForReplay(key, existing.Status)
+				w.WriteHeader(statusCode)
+				_, _ = w.Write(existing.Response)
+				mu.Lock()
+				delete(inFlight, key)
+				close(ch)
+				mu.Unlock()
+				return
+			}
+
+			rec := &recorder{}
+			next.ServeHTTP(rec, r)
+
+			respData := rec.body.Bytes()
+			statusCode := rec.status
+			if statusCode == 0 {
+				statusCode = http.StatusOK
+			}
+
+			statusCache.Store(key, statusCode)
+			_ = store.UpdateResponse(key, respData)
+
+			for k, v := range rec.Header() {
+				w.Header()[k] = v
+			}
+			w.WriteHeader(statusCode)
+			_, _ = w.Write(respData)
+
+			mu.Lock()
+			delete(inFlight, key)
+			close(ch)
+			mu.Unlock()
+			return
 		}
+
+		mu.Unlock()
+
+		<-ch
+
+		finalEntry := store.Get(key)
+		if finalEntry == nil || finalEntry.Response == nil {
+			writeErr(w, http.StatusInternalServerError, "IDEMPOTENCY_ERROR", "first request failed without storing result")
+			return
+		}
+
+		statusCode := getStatusForReplay(key, finalEntry.Status)
+
+		w.WriteHeader(statusCode)
+		_, _ = w.Write(finalEntry.Response)
 	})
+}
+
+func getStatusForReplay(key string, storedStatus int) int {
+	if storedStatus > 0 {
+		return storedStatus
+	}
+	if val, ok := statusCache.Load(key); ok {
+		return val.(int)
+	}
+	return http.StatusOK
 }
 
 func writeErr(w http.ResponseWriter, status int, code, msg string) {

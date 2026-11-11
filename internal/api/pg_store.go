@@ -255,10 +255,10 @@ func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
 	defer cancel()
 
 	rows, err := p.Pool.Query(ctx, `
-		SELECT id::text, profession, status::text, stage::text, started_at, finished_at
+		SELECT id::text, profession, status::text, stage::text, type::text, started_at, finished_at
 		FROM runs
-		WHERE status = 'running' AND stage <> 'done'
-		ORDER BY created_at ASC`) // Сортируем по колонке БД, даже если её нет в Go-структуре
+		WHERE status = 'running' AND stage <> 'done' AND type = 'batch'
+		ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -267,8 +267,7 @@ func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
 	var out []*domain.Run
 	for rows.Next() {
 		var r domain.Run
-		// Сканируем те поля, которые реально есть в types.go
-		if err := rows.Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.StartedAt, &r.FinishedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.StartedAt, &r.FinishedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)

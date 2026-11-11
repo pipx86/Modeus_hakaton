@@ -64,10 +64,18 @@ type Source struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 
+type RunType string
+
+const (
+	RunTypeBatch RunType = "batch"
+	RunTypeChat  RunType = "chat"
+)
+
 type Run struct {
 	ID               string             `json:"id"`
 	Status           RunStatus          `json:"status"`
 	Profession       string             `json:"profession"`
+	Type             RunType            `json:"type,omitempty"` // === NEW ===
 	RootNodeID       *string            `json:"root_node_id,omitempty"`
 	StartedAt        *time.Time         `json:"started_at,omitempty"`
 	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
@@ -79,7 +87,6 @@ type Run struct {
 	LevelSkills      [][]string         `json:"-"`
 	Data             map[string]any     `json:"-"`
 }
-
 type Stage string
 
 const (
