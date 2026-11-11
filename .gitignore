@@ -1,14 +1,1 @@
-bin/
-*.exe
-*.test
-coverage.out
-coverage-db.out
-coverage-db-unit.out
-.env
-.env.*
-go.work
-go.work.sum
-node_modules/
-data/acceptance/
-data/reports/
-logs/
+bin/\n*.exe\n*.test\ncoverage.out\ncoverage-db.out\ncoverage-db-unit.out\ne2e-output.json\n.env\n.env.*\n!.env.example\ngo.work\ngo.work.sum\nnode_modules/\ndata/acceptance/\ndata/reports/\nlogs/\n

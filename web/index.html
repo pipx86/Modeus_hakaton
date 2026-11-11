@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Activity Descriptor Go demo stack: API health, metrics, Grafana and n8n links for local development."
+    />
+    <title>Activity Descriptor — Go demo stack</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: #141a2e;
+        --line: #2a3350;
+        --text: #e6ebff;
+        --muted: #9aa6c8;
+        --ok: #35d07f;
+        --bad: #ff5d6c;
+        --accent: #6ea8fe;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: radial-gradient(1200px 600px at 20% -10%, #1b2a4a 0%, var(--bg) 60%);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      main {
+        width: min(820px, 92vw);
+        margin: 32px 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 32px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+      h1 { margin: 0 0 6px; font-size: 1.45rem; }
+      h2 { margin: 26px 0 8px; font-size: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+      p { color: var(--muted); margin: 0 0 18px; }
+      .status {
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
+        margin-bottom: 18px; font-variant-numeric: tabular-nums;
+      }
+      .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+      .dot.ok { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
+      .dot.bad { background: var(--bad); box-shadow: 0 0 12px var(--bad); }
+      code {
+        background: #0b1226; border: 1px solid var(--line);
+        padding: 2px 6px; border-radius: 6px; font-size: 0.86em;
+      }
+      pre {
+        background: #0b1226; border: 1px solid var(--line); border-radius: 10px;
+        padding: 14px; overflow-x: auto; color: #b9c6e6; font-size: 0.82rem;
+      }
+      ul { margin: 0; padding-left: 20px; color: var(--muted); }
+      li { margin: 3px 0; }
+      a { color: var(--accent); }
+      footer { margin-top: 24px; color: var(--muted); font-size: 0.8rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Activity Descriptor — Go demo stack</h1>
+      <p>
+        Static placeholder served by nginx. It demonstrates the
+        <code>web → nginx → api</code> path for the Go backend demo
+        (<code>cmd/api</code>: in-memory store + deterministic interview chat
+        fallback — no PostgreSQL migrations and no LLM calls needed).
+      </p>
+
+      <div class="status" aria-live="polite">
+        <span class="dot" id="dot"></span>
+        <span id="health">checking API…</span>
+      </div>
+
+      <h2>Surfaces</h2>
+      <ul>
+        <li>API health: <a href="/api/v1/health"><code>/api/v1/health</code></a> (public)</li>
+        <li>Demo health: <code>http://localhost:8080/health</code></li>
+        <li>Metrics: <code>http://localhost:8080/metrics</code> (Prometheus text exposition)</li>
+        <li>Grafana: <a href="http://localhost:3000">http://localhost:3000</a> — <code>make up-monitoring</code></li>
+        <li>n8n: <a href="http://localhost:5678">http://localhost:5678</a> — <code>make up-automation</code></li>
+      </ul>
+
+      <h2>Demo chat (JWT protected)</h2>
+      <p>
+        Generate a local token, create a run and read the interviewer fallback
+        questions. The API uses the in-memory store, so data resets on restart.
+      </p>
+      <pre><code>TOKEN=$(docker compose exec -T api /local-token -role admin)
+curl -s -X POST http://localhost:8080/api/v1/runs \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"profession":"аналитик данных"}'
+curl -s http://localhost:8080/api/v1/runs/run-1/messages \
+  -H "Authorization: Bearer $TOKEN"</code></pre>
+
+      <footer>
+        Modeus Hackathon · feature/devops-go · no secrets are exposed by this
+        page; all demo credentials live in the git-ignored <code>.env</code>.
+      </footer>
+    </main>
+
+    <script>
+      (function () {
+        var dot = document.getElementById("dot");
+        var label = document.getElementById("health");
+        fetch("/api/v1/health", { headers: { accept: "application/json" } })
+          .then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.json();
+          })
+          .then(function (body) {
+            dot.className = "dot ok";
+            label.textContent = "API " + body.status + " — reachable through nginx";
+          })
+          .catch(function (err) {
+            dot.className = "dot bad";
+            label.textContent = "API unavailable (" + err.message + ") — is the compose stack up?";
+          });
+      })();
+    </script>
+  </body>
+</html>

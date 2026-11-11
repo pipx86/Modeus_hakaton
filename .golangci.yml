@@ -1,0 +1,23 @@
+# golangci-lint configuration (v1.62.x; used by CI and `make lint`).
+# Install locally: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # Deterministic, formatting/correctness-focused set. The backend predates
+  # this config, so only low-noise linters are enabled to keep the gate green.
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - misspell
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      text: "should have a package comment"
+  max-issues-per-linter: 0
+  max-same-issues: 0
