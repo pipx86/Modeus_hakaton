@@ -110,10 +110,15 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			&steps.SynthesisStep{},
 			&steps.ReviewStep{TopK: 10, Store: pgStore},
 		}
-		go func(r *domain.Run) {
+
+		go func(id string) {
 			bgCtx := context.Background()
-			_ = domain.Orchestrate(bgCtx, r, realSteps, pgStore, reader, 2, 30*time.Second)
-		}(run)
+			workerRun, getErr := pgStore.GetRun(id)
+			if getErr != nil || workerRun == nil {
+				return
+			}
+			_ = domain.Orchestrate(bgCtx, workerRun, realSteps, pgStore, reader, 2, 30*time.Second)
+		}(run.ID)
 	}
 
 	writeJSON(w, http.StatusCreated, run)
