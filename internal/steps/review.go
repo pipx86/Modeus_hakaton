@@ -24,6 +24,17 @@ func (r *ReviewStep) Execute(ctx context.Context, run *domain.Run) error {
 	if run == nil {
 		return fmt.Errorf("run is nil")
 	}
+	if existing, ok := r.Store.(interface {
+		TreeExists(context.Context, string) (bool, error)
+	}); ok {
+		found, err := existing.TreeExists(ctx, run.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			return nil
+		}
+	}
 	if run.Data == nil {
 		return fmt.Errorf("run.Data not initialized; Analysis/Synthesis steps must precede Review")
 	}
@@ -54,8 +65,9 @@ func (r *ReviewStep) Execute(ctx context.Context, run *domain.Run) error {
 	reports := analysis.ComputeGap(profiles, market, topK)
 	run.Data["gap_reports"] = reports
 
-	levelData, _ := run.Data["level_data"].([]map[string]any)
-	nodes, err := analysis.BuildActivityTree(run.Profession, levelData, reports)
+	vacancies, _ := run.Data["source_vacancies"].([]domain.VacancyRecord)
+	perVacancy, _ := run.Data["per_vacancy_skills"].([][]string)
+	nodes, err := analysis.BuildGroundedTree(run.Profession, vacancies, perVacancy)
 	if err != nil {
 		return fmt.Errorf("build activity tree: %w", err)
 	}

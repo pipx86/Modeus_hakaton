@@ -24,7 +24,7 @@ func (a *VacancyAdapter) ByProfession(ctx context.Context, profession string, li
 	}
 
 	rows, err := a.store.pool.Query(ctx, `
-		SELECT external_id::text, title, COALESCE(content,''), COALESCE(source_url,'')
+		SELECT COALESCE(external_id::text,''), id::text, title, COALESCE(content,''), COALESCE(source_url,'')
 		FROM sources
 		WHERE provider = 'hh' AND type = 'vacancy'
 		  AND (title ILIKE $1 OR content ILIKE $1)
@@ -38,7 +38,7 @@ func (a *VacancyAdapter) ByProfession(ctx context.Context, profession string, li
 	var out []domain.VacancyRecord
 	for rows.Next() {
 		var rec domain.VacancyRecord
-		if err := rows.Scan(&rec.ID, &rec.Title, &rec.Description, &rec.SourceURL); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.SourceID, &rec.Title, &rec.Description, &rec.SourceURL); err != nil {
 			return nil, err
 		}
 		out = append(out, rec)

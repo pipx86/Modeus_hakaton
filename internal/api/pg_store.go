@@ -249,7 +249,17 @@ func (p *PGStore) SaveTree(ctx context.Context, id string, nodes []domain.Node) 
 	return translate(err)
 }
 
-// ListIncompleteRuns возвращает все прогоны со status=running и stage!=done.
+// TreeExists позволяет безопасно продолжить исследование после записи дерева.
+func (p *PGStore) TreeExists(ctx context.Context, id string) (bool, error) {
+	if !validUUID(id) {
+		return false, ErrNotFound
+	}
+	var found bool
+	err := p.Pool.QueryRow(ctx, "SELECT root_node_id IS NOT NULL FROM runs WHERE id=$1", id).Scan(&found)
+	return found, translate(err)
+}
+
+// ListIncompleteRuns возвращает исследования, прерванные при запуске или выполнении.
 func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
 	ctx, cancel := operation()
 	defer cancel()
@@ -257,7 +267,7 @@ func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
 	rows, err := p.Pool.Query(ctx, `
 		SELECT id::text, profession, status::text, stage::text, type::text, started_at, finished_at
 		FROM runs
-		WHERE status = 'running' AND stage <> 'done' AND type = 'batch'
+		WHERE status IN ('pending', 'running') AND stage <> 'done' AND type = 'batch'
 		ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, translate(err)

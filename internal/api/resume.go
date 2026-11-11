@@ -72,6 +72,8 @@ func (rp *ResumeProcessor) ProcessIncompleteRuns(ctx context.Context) error {
 			continue
 		}
 
+		// Промежуточные данные живут в памяти, поэтому пересчитываем этапы сначала.
+		run.Stage = domain.StageCreated
 		err := domain.Orchestrate(ctx, run, realSteps, ds, rp.reader, rp.maxRetries, rp.timeout)
 		if err != nil {
 			logging.Logger.Error("resume_orchestration_failed", "run_id", run.ID, "error", err)

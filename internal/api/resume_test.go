@@ -59,7 +59,7 @@ type mockVacancyReader struct{}
 
 func (mockVacancyReader) ByProfession(_ context.Context, _ string, _ int) ([]domain.VacancyRecord, error) {
 	return []domain.VacancyRecord{
-		{ID: "v1", Title: "Go Developer", Description: "go docker kubernetes python sql", SourceURL: ""},
+		{ID: "v1", SourceID: "00000000-0000-4000-8000-000000000001", Title: "Go Developer", Description: "go docker kubernetes python sql", SourceURL: ""},
 	}, nil
 }
 

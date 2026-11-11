@@ -39,7 +39,9 @@ func TestОбщийСценарийИсследования(t *testing.T) {
 	}
 	defer pool.Close()
 	storage := NewPGStore(pool)
-	handler := NewServer(storage).Routes()
+	server := NewServer(storage)
+	server.autoStart = false
+	handler := server.Routes()
 	created := do(t, handler, "POST", "/api/v1/runs", "teacher", `{"profession":"Синтетический аналитик"}`)
 	if created.Code != 201 {
 		t.Fatalf("создание: %d %s", created.Code, created.Body.String())

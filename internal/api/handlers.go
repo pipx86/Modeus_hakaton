@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"activity-descriptor/internal/auth"
@@ -20,6 +21,7 @@ import (
 
 type Server struct {
 	store        Store
+	autoStart    bool
 	idemStore    idempotency.Store
 	eventStore   sse.EventStore
 	ssePoll      time.Duration
@@ -35,6 +37,7 @@ func NewServer(store Store) *Server {
 	}
 	return &Server{
 		store:        store,
+		autoStart:    true,
 		idemStore:    idempotency.NewMemStore(time.Hour),
 		eventStore:   sse.NewMemEventStore(1000),
 		ssePoll:      200 * time.Millisecond,
@@ -50,7 +53,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
-	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handlePutTree)
+	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handleSaveTree)
 	mux.HandleFunc("GET /api/v1/runs/{id}/tree", s.handleGetTree)
 	mux.HandleFunc("GET /api/v1/runs/{id}/answers", s.handleGetAnswers)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
@@ -100,7 +103,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Profession == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Profession) == "" {
 		logging.Logger.Warn("create_run_bad_request", "error", err)
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "profession is required")
 		return
@@ -122,7 +125,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		logging.Logger.Error("event_append_failed", "run_id", run.ID, "error", appendErr)
 	}
 
-	if pgStore, ok := s.store.(*PGStore); ok && pgStore.Pool != nil {
+	if pgStore, ok := s.store.(*PGStore); s.autoStart && ok && pgStore.Pool != nil {
 		st := store.New(pgStore.Pool)
 		reader := store.NewVacancyAdapter(st)
 		realSteps := []domain.Step{

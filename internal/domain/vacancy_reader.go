@@ -4,6 +4,7 @@ import "context"
 
 type VacancyRecord struct {
 	ID          string
+	SourceID    string
 	Title       string
 	Description string
 	SourceURL   string
