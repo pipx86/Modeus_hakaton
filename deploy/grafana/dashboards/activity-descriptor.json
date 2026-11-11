@@ -56,7 +56,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(activity_descriptor_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(activity_descriptor_http_requests_total[5m])), 0.000001)",
+          "expr": "(sum(rate(activity_descriptor_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(activity_descriptor_http_requests_total[5m])), 0.000001)) or vector(0)",
           "legendFormat": "5xx ratio"
         }
       ],
