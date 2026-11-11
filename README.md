@@ -357,3 +357,16 @@ $backupFile = 'D:\Backups\modeus-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.du
 Описание AI-компонентов находится в `docs/AI_LAYER.md`, структура входов и
 выходов агентов — в `docs/agents/AGENT_IO.md`, а локальный сквозной пример —
 в `docs/E2E.md`.
+
+## DevOps: локальный запуск и наблюдаемость
+
+Для локального запуска контейнерного стека скопируйте шаблон переменных окружения и запустите Compose:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d --build
+```
+
+В этом наборе `api` — демонстрационный API с хранением в памяти, а `web` — nginx-заглушка. Они нужны для проверки упаковки и сценария без подключения production-хранилища. Рабочий сервер с PostgreSQL запускается отдельно через `cmd/server`. Сервисы Prometheus/Grafana и n8n подключаются профилями `monitoring` и `automation` соответственно. Локальные значения в `.env` нужно заменить перед любым общим или публичным запуском.
+
+Полезные цели Make: `make docker-build`, `make docker-size`, `make up`, `make down`, `make check-deploy`. Документация по запуску, метрикам, Grafana, n8n и CI находится в `docs/DOCKER.md`, `docs/METRICS.md`, `docs/GRAFANA.md`, `docs/N8N.md` и `docs/CI.md`.
