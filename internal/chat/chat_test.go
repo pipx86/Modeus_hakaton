@@ -151,3 +151,45 @@ func TestErrors(t *testing.T) {
 		t.Fatalf("Post empty = %v, want ErrEmptyMessage", err)
 	}
 }
+
+func TestServiceCallsFinalizerAfterInterview(t *testing.T) {
+	called := make(chan domain.InterviewSession, 1)
+	service := NewService(fakeInterviewer{}, nil)
+	service.SetFinalizer(func(_ context.Context, _ string, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
+		if profession != "Аналитик" {
+			t.Errorf("profession = %q", profession)
+		}
+		called <- session
+		return domain.RunDone, nil
+	})
+	if err := service.Start("run-6", "Аналитик"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		waitFor(t, time.Second, func() bool {
+			messages, err := service.Messages("run-6")
+			return err == nil && len(messages) >= 2*i+1
+		})
+		if _, err := service.Post("run-6", "Конкретный ответ про аналитику данных."); err != nil {
+			t.Fatalf("Post %d: %v", i, err)
+		}
+	}
+	select {
+	case session := <-called:
+		if len(session.Questions) == 0 || len(session.Answers) == 0 {
+			t.Fatalf("finalizer got empty session: %+v", session)
+		}
+		if got := transcriptFromSessionForTest(session); got == "" {
+			t.Fatal("transcript is empty")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("finalizer was not called")
+	}
+}
+
+func transcriptFromSessionForTest(session domain.InterviewSession) string {
+	if len(session.Questions) == 0 || len(session.Answers) == 0 {
+		return ""
+	}
+	return session.Questions[0].Text + session.Answers[0].Text
+}

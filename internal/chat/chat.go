@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -44,10 +45,15 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 	return "", errors.New("llm: provider is not configured")
 }
 
+// Finalizer turns a finished interview into the final tree. It is called once
+// after all questions are answered and before the run is marked done.
+type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
+
 // Service owns one interviewer session per run.
 type Service struct {
-	client   llm.ChatClient
-	onFinish func(runID string, status domain.RunStatus)
+	client    llm.ChatClient
+	finalizer Finalizer
+	onFinish  func(runID string, status domain.RunStatus)
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -72,6 +78,14 @@ func NewService(client llm.ChatClient, onFinish func(string, domain.RunStatus)) 
 		onFinish: onFinish,
 		sessions: make(map[string]*session),
 	}
+}
+
+// SetFinalizer installs the post-interview pipeline. It must be called before
+// the first run is started.
+func (s *Service) SetFinalizer(finalizer Finalizer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.finalizer = finalizer
 }
 
 // Start creates the interview session and asks the first question.
@@ -149,10 +163,11 @@ func (s *Service) Post(runID, content string) (Message, error) {
 	sess.mu.Unlock()
 
 	if done {
-		s.publish(runID, Event{Type: "run_status", Status: string(domain.RunDone)})
-		if s.onFinish != nil {
-			s.onFinish(runID, domain.RunDone)
-		}
+		sess.mu.Lock()
+		state := sess.session.Close()
+		sess.mu.Unlock()
+		s.publish(runID, Event{Type: "agent_thinking"})
+		go s.complete(runID, state.Profession, state)
 		return message, nil
 	}
 
@@ -219,6 +234,25 @@ func (s *Service) askNext(runID string, sess *session) {
 	sess.mu.Unlock()
 
 	s.publish(runID, Event{Type: "agent_message", Message: &message})
+}
+
+func (s *Service) complete(runID, profession string, state domain.InterviewSession) {
+	status := domain.RunDone
+	if s.finalizer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		defer cancel()
+		finalStatus, err := s.finalizer(ctx, runID, profession, state)
+		if err != nil {
+			log.Printf("chat: finalizer failed for run %s: %v", runID, err)
+			status = domain.RunFailed
+		} else if finalStatus != "" {
+			status = finalStatus
+		}
+	}
+	s.publish(runID, Event{Type: "run_status", Status: string(status)})
+	if s.onFinish != nil {
+		s.onFinish(runID, status)
+	}
 }
 
 func (s *Service) publish(runID string, event Event) {

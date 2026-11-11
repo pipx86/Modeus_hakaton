@@ -60,10 +60,14 @@ func run(ctx context.Context, c config) error {
 	pgStore := api.NewPGStore(pool)
 
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
+	var analystClient llm.ChatClient
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
 		if agentPool, poolErr := agents.NewPool(cfg); poolErr == nil {
 			if interviewerClient, clientErr := agentPool.Client(agents.Interviewer); clientErr == nil {
 				chatClient = interviewerClient
+			}
+			if client, clientErr := agentPool.Client(agents.Analyst); clientErr == nil {
+				analystClient = client
 			}
 		}
 	} else {
@@ -78,6 +82,9 @@ func run(ctx context.Context, c config) error {
 			_ = pgStore.SetStage(runID, domain.StageFailed)
 		}
 	})
+	if analystClient != nil {
+		chatService.SetFinalizer(newTreeFinalizer(pgStore, analystClient))
+	}
 
 	server := &http.Server{Handler: api.NewServerWithChat(pgStore, chatService).Routes(), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
