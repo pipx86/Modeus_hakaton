@@ -14,7 +14,8 @@ backend не менялось: правки в `internal/domain/types.go` и
 | `internal/llm/` | ChatClient, Ollama/OpenRouter-клиенты, validate, repair, circuit breaker, guarded client |
 | `internal/llm/agents/` | Nemotron-клиенты на трёх агентов, общий параллельный шлюз, rate limit, retry |
 | `internal/guardrails/` | PII, prompt injection, jailbreak |
-| `internal/pipeline/` | offline-конвейер интервью → анализ → синтез |
+| `internal/chat/` | сессия интервью, история сообщений, SSE-события |
+| `internal/pipeline/` | offline-конвейер интервью, анализ, синтез |
 | `cmd/e2e` | офлайн-демо на fake-модели |
 | `cmd/nemotron-smoke` | проверка ключа и трёх параллельных вызовов Nemotron |
 | `docs/` | AGENT_IO, HYPOTHESES, LLM_DATA_MODEL, NEMOTRON, E2E, LLM_GUARDRAILS |
@@ -45,15 +46,18 @@ go run ./cmd/e2e -out e2e-output.json
 Ожидаемо: все пакеты `ok`; e2e — `status: done`, 6 вопросов, 4 сущности,
 5 узлов, 1 конфликт; 7 вызовов fake-модели.
 
-## Как подключить к backend (следующий шаг)
+## Как это подключено к backend
 
-1. `internal/steps/interview.go` сейчас заглушка. В `ExecuteWithData` создать
-   `interviewer.Agent` + `interviewer.Session` и сохранять вопросы/ответы.
-2. Добавить `GET/POST /api/v1/runs/{id}/messages` и SSE-события
-   `agent_thinking`, `agent_message`, `run_status` — этого ждёт фронтенд
-   (`feature/frontend`, `ChatTab`).
-3. После завершения интервью вызвать `analyst.Agent.Analyze` и
-   `synthesizer.Agent.Synthesize`; дерево сохранить через существующий store.
-4. Подключить `GuardedClient` и `agents.Pool` с `OPENROUTER_*` из env.
-5. `evidence.ref_id` и `agent_messages.dedup_key` — отдельные additive-миграции,
-   согласовать с владельцем БД.
+- `POST /api/v1/runs` создаёт run, запускает `chat.Service` и переводит стадию в `interview`;
+- `GET/POST /api/v1/runs/{id}/messages` читают историю и принимают ответ респондента;
+- `GET /api/v1/runs/{id}/events` отдаёт `agent_thinking`, `agent_message`, `run_status` вместе со стадиями;
+- при отсутствии `OPENROUTER_API_KEY` используется `chat.UnavailableClient`, интервьюер задаёт fallback-вопросы.
+
+## Что осталось подключить
+
+1. После завершения интервью вызвать `analyst.Agent.Analyze` и
+   `synthesizer.Agent.Synthesize`, сохранить дерево через существующий store.
+2. Хранить сообщения в PostgreSQL, а не только в памяти процесса.
+3. Добавить `GET /api/v1/runs` для списка исследований, если он нужен фронту.
+4. Согласовать `evidence.ref_id` и `agent_messages.dedup_key` с владельцем БД.
+5. Подключить JWT-токен на фронтенде и проверить CORS.

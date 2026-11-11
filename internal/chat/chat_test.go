@@ -1,0 +1,153 @@
+package chat
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/llm"
+)
+
+type fakeInterviewer struct {
+	answer string
+}
+
+func (f fakeInterviewer) Chat(context.Context, []llm.Message) (string, error) {
+	if f.answer != "" {
+		return f.answer, nil
+	}
+	return `{"question":{"id":"q","level":"role","text":"Расскажите о вашей роли."},"rationale":"Старт интервью.","is_clarification":false}`, nil
+}
+
+func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition was not met in time")
+}
+
+func TestServiceStartsAndPosts(t *testing.T) {
+	finished := make(chan domain.RunStatus, 1)
+	service := NewService(fakeInterviewer{}, func(_ string, status domain.RunStatus) {
+		finished <- status
+	})
+
+	if err := service.Start("run-1", "Аналитик данных"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitFor(t, time.Second, func() bool {
+		messages, err := service.Messages("run-1")
+		return err == nil && len(messages) == 1 && messages[0].Role == "agent"
+	})
+
+	message, err := service.Post("run-1", "Я аналитик данных, отвечаю за отчётность.")
+	if err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	if message.Role != "user" || message.Content == "" {
+		t.Fatalf("unexpected user message: %+v", message)
+	}
+	waitFor(t, time.Second, func() bool {
+		messages, err := service.Messages("run-1")
+		return err == nil && len(messages) >= 3
+	})
+}
+
+func TestServiceFallsBackWithoutProvider(t *testing.T) {
+	service := NewService(nil, nil)
+	if err := service.Start("run-2", "Аналитик"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitFor(t, time.Second, func() bool {
+		messages, err := service.Messages("run-2")
+		return err == nil && len(messages) == 1 && messages[0].Role == "agent"
+	})
+}
+
+func TestServiceFinishesAfterPlan(t *testing.T) {
+	finished := make(chan domain.RunStatus, 1)
+	service := NewService(fakeInterviewer{}, func(_ string, status domain.RunStatus) {
+		finished <- status
+	})
+	if err := service.Start("run-3", "Аналитик"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitFor(t, time.Second, func() bool {
+		messages, err := service.Messages("run-3")
+		return err == nil && len(messages) >= 1
+	})
+	for i := 0; i < 6; i++ {
+		waitFor(t, time.Second, func() bool {
+			messages, err := service.Messages("run-3")
+			return err == nil && len(messages) >= 2*i+1
+		})
+		if _, err := service.Post("run-3", "Конкретный ответ с достаточным количеством слов."); err != nil {
+			t.Fatalf("Post %d: %v", i, err)
+		}
+		if i < 5 {
+			next := 2*i + 3
+			waitFor(t, time.Second, func() bool {
+				messages, err := service.Messages("run-3")
+				return err == nil && len(messages) >= next
+			})
+		}
+	}
+	select {
+	case status := <-finished:
+		if status != domain.RunDone {
+			t.Fatalf("status = %q, want done", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("finish callback was not called")
+	}
+}
+
+func TestSubscribeReceivesEvents(t *testing.T) {
+	service := NewService(fakeInterviewer{}, nil)
+	if err := service.Start("run-4", "Аналитик"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitFor(t, time.Second, func() bool {
+		messages, err := service.Messages("run-4")
+		return err == nil && len(messages) >= 1
+	})
+	events, cancel, err := service.Subscribe("run-4")
+	if err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	defer cancel()
+
+	if _, err := service.Post("run-4", "Я аналитик данных и отвечаю за отчётность."); err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	select {
+	case event := <-events:
+		if event.Type != "agent_thinking" && event.Type != "agent_message" {
+			t.Fatalf("unexpected event type %q", event.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no event received")
+	}
+}
+
+func TestErrors(t *testing.T) {
+	service := NewService(nil, nil)
+	if _, err := service.Post("missing", "text"); err != ErrNotFound {
+		t.Fatalf("Post missing = %v, want ErrNotFound", err)
+	}
+	if _, err := service.Messages("missing"); err != ErrNotFound {
+		t.Fatalf("Messages missing = %v, want ErrNotFound", err)
+	}
+	if err := service.Start("run-5", "Аналитик"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := service.Post("run-5", ""); err != ErrEmptyMessage {
+		t.Fatalf("Post empty = %v, want ErrEmptyMessage", err)
+	}
+}

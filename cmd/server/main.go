@@ -14,6 +14,10 @@ import (
 	"time"
 
 	"activity-descriptor/internal/api"
+	"activity-descriptor/internal/chat"
+	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/llm"
+	"activity-descriptor/internal/llm/agents"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -54,7 +58,28 @@ func run(ctx context.Context, c config) error {
 	}
 
 	pgStore := api.NewPGStore(pool)
-	server := &http.Server{Handler: api.NewServer(pgStore).Routes(), ReadHeaderTimeout: 5 * time.Second}
+
+	var chatClient llm.ChatClient = chat.UnavailableClient{}
+	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
+		if agentPool, poolErr := agents.NewPool(cfg); poolErr == nil {
+			if interviewerClient, clientErr := agentPool.Client(agents.Interviewer); clientErr == nil {
+				chatClient = interviewerClient
+			}
+		}
+	} else {
+		log.Printf("LLM provider is not configured, interviewer fallback is used: %v", cfgErr)
+	}
+	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
+		_ = pgStore.SetStatus(runID, status)
+		switch status {
+		case domain.RunDone:
+			_ = pgStore.SetStage(runID, domain.StageDone)
+		case domain.RunFailed:
+			_ = pgStore.SetStage(runID, domain.StageFailed)
+		}
+	})
+
+	server := &http.Server{Handler: api.NewServerWithChat(pgStore, chatService).Routes(), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
 

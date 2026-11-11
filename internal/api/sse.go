@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
 )
 
@@ -76,6 +77,14 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var chatEvents <-chan chat.Event
+	if s.chat != nil {
+		if events, cancel, err := s.chat.Subscribe(id); err == nil {
+			chatEvents = events
+			defer cancel()
+		}
+	}
+
 	ctx := r.Context()
 	tick := time.NewTicker(s.ssePoll)
 	defer tick.Stop()
@@ -85,6 +94,11 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	send := func(ev sseEvent, sseID int) {
 		data, _ := json.Marshal(ev)
 		fmt.Fprintf(w, "id: %d\nevent: stage\ndata: %s\n\n", sseID, data)
+		flusher.Flush()
+	}
+	sendChat := func(ev chat.Event) {
+		data, _ := json.Marshal(ev)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data)
 		flusher.Flush()
 	}
 
@@ -102,6 +116,12 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
+		case ev, ok := <-chatEvents:
+			if !ok {
+				chatEvents = nil
+				continue
+			}
+			sendChat(ev)
 		case <-beat.C:
 			fmt.Fprint(w, ": ping\n\n")
 			flusher.Flush()

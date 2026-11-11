@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/idempotency"
 	"activity-descriptor/internal/steps"
@@ -18,12 +19,17 @@ import (
 
 type Server struct {
 	store        Store
+	chat         *chat.Service
 	idemStore    idempotency.Store
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 }
 
 func NewServer(store Store) *Server {
+	return NewServerWithChat(store, nil)
+}
+
+func NewServerWithChat(store Store, chatService *chat.Service) *Server {
 	hb := 15 * time.Second
 	if v := os.Getenv("SSE_HEARTBEAT_S"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -32,6 +38,7 @@ func NewServer(store Store) *Server {
 	}
 	return &Server{
 		store:        store,
+		chat:         chatService,
 		idemStore:    idempotency.NewMemStore(time.Hour),
 		ssePoll:      200 * time.Millisecond,
 		sseHeartbeat: hb,
@@ -49,6 +56,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
+	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
+	mux.HandleFunc("POST /api/v1/runs/{id}/messages", s.handlePostMessage)
 	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)
 	mux.HandleFunc("POST /api/v1/sources/{id}/index", s.handleIndexSource)
 
@@ -59,7 +68,7 @@ func (s *Server) Routes() http.Handler {
 
 	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
 	root.Handle("/", auth.Middleware(protected))
-	return root
+	return withCORS(root)
 }
 
 type createRunRequest struct {
@@ -85,6 +94,19 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	run, err := s.store.CreateRun(req.Profession)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	// When the chat service is enabled the interview runs through
+	// /runs/{id}/messages; the orchestrator must not close the run in parallel.
+	if s.chat != nil {
+		if err := s.chat.Start(run.ID, run.Profession); err != nil {
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		_ = s.store.SetStage(run.ID, domain.StageInterview)
+		run.Stage = domain.StageInterview
+		writeJSON(w, http.StatusCreated, run)
 		return
 	}
 
