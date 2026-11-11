@@ -1,58 +1,55 @@
-# Локальный запуск API
+# AI-слой activity-descriptor
 
-Нужны Go версии из go.mod и PostgreSQL. Сервер использует постоянное хранилище PGStore: исследования, дерево и подтверждения сохраняются в БД.
+Ветка `feature/ai-on-backend`: AI-часть системы, которая описывает профессиональную деятельность через интервью, анализ источников и синтез дерева.
 
-## Подготовка
+Ветка собрана поверх актуального `feature/Mikrozaym/BackEnd` и не меняет поведение его API.
 
-SQL-миграции находятся в отдельной ветке feature/rustam/goose-migrations. Примените основные миграции до 20261110000000_run_stage.sql включительно. Для поиска дополнительно нужен пакет migrations_optional/vector с pgvector. Миграции в эту ветку бэкенда не переносились.
+## Что внутри
 
-В PowerShell задайте параметры в текущей консоли:
+- `interviewer`: задаёт вопросы по уровням роль, функция, задача, действие, уточняет расплывчатые ответы;
+- `analyst`: извлекает функции, задачи и действия, требует цитату для каждой сущности, убирает дубли;
+- `synthesizer`: собирает дерево из интервью, вакансий и стандартов, разрешает конфликты по приоритету источников;
+- системные промпты v1 и файловый реестр версий;
+- LLM-клиенты Ollama и OpenRouter/Nemotron с таймаутами, повторами и circuit breaker;
+- guardrails: защита от prompt injection, PII и jailbreak;
+- offline e2e на fake-модели и команда проверки Nemotron.
 
-```powershell
-$env:DATABASE_URL = 'postgres://<user>:<password>@127.0.0.1:5432/<database>?sslmode=disable'
-$env:JWT_SECRET = '<секрет подписи JWT для локальной разработки>'
-$env:HTTP_ADDR = '127.0.0.1:8080'
-go run ./cmd/server
-```
-
-DATABASE_URL и JWT_SECRET обязательны. HTTP_ADDR по умолчанию — 127.0.0.1:8080. Старый общий API_TOKEN больше не используется: сервер проверяет JWT и роли. Секрет подписи нельзя помещать в Git.
-
-Health доступен без токена: GET /api/v1/health. Он проверяет ответ HTTP-процесса, а не последующую доступность БД.
-
-## Локальный JWT и запрос
-
-В другой консоли с тем же JWT_SECRET можно выпустить короткий JWT для локальной проверки. Это JWT нашего API, он не связан с hh.ru:
+## Быстрый старт
 
 ```powershell
-$env:JWT_SECRET = '<тот же локальный секрет подписи>'
-$access = go run ./cmd/local-token -role teacher
-$headers = @{ Authorization = "Bearer $access" }
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/v1/runs -Headers $headers -ContentType 'application/json' -Body '{"profession":"Аналитик данных"}'
+go test ./...
+go vet ./...
+go run ./cmd/e2e -out e2e-output.json
 ```
 
-Команда local-token рассчитана на разработчика, уже имеющего секрет подписи. Для общего окружения нужен согласованный механизм аутентификации пользователей; HTTP-маршрут свободной выдачи JWT здесь не добавлен.
+Для живого Nemotron положи ключ в `.secrets/openrouter.key` и запусти:
 
-## Компоненты
-
-- PUT /api/v1/runs/{id}/tree сохраняет новое дерево одной транзакцией; ошибки возвращаются как 422 с code/details.
-- POST /api/v1/sources/{id}/index создаёт фрагменты и векторы; GET /api/v1/runs/{id}/search выполняет поиск. strategy=hybrid объединяет ранги BM25 и vector.
-- go run ./cmd/webhook-worker отдельно читает очередь run.completed. Нужны DATABASE_URL, WEBHOOK_URL, WEBHOOK_SECRET. Реальный n8n требует настройки принимающей стороны.
-- scripts/Configure-Hh.ps1 сохраняет уже действующий токен hh.ru в Windows DPAPI вне проекта. scripts/Import-HhVacancies.ps1 использует его без перевыпуска.
-
-Документация: docs/backend_persistence_guide.md, docs/source_import_guide.md, docs/local_model_profile.md. Контракт маршрутов — openapi.yaml.
+```powershell
+go run ./cmd/nemotron-smoke -parallel
+```
 
 ## Проверки
 
-Юнит-тесты: go test ./...
+- `go test ./...`: все пакеты проходят;
+- `go vet ./...`: без замечаний;
+- `go run ./cmd/e2e`: интервью, анализ и синтез завершаются, дерево сохраняется в JSON.
 
-Для интеграционных тестов задайте INGEST_TEST_DATABASE_URL отдельной тестовой PostgreSQL. Не используйте рабочую базу.
+## Интеграция с backend
 
-Воспроизводимый запуск на новом проекте Docker Compose:
+Сейчас AI-слой подключён как набор пакетов и тестов. Следующий шаг:
 
-```powershell
-./scripts/Test-Acceptance.ps1 -DatabaseRepository 'D:\modeus_project\Modeus_hakaton'
-```
+1. подключить интервьюера к `internal/steps/interview.go`;
+2. добавить `GET/POST /api/v1/runs/{id}/messages`;
+3. добавить SSE-события `agent_thinking`, `agent_message` и `run_status`;
+4. подключить аналитика и синтезатора после завершения интервью.
 
-Скрипт применяет миграции через установленный Goose, проверяет обе рабочие папки в Linux-контейнере и сохраняет логи в data/acceptance/. После проверки удаляется только созданный тестовый проект Compose. Скрипт использует текущие файлы папок, поэтому перед запуском проверьте обе ветки.
+Подробности в `docs/AI_LAYER.md`.
 
-Общий сценарий использует настоящие API, PostgreSQL, оркестратор и HTTP-отправщик; шаги агентов и получатель webhook тестовые. Реальные hh.ru и Ollama проверяются отдельно. Завершить сервер можно Ctrl+C.
+## Документация
+
+- `docs/AI_LAYER.md`: состав ветки и порядок подключения;
+- `docs/agents/AGENT_IO.md`: входы и выходы агентов;
+- `docs/NEMOTRON.md`: настройка OpenRouter и лимиты;
+- `docs/E2E.md`: offline e2e;
+- `docs/LLM_GUARDRAILS.md`: защита промптов и PII;
+- `docs/db/LLM_DATA_MODEL.md`: что хранить в БД по LLM.
