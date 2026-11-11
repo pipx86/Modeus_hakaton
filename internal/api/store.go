@@ -16,6 +16,12 @@ type Resumer interface {
 	ListIncompleteRuns() ([]*domain.Run, error)
 }
 
+type NodePatch struct {
+	Title       *string            `json:"title,omitempty"`
+	Description *string            `json:"description,omitempty"`
+	Evidence    *[]domain.Evidence `json:"evidence,omitempty"`
+}
+
 type Store interface {
 	CreateRun(profession string) (*domain.Run, error)
 	GetRun(id string) (*domain.Run, error)
@@ -24,6 +30,9 @@ type Store interface {
 	ApproveEvidence(id string) error
 	SetStage(id string, stage domain.Stage) error
 	SetStatus(id string, status domain.RunStatus) error
+	UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error)
+	BulkApproveEvidence(ids []string) (approved int, skipped int, err error)
+	DeleteSource(sourceID string) error
 }
 
 type memStore struct {
@@ -179,6 +188,78 @@ func (m *memStore) Save(r *domain.Run) error {
 	} else {
 		cp := *r
 		m.runs[r.ID] = &cp
+	}
+	return nil
+}
+func (m *memStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for runID, nodes := range m.nodes {
+		for i := range nodes {
+			if nodes[i].ID == nodeID {
+				if patch.Title != nil {
+					nodes[i].Title = *patch.Title
+				}
+				if patch.Description != nil {
+					nodes[i].Description = *patch.Description
+				}
+				if patch.Evidence != nil {
+					nodes[i].Evidence = *patch.Evidence
+				}
+				cp := nodes[i]
+				return &cp, nil
+			}
+		}
+		_ = runID
+	}
+	return nil, ErrNotFound
+}
+
+func (m *memStore) BulkApproveEvidence(ids []string) (int, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	approved := 0
+	skipped := 0
+	for _, id := range ids {
+		if _, ok := m.evidences[id]; !ok {
+			skipped++
+			continue
+		}
+		if m.approved[id] {
+			skipped++
+			continue
+		}
+		m.approved[id] = true
+		approved++
+	}
+	return approved, skipped, nil
+}
+
+func (m *memStore) DeleteSource(sourceID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	found := false
+	for k := range m.evidences {
+		ev := m.evidences[k]
+		if ev.SourceID == sourceID {
+			delete(m.evidences, k)
+			found = true
+		}
+	}
+	for runID, ids := range m.runEvidenceIDs {
+		filtered := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if _, exists := m.evidences[id]; exists {
+				filtered = append(filtered, id)
+			}
+		}
+		m.runEvidenceIDs[runID] = filtered
+	}
+	if !found {
+		return ErrNotFound
 	}
 	return nil
 }

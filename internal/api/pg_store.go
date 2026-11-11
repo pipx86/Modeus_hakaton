@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -276,4 +277,16 @@ func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error) {
+	return nil, fmt.Errorf("UpdateNode not implemented in PGStore yet")
+}
+
+func (p *PGStore) BulkApproveEvidence(ids []string) (int, int, error) {
+	return 0, 0, fmt.Errorf("BulkApproveEvidence not implemented in PGStore yet")
+}
+
+func (p *PGStore) DeleteSource(sourceID string) error {
+	return fmt.Errorf("DeleteSource not implemented in PGStore yet")
 }

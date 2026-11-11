@@ -54,6 +54,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)
 	mux.HandleFunc("POST /api/v1/sources/{id}/index", s.handleIndexSource)
+	mux.HandleFunc("PATCH /api/v1/nodes/{id}", s.handlePatchNode)
+	mux.HandleFunc("POST /api/v1/evidences/bulk-approve", s.handleBulkApprove)
+	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleDeleteSource)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -316,4 +319,76 @@ func (s *Server) DemoSetStatus(id string, status domain.RunStatus) error {
 		return ErrNotFound
 	}
 	return ms.SetStatus(id, status)
+}
+
+func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+	nodeID := r.PathValue("id")
+
+	var patch NodePatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+		return
+	}
+
+	updated, err := s.store.UpdateNode(nodeID, patch)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "node not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+type bulkApproveRequest struct {
+	IDs []string `json:"ids"`
+}
+
+type bulkApproveResponse struct {
+	Approved int `json:"approved"`
+	Skipped  int `json:"skipped"`
+}
+
+func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+		return
+	}
+
+	var req bulkApproveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "ids array is required and must not be empty")
+		return
+	}
+
+	approved, skipped, err := s.store.BulkApproveEvidence(req.IDs)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, bulkApproveResponse{Approved: approved, Skipped: skipped})
+}
+
+func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+		return
+	}
+	sourceID := r.PathValue("id")
+
+	if err := s.store.DeleteSource(sourceID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "source not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
