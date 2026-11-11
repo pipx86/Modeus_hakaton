@@ -19,6 +19,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) >= 2 && os.Args[1] == "articles" {
+		return runArticles(os.Args[2:])
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "taxonomy" {
 		return runTaxonomy(os.Args[2:])
 	}
@@ -63,6 +66,35 @@ func run() error {
 	}
 	defer pool.Close()
 	counts, err := ingestion.SaveVacancies(ctx, pool, items)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(counts)
+}
+
+func runArticles(args []string) error {
+	flags := flag.NewFlagSet("articles", flag.ContinueOnError)
+	query := flags.String("query", "", "тема поиска научных статей")
+	limit := flags.Int("limit", 10, "количество статей от 1 до 100")
+	runID := flags.String("run", "", "необязательный UUID исследования")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	ctx := context.Background()
+	items, err := ingestion.FetchArticles(ctx, ingestion.DefaultHTTPClient(), "https://api.crossref.org/works", *query, *limit)
+	if err != nil {
+		return err
+	}
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		return fmt.Errorf("задайте DATABASE_URL")
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	counts, err := ingestion.SaveArticles(ctx, pool, items, *runID)
 	if err != nil {
 		return err
 	}
