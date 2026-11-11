@@ -1,0 +1,165 @@
+name: activity-descriptor
+
+# Local development stack for the Go backend demo:
+#   docker compose up -d --build          -> api + web + postgres
+#   docker compose --profile monitoring up -d prometheus grafana
+#   docker compose --profile automation up -d n8n n8n-postgres
+#
+# The api service runs cmd/api: the in-memory store + deterministic chat
+# fallback, so the demo works without goose migrations or an LLM provider.
+# Production keeps cmd/server + PostgreSQL (migrations live in the DB branch).
+#
+# Credentials come from the environment / .env (see .env.example). The
+# fallbacks are local-development placeholders only; never use them in prod.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: activity-descriptor-api:local
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      HTTP_ADDR: ":8080"
+      APP_ENV: "${APP_ENV:-local}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # Demo API does not read DATABASE_URL (in-memory store); it is wired for
+      # parity with cmd/server / production.
+      DATABASE_URL: "${DATABASE_URL:-}"
+      # Required for the JWT-protected /api/v1 endpoints; >= 32 bytes.
+      JWT_SECRET: "${JWT_SECRET:-local-dev-jwt-secret-change-me-32-bytes-min}"
+      # Optional: path to the OpenRouter key file inside the container.
+      OPENROUTER_API_KEY_FILE: "${OPENROUTER_API_KEY_FILE:-}"
+    healthcheck:
+      test: ["CMD", "/api", "-healthcheck"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "${WEB_PORT:-8081}:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    # pgvector image matches the backend migrations (vector extension).
+    image: pgvector/pgvector:0.8.0-pg16
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-activity}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-activity_dev_password}"
+      POSTGRES_DB: "${POSTGRES_DB:-activity_descriptor}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["monitoring"]
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles: ["monitoring"]
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin_dev_password}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  n8n:
+    image: n8nio/n8n:1.63.4
+    profiles: ["automation"]
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      N8N_HOST: "${N8N_HOST:-localhost}"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: "http"
+      WEBHOOK_URL: "${N8N_WEBHOOK_URL:-http://localhost:5678/}"
+      N8N_SECURE_COOKIE: "false"
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: "${N8N_BASIC_AUTH_USER:-admin}"
+      N8N_BASIC_AUTH_PASSWORD: "${N8N_BASIC_AUTH_PASSWORD:-n8n_dev_password}"
+      DB_TYPE: "postgresdb"
+      DB_POSTGRESDB_HOST: "n8n-postgres"
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: "${N8N_DB_NAME:-n8n}"
+      DB_POSTGRESDB_USER: "${N8N_DB_USER:-n8n}"
+      DB_POSTGRESDB_PASSWORD: "${N8N_DB_PASSWORD:-n8n_dev_password}"
+      # Used by deploy/n8n/workflows/nightly_ingestion.json.
+      INGESTION_URL: "${INGESTION_URL:-http://api:8080/api/v1/ingest}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./deploy/n8n/workflows:/workflows:ro
+    depends_on:
+      n8n-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  n8n-postgres:
+    image: postgres:16-alpine
+    profiles: ["automation"]
+    environment:
+      POSTGRES_USER: "${N8N_DB_USER:-n8n}"
+      POSTGRES_PASSWORD: "${N8N_DB_PASSWORD:-n8n_dev_password}"
+      POSTGRES_DB: "${N8N_DB_NAME:-n8n}"
+    volumes:
+      - n8n_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  prometheus_data:
+  grafana_data:
+  n8n_data:
+  n8n_pgdata:
