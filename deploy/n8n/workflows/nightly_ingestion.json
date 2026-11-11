@@ -1,0 +1,246 @@
+{
+  "name": "Nightly ingestion (vacancies & standards)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a01",
+      "name": "Every night 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-560, -160]
+    },
+    {
+      "parameters": {},
+      "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a02",
+      "name": "Manual run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-560, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.INGESTION_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Run-ID",
+              "value": "={{ 'ingest-' + $now.toFormat('yyyyLLdd-HHmm') }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: 'n8n/nightly_ingestion', mode: 'incremental', requested_at: $now.toISO(), sources: ['vacancies', 'standards'] }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput",
+      "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a03",
+      "name": "Ingest vacancies & standards",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-320, -40]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a04",
+              "leftValue": "={{ $json.error ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a05",
+              "leftValue": "={{ $json.status ?? 'ok' }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a06",
+      "name": "Has error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-80, -40]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🚨 Nightly ingestion failed\nStatus: {{ $json.status ?? 'request_error' }}\nError: {{ $json.error ?? $json.message ?? 'see execution log' }}\nExecution: {{ $execution.id }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram bot"
+        }
+      },
+      "disabled": true,
+      "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a07",
+      "name": "Notify error (Telegram, disabled)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [160, -220]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a08",
+              "name": "status",
+              "value": "={{ $json.status ?? 'ok' }}",
+              "type": "string"
+            },
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a09",
+              "name": "ingested",
+              "value": "={{ $json.ingested ?? $json.count ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a0a",
+              "name": "vacancies",
+              "value": "={{ $json.vacancies ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a0b",
+              "name": "standards",
+              "value": "={{ $json.standards ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a0c",
+              "name": "finished_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0f6f6a2e-4b5a-4a41-9d1e-6b1e0c1a7a0d",
+      "name": "Summarize success (counts)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [160, 100]
+    }
+  ],
+  "connections": {
+    "Every night 03:00": {
+      "main": [
+        [
+          {
+            "node": "Ingest vacancies & standards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual run": {
+      "main": [
+        [
+          {
+            "node": "Ingest vacancies & standards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest vacancies & standards": {
+      "main": [
+        [
+          {
+            "node": "Has error?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify error (Telegram, disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has error?": {
+      "main": [
+        [
+          {
+            "node": "Notify error (Telegram, disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarize success (counts)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Europe/Moscow"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "a3f3c8a6-6a6b-4b4a-9c7f-7d4c2b1e9a10",
+  "id": null,
+  "tags": []
+}

@@ -53,3 +53,25 @@ go run ./cmd/nemotron-smoke -parallel
 - `docs/E2E.md`: offline e2e;
 - `docs/LLM_GUARDRAILS.md`: защита промптов и PII;
 - `docs/db/LLM_DATA_MODEL.md`: что хранить в БД по LLM.
+
+
+## DevOps под Go
+
+Стек поднимается из этой ветки:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d --build
+```
+
+- `api`: demo API на in-memory store и fallback-интервьюере, без PostgreSQL и LLM;
+- `web`: nginx-заглушка, позже сюда встанет реальный frontend;
+- `postgres`: pgvector-образ для будущей production-схемы;
+- `--profile monitoring`: Prometheus и Grafana;
+- `--profile automation`: n8n и его Postgres.
+
+Production-сервер остаётся `cmd/server` с PostgreSQL. Demo API нужен, чтобы Docker и чат можно было проверить без миграций.
+
+Полезные команды: `make test`, `make docker-build`, `make docker-size`, `make up`, `make down`, `make check-deploy`.
+
+Документация: `docs/DOCKER.md`, `docs/METRICS.md`, `docs/GRAFANA.md`, `docs/N8N.md`, `docs/CI.md`.
