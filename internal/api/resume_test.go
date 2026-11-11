@@ -1,11 +1,15 @@
 package api
 
 import (
+	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging"
 	"context"
 	"testing"
-
-	"activity-descriptor/internal/domain"
 )
+
+func init() {
+	logging.Init()
+}
 
 func TestResumeProcessesIncompleteRun(t *testing.T) {
 	ms := newMemStore()

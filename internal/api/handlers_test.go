@@ -3,6 +3,7 @@ package api
 import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,11 @@ import (
 	"sync"
 	"testing"
 )
+
+// === NEW: Инициализация логгера перед запусками тестов ===
+func init() {
+	logging.Init()
+}
 
 func do(t *testing.T, h http.Handler, method, path, role, body string) *httptest.ResponseRecorder {
 	t.Helper()

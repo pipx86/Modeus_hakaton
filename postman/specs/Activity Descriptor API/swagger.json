@@ -1,0 +1,805 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Backend service for extracting competency trees from job descriptions and interviews.",
+        "title": "Activity Descriptor API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/api/v1",
+    "paths": {
+        "/api/v1/evidences/bulk-approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Verifies several quotes at once. Skips those that are already approved.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidences"
+                ],
+                "summary": "Bulk approve multiple pieces of evidence",
+                "parameters": [
+                    {
+                        "description": "List of Evidence IDs",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.bulkApproveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.bulkApproveResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/evidences/{id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks a specific quote/snippet as verified and usable in synthesis.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidences"
+                ],
+                "summary": "Approve a single piece of evidence",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Evidence ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/nodes/{id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modifies title, description, type or parent relationship of a tree node.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Update properties of a specific node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.NodePatch"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Node"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/runs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a list of all existing runs with their current status and stage.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runs"
+                ],
+                "summary": "List all research runs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Run"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Starts an asynchronous analysis pipeline for the given profession. Returns immediately with run ID; progress streamed via SSE.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runs"
+                ],
+                "summary": "Create a new research run",
+                "parameters": [
+                    {
+                        "description": "Run parameters",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "profession": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Run"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/runs/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves full information about a specific research run including nodes and evidence.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runs"
+                ],
+                "summary": "Get run details by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Run"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/runs/{id}/answers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all raw quotes and snippets gathered during the interview phase.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidences"
+                ],
+                "summary": "Get collected answers (evidence) for a run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Evidence"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/runs/{id}/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the finalized competency tree only if the run status is 'done'.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runs"
+                ],
+                "summary": "Export final results of a completed run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Node"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/runs/{id}/tree": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the flat list of nodes associated with the run's tree.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trees"
+                ],
+                "summary": "Get competency tree for a run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Node"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces or creates the full node hierarchy for the specified run. Validates structure before saving.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "trees"
+                ],
+                "summary": "Save competency tree for a run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of nodes forming the tree",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Node"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sources": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a new vacancy, interview transcript, or standard document to the system.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Create a data source",
+                "parameters": [
+                    {
+                        "description": "Source parameters",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "content": {
+                                    "type": "string"
+                                },
+                                "title": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Source"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sources/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a vacancy/interview/standard document and cascades deletion of related evidence.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Delete a data source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.errorBody"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.NodePatch": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Evidence"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.bulkApproveRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.bulkApproveResponse": {
+            "type": "object",
+            "properties": {
+                "approved": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.errorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.Evidence": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "quote": {
+                    "type": "string"
+                },
+                "source_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.Node": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Evidence"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/domain.NodeType"
+                }
+            }
+        },
+        "domain.NodeType": {
+            "type": "string",
+            "enum": [
+                "role",
+                "function",
+                "task",
+                "action"
+            ],
+            "x-enum-varnames": [
+                "NodeRole",
+                "NodeFunction",
+                "NodeTask",
+                "NodeAction"
+            ]
+        },
+        "domain.Run": {
+            "type": "object",
+            "properties": {
+                "finished_at": {
+                    "type": "string"
+                },
+                "hybrid_weights_raw": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "number",
+                        "format": "float64"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "level_data": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                },
+                "profession": {
+                    "type": "string"
+                },
+                "root_node_id": {
+                    "type": "string"
+                },
+                "skill_freq": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "stage": {
+                    "$ref": "#/definitions/domain.Stage"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.RunStatus"
+                },
+                "type": {
+                    "description": "=== NEW ===",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.RunType"
+                        }
+                    ]
+                }
+            }
+        },
+        "domain.RunStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "running",
+                "done",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "RunPending",
+                "RunRunning",
+                "RunDone",
+                "RunFailed"
+            ]
+        },
+        "domain.RunType": {
+            "type": "string",
+            "enum": [
+                "batch",
+                "chat"
+            ],
+            "x-enum-varnames": [
+                "RunTypeBatch",
+                "RunTypeChat"
+            ]
+        },
+        "domain.Source": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/domain.SourceType"
+                }
+            }
+        },
+        "domain.SourceType": {
+            "type": "string",
+            "enum": [
+                "vacancy",
+                "interview",
+                "standard",
+                "document"
+            ],
+            "x-enum-varnames": [
+                "SourceVacancy",
+                "SourceInterview",
+                "SourceStandard",
+                "SourceDocument"
+            ]
+        },
+        "domain.Stage": {
+            "type": "string",
+            "enum": [
+                "created",
+                "interview",
+                "analysis",
+                "synthesis",
+                "review",
+                "done",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "StageCreated",
+                "StageInterview",
+                "StageAnalysis",
+                "StageSynthesis",
+                "StageReview",
+                "StageDone",
+                "StageFailed"
+            ]
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

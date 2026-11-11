@@ -1,0 +1,37 @@
+$kind: http-request
+description: Verifies several quotes at once. Skips those that are already approved.
+url: "{{baseUrl}}/api/v1/evidences/bulk-approve"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: json
+  content: |-
+    {
+      "ids": [
+        "string",
+        "string"
+      ]
+    }
+  $type: |-
+    {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Bulk approve multiple pieces of evidence.resources/examples
+order: 1000

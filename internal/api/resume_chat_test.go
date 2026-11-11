@@ -1,11 +1,14 @@
 package api
 
 import (
-	"testing"
-
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging"
+	"testing"
 )
 
+func init() {
+	logging.Init()
+}
 func TestResumeSkipsChatRuns(t *testing.T) {
 	m := newMemStore()
 

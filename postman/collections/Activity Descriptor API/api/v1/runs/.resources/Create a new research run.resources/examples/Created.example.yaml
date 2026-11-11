@@ -1,0 +1,120 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/v1/runs"
+  method: POST
+  headers:
+    - key: Content-Type
+      value: application/json
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  body:
+    type: json
+    content: |-
+      {
+        "profession": "string",
+        "type": "string"
+      }
+response:
+  statusCode: 201
+  statusText: Created
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "finished_at": "string",
+        "hybrid_weights_raw": {
+          "key_0": 590.1066671153776,
+          "key_1": 8736.239537992193
+        },
+        "id": "string",
+        "level_data": [
+          {
+            "key_0": 9366.841356815501,
+            "key_1": false,
+            "key_2": 8894,
+            "key_3": 7591,
+            "key_4": 8185.381927976126
+          },
+          {
+            "key_0": 5292
+          }
+        ],
+        "profession": "string",
+        "root_node_id": "string",
+        "skill_freq": {
+          "key_0": 6559,
+          "key_1": 2992
+        },
+        "stage": "failed",
+        "started_at": "string",
+        "status": "failed",
+        "type": "batch"
+      }
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "finished_at": {
+            "type": "string"
+          },
+          "hybrid_weights_raw": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level_data": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "profession": {
+            "type": "string"
+          },
+          "root_node_id": {
+            "type": "string"
+          },
+          "skill_freq": {
+            "type": "object"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "created",
+              "interview",
+              "analysis",
+              "synthesis",
+              "review",
+              "done",
+              "failed"
+            ]
+          },
+          "started_at": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "batch",
+              "chat"
+            ],
+            "description": "=== NEW ==="
+          }
+        }
+      }
+order: 1000

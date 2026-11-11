@@ -2,13 +2,19 @@ package api
 
 import (
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging"
 	"context"
 	"encoding/json"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func init() {
+	logging.Init()
+}
 
 func TestЗаписьДереваЧерезAPI(t *testing.T) {
 	dsn := os.Getenv("INGEST_TEST_DATABASE_URL")

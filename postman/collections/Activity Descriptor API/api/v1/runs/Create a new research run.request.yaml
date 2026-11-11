@@ -1,0 +1,35 @@
+$kind: http-request
+description: Starts an asynchronous analysis pipeline for the given profession. Returns immediately with run ID; progress streamed via SSE.
+url: "{{baseUrl}}/api/v1/runs"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: json
+  content: |-
+    {
+      "profession": "string",
+      "type": "string"
+    }
+  $type: |-
+    {
+      "type": "object",
+      "properties": {
+        "profession": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    }
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Create a new research run.resources/examples
+order: 2000

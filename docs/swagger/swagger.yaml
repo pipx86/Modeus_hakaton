@@ -1,0 +1,533 @@
+basePath: /api/v1
+definitions:
+  api.NodePatch:
+    properties:
+      description:
+        type: string
+      evidence:
+        items:
+          $ref: '#/definitions/domain.Evidence'
+        type: array
+      title:
+        type: string
+    type: object
+  api.bulkApproveRequest:
+    properties:
+      ids:
+        items:
+          type: string
+        type: array
+    type: object
+  api.bulkApproveResponse:
+    properties:
+      approved:
+        type: integer
+      skipped:
+        type: integer
+    type: object
+  api.errorBody:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  domain.Evidence:
+    properties:
+      id:
+        type: string
+      quote:
+        type: string
+      source_id:
+        type: string
+    type: object
+  domain.Node:
+    properties:
+      description:
+        type: string
+      evidence:
+        items:
+          $ref: '#/definitions/domain.Evidence'
+        type: array
+      id:
+        type: string
+      parent_id:
+        type: string
+      title:
+        type: string
+      type:
+        $ref: '#/definitions/domain.NodeType'
+    type: object
+  domain.NodeType:
+    enum:
+    - role
+    - function
+    - task
+    - action
+    type: string
+    x-enum-varnames:
+    - NodeRole
+    - NodeFunction
+    - NodeTask
+    - NodeAction
+  domain.Run:
+    properties:
+      finished_at:
+        type: string
+      hybrid_weights_raw:
+        additionalProperties:
+          format: float64
+          type: number
+        type: object
+      id:
+        type: string
+      level_data:
+        items:
+          additionalProperties: {}
+          type: object
+        type: array
+      profession:
+        type: string
+      root_node_id:
+        type: string
+      skill_freq:
+        additionalProperties:
+          type: integer
+        type: object
+      stage:
+        $ref: '#/definitions/domain.Stage'
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/domain.RunStatus'
+      type:
+        allOf:
+        - $ref: '#/definitions/domain.RunType'
+        description: === NEW ===
+    type: object
+  domain.RunStatus:
+    enum:
+    - pending
+    - running
+    - done
+    - failed
+    type: string
+    x-enum-varnames:
+    - RunPending
+    - RunRunning
+    - RunDone
+    - RunFailed
+  domain.RunType:
+    enum:
+    - batch
+    - chat
+    type: string
+    x-enum-varnames:
+    - RunTypeBatch
+    - RunTypeChat
+  domain.Source:
+    properties:
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      title:
+        type: string
+      type:
+        $ref: '#/definitions/domain.SourceType'
+    type: object
+  domain.SourceType:
+    enum:
+    - vacancy
+    - interview
+    - standard
+    - document
+    type: string
+    x-enum-varnames:
+    - SourceVacancy
+    - SourceInterview
+    - SourceStandard
+    - SourceDocument
+  domain.Stage:
+    enum:
+    - created
+    - interview
+    - analysis
+    - synthesis
+    - review
+    - done
+    - failed
+    type: string
+    x-enum-varnames:
+    - StageCreated
+    - StageInterview
+    - StageAnalysis
+    - StageSynthesis
+    - StageReview
+    - StageDone
+    - StageFailed
+info:
+  contact: {}
+  description: Backend service for extracting competency trees from job descriptions
+    and interviews.
+  title: Activity Descriptor API
+  version: "1.0"
+paths:
+  /api/v1/evidences/{id}/approve:
+    post:
+      description: Marks a specific quote/snippet as verified and usable in synthesis.
+      parameters:
+      - description: Evidence ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Approve a single piece of evidence
+      tags:
+      - evidences
+  /api/v1/evidences/bulk-approve:
+    post:
+      consumes:
+      - application/json
+      description: Verifies several quotes at once. Skips those that are already approved.
+      parameters:
+      - description: List of Evidence IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.bulkApproveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.bulkApproveResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Bulk approve multiple pieces of evidence
+      tags:
+      - evidences
+  /api/v1/nodes/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Modifies title, description, type or parent relationship of a tree
+        node.
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.NodePatch'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Node'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Update properties of a specific node
+      tags:
+      - nodes
+  /api/v1/runs:
+    get:
+      description: Returns a list of all existing runs with their current status and
+        stage.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Run'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all research runs
+      tags:
+      - runs
+    post:
+      consumes:
+      - application/json
+      description: Starts an asynchronous analysis pipeline for the given profession.
+        Returns immediately with run ID; progress streamed via SSE.
+      parameters:
+      - description: Run parameters
+        in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            profession:
+              type: string
+            type:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Run'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Create a new research run
+      tags:
+      - runs
+  /api/v1/runs/{id}:
+    get:
+      description: Retrieves full information about a specific research run including
+        nodes and evidence.
+      parameters:
+      - description: Run ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Run'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Get run details by ID
+      tags:
+      - runs
+  /api/v1/runs/{id}/answers:
+    get:
+      description: Returns all raw quotes and snippets gathered during the interview
+        phase.
+      parameters:
+      - description: Run ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Evidence'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Get collected answers (evidence) for a run
+      tags:
+      - evidences
+  /api/v1/runs/{id}/export:
+    get:
+      description: Returns the finalized competency tree only if the run status is
+        'done'.
+      parameters:
+      - description: Run ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Node'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Export final results of a completed run
+      tags:
+      - runs
+  /api/v1/runs/{id}/tree:
+    get:
+      description: Returns the flat list of nodes associated with the run's tree.
+      parameters:
+      - description: Run ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Node'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Get competency tree for a run
+      tags:
+      - trees
+    put:
+      consumes:
+      - application/json
+      description: Replaces or creates the full node hierarchy for the specified run.
+        Validates structure before saving.
+      parameters:
+      - description: Run ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Array of nodes forming the tree
+        in: body
+        name: body
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/domain.Node'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.errorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Save competency tree for a run
+      tags:
+      - trees
+  /api/v1/sources:
+    post:
+      consumes:
+      - application/json
+      description: Adds a new vacancy, interview transcript, or standard document
+        to the system.
+      parameters:
+      - description: Source parameters
+        in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            content:
+              type: string
+            title:
+              type: string
+            type:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Source'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Create a data source
+      tags:
+      - sources
+  /api/v1/sources/{id}:
+    delete:
+      description: Removes a vacancy/interview/standard document and cascades deletion
+        of related evidence.
+      parameters:
+      - description: Source ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.errorBody'
+      security:
+      - BearerAuth: []
+      summary: Delete a data source
+      tags:
+      - sources
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

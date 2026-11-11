@@ -12,6 +12,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/idempotency"
+	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
 	"activity-descriptor/internal/sse"
 	"activity-descriptor/internal/steps"
 	"activity-descriptor/internal/store"
@@ -43,6 +44,9 @@ func NewServer(store Store) *Server {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+
+	// Serve static files for Swagger UI
+	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs/swagger"))))
 
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
@@ -79,6 +83,17 @@ type errorBody struct {
 	Message string `json:"message"`
 }
 
+// handleCreateRun godoc
+// @Summary      Create a new research run
+// @Description  Starts an asynchronous analysis pipeline for the given profession. Returns immediately with run ID; progress streamed via SSE.
+// @Tags         runs
+// @Accept       json
+// @Produce      json
+// @Param        body  body      object{profession=string,type=string}  true  "Run parameters"
+// @Success      201   {object}  domain.Run
+// @Failure      400   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs [post]
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -86,12 +101,14 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 
 	var req createRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Profession == "" {
+		logging.Logger.Warn("create_run_bad_request", "error", err)
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "profession is required")
 		return
 	}
 
 	run, err := s.store.CreateRun(req.Profession)
 	if err != nil {
+		logging.Logger.Error("create_run_store_error", "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -101,7 +118,9 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		"status":  string(domain.RunPending),
 		"message": "Research created",
 	})
-	_ = s.eventStore.Append(initialEvent)
+	if appendErr := s.eventStore.Append(initialEvent); appendErr != nil {
+		logging.Logger.Error("event_append_failed", "run_id", run.ID, "error", appendErr)
+	}
 
 	if pgStore, ok := s.store.(*PGStore); ok && pgStore.Pool != nil {
 		st := store.New(pgStore.Pool)
@@ -117,15 +136,32 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			bgCtx := context.Background()
 			workerRun, getErr := pgStore.GetRun(id)
 			if getErr != nil || workerRun == nil {
+				logging.Logger.Error("orchestrator_fetch_failed", "run_id", id, "error", getErr)
 				return
 			}
-			_ = domain.Orchestrate(bgCtx, workerRun, realSteps, pgStore, reader, 2, 30*time.Second)
+
+			logging.Logger.Info("orchestrator_started", "run_id", id)
+			if err := domain.Orchestrate(bgCtx, workerRun, realSteps, pgStore, reader, 2, 30*time.Second); err != nil {
+				logging.Logger.Error("orchestrator_pipeline_failed", "run_id", id, "error", err)
+			} else {
+				logging.Logger.Info("orchestrator_completed_successfully", "run_id", id)
+			}
 		}(run.ID)
 	}
 
 	writeJSON(w, http.StatusCreated, run)
 }
 
+// handleGetRun godoc
+// @Summary      Get run details by ID
+// @Description  Retrieves full information about a specific research run including nodes and evidence.
+// @Tags         runs
+// @Produce      json
+// @Param        id   path      string  true  "Run ID"
+// @Success      200   {object}  domain.Run
+// @Failure      404   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id} [get]
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
 		return
@@ -138,6 +174,7 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
+		logging.Logger.Error("get_run_internal_error", "run_id", id, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -145,6 +182,19 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, run)
 }
 
+// handlePutTree godoc
+// @Summary      Save competency tree for a run
+// @Description  Replaces or creates the full node hierarchy for the specified run. Validates structure before saving.
+// @Tags         trees
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string          true  "Run ID"
+// @Param        body body      []domain.Node   true  "Array of nodes forming the tree"
+// @Success      204   "No Content"
+// @Failure      400   {object}  errorBody
+// @Failure      409   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id}/tree [put]
 func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -172,6 +222,7 @@ func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 
 	pgStore, ok := s.store.(*PGStore)
 	if !ok {
+		logging.Logger.Error("save_tree_requires_pgstore", "run_id", id)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "tree write requires PGStore")
 		return
 	}
@@ -185,6 +236,7 @@ func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
+		logging.Logger.Error("save_tree_db_error", "run_id", id, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -192,6 +244,16 @@ func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleGetTree godoc
+// @Summary      Get competency tree for a run
+// @Description  Returns the flat list of nodes associated with the run's tree.
+// @Tags         trees
+// @Produce      json
+// @Param        id   path      string  true  "Run ID"
+// @Success      200   {array}   domain.Node
+// @Failure      404   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id}/tree [get]
 func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -204,6 +266,7 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
+		logging.Logger.Error("get_tree_internal_error", "run_id", id, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -214,6 +277,16 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, nodes)
 }
 
+// handleGetAnswers godoc
+// @Summary      Get collected answers (evidence) for a run
+// @Description  Returns all raw quotes and snippets gathered during the interview phase.
+// @Tags         evidences
+// @Produce      json
+// @Param        id   path      string  true  "Run ID"
+// @Success      200   {array}   domain.Evidence
+// @Failure      404   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id}/answers [get]
 func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -226,6 +299,7 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
+		logging.Logger.Error("get_answers_internal_error", "run_id", id, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -236,6 +310,17 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, answers)
 }
 
+// handleApproveEvidence godoc
+// @Summary      Approve a single piece of evidence
+// @Description  Marks a specific quote/snippet as verified and usable in synthesis.
+// @Tags         evidences
+// @Produce      json
+// @Param        id   path      string  true  "Evidence ID"
+// @Success      204   "No Content"
+// @Failure      404   {object}  errorBody
+// @Failure      409   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/evidences/{id}/approve [post]
 func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
 		return
@@ -250,6 +335,7 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrAlreadyApproved):
 			writeErr(w, http.StatusConflict, "ALREADY_APPROVED", "evidence already approved")
 		default:
+			logging.Logger.Error("approve_evidence_internal_error", "evidence_id", id, "error", err)
 			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		}
 		return
@@ -258,6 +344,17 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleExportRun godoc
+// @Summary      Export final results of a completed run
+// @Description  Returns the finalized competency tree only if the run status is 'done'.
+// @Tags         runs
+// @Produce      json
+// @Param        id   path      string  true  "Run ID"
+// @Success      200   {array}   domain.Node
+// @Failure      404   {object}  errorBody
+// @Failure      409   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id}/export [get]
 func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -270,6 +367,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
+		logging.Logger.Error("export_get_run_error", "run_id", id, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -285,6 +383,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
+		logging.Logger.Error("export_get_tree_error", "run_id", id, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -328,6 +427,18 @@ func (s *Server) DemoSetStatus(id string, status domain.RunStatus) error {
 	return ms.SetStatus(id, status)
 }
 
+// handlePatchNode godoc
+// @Summary      Update properties of a specific node
+// @Description  Modifies title, description, type or parent relationship of a tree node.
+// @Tags         nodes
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string           true  "Node ID"
+// @Param        body body      NodePatch        true  "Fields to update"
+// @Success      200   {object}  domain.Node
+// @Failure      404   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/nodes/{id} [patch]
 func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -346,6 +457,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "node not found")
 			return
 		}
+		logging.Logger.Error("update_node_internal_error", "node_id", nodeID, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -362,6 +474,17 @@ type bulkApproveResponse struct {
 	Skipped  int `json:"skipped"`
 }
 
+// handleBulkApprove godoc
+// @Summary      Bulk approve multiple pieces of evidence
+// @Description  Verifies several quotes at once. Skips those that are already approved.
+// @Tags         evidences
+// @Accept       json
+// @Produce      json
+// @Param        body  body      bulkApproveRequest  true  "List of Evidence IDs"
+// @Success      200   {object}  bulkApproveResponse
+// @Failure      400   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/evidences/bulk-approve [post]
 func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
 		return
@@ -375,6 +498,7 @@ func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
 
 	approved, skipped, err := s.store.BulkApproveEvidence(req.IDs)
 	if err != nil {
+		logging.Logger.Error("bulk_approve_internal_error", "count", len(req.IDs), "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -382,6 +506,16 @@ func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bulkApproveResponse{Approved: approved, Skipped: skipped})
 }
 
+// handleDeleteSource godoc
+// @Summary      Delete a data source
+// @Description  Removes a vacancy/interview/standard document and cascades deletion of related evidence.
+// @Tags         sources
+// @Produce      json
+// @Param        id   path      string  true  "Source ID"
+// @Success      204   "No Content"
+// @Failure      404   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/sources/{id} [delete]
 func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
@@ -393,6 +527,7 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "source not found")
 			return
 		}
+		logging.Logger.Error("delete_source_internal_error", "source_id", sourceID, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -400,6 +535,14 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleListRuns godoc
+// @Summary      List all research runs
+// @Description  Returns a list of all existing runs with their current status and stage.
+// @Tags         runs
+// @Produce      json
+// @Success      200   {array}   domain.Run
+// @Security     BearerAuth
+// @Router       /api/v1/runs [get]
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
@@ -407,6 +550,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 
 	runs, err := s.store.ListRuns()
 	if err != nil {
+		logging.Logger.Error("list_runs_internal_error", "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -417,6 +561,17 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, runs)
 }
 
+// handleCreateSource godoc
+// @Summary      Create a data source
+// @Description  Adds a new vacancy, interview transcript, or standard document to the system.
+// @Tags         sources
+// @Accept       json
+// @Produce      json
+// @Param        body  body      object{type=string,title=string,content=string}  true  "Source parameters"
+// @Success      201   {object}  domain.Source
+// @Failure      400   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/sources [post]
 func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
 		return
@@ -440,6 +595,7 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 
 	created, err := s.store.CreateSource(src)
 	if err != nil {
+		logging.Logger.Error("create_source_internal_error", "title", src.Title, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}

@@ -1,0 +1,18 @@
+$kind: http-request
+description: Returns a list of all existing runs with their current status and stage.
+url: "{{baseUrl}}/api/v1/runs"
+method: GET
+headers:
+  Accept: application/json
+body:
+  type: text
+  content: ""
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/List all research runs.resources/examples
+order: 1000

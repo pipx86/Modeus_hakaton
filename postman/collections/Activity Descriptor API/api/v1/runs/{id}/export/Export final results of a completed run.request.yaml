@@ -1,0 +1,35 @@
+$kind: http-request
+description: Returns the finalized competency tree only if the run status is 'done'.
+url: "{{baseUrl}}/api/v1/runs/:id/export"
+method: GET
+headers:
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Run ID
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: text
+  content: ""
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Export final results of a completed run.resources/examples
+order: 1000

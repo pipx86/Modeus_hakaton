@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log" // Оставляем для совместимости, но будем использовать logging.Logger
 	"net"
 	"net/http"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/api"
+	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,6 +34,8 @@ func loadConfig() (config, error) {
 }
 
 func run(ctx context.Context, c config) error {
+	logging.Init() // === NEW: Инициализация логгера ===
+
 	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	pool, err := pgxpool.New(connectCtx, c.databaseURL)
@@ -54,13 +57,16 @@ func run(ctx context.Context, c config) error {
 	}
 
 	pgStore := api.NewPGStore(pool)
-	server := &http.Server{Handler: api.NewServer(pgStore).Routes(), ReadHeaderTimeout: 5 * time.Second}
+	rawHandler := api.NewServer(pgStore).Routes()
+	handler := logging.RequestLogger(rawHandler) // === NEW: Оборачиваем в логгер ===
+
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
 
 	st := store.New(pool)
 	reader := store.NewVacancyAdapter(st)
-	resumer := api.NewResumeProcessor(pgStore, pgStore, reader) // <-- api вместо store
+	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
 	go func() {
 		bgCtx := context.Background()
 		if err := resumer.ProcessIncompleteRuns(bgCtx); err != nil {
@@ -68,7 +74,7 @@ func run(ctx context.Context, c config) error {
 		}
 	}()
 
-	log.Printf("development API listening on %s (PostgreSQL)", listener.Addr())
+	logging.Logger.Info("development API listening", "addr", listener.Addr(), "db", "postgresql") // === NEW: slog вместо log.Printf ===
 	select {
 	case <-ctx.Done():
 		shutdownCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
@@ -85,6 +91,13 @@ func run(ctx context.Context, c config) error {
 	}
 }
 
+// @title           Activity Descriptor API
+// @version         1.0
+// @description     Backend service for extracting competency trees from job descriptions and interviews.
+// @BasePath        /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	c, err := loadConfig()
 	if err != nil {

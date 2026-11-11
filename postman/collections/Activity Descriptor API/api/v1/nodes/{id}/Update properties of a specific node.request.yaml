@@ -1,0 +1,81 @@
+$kind: http-request
+description: Modifies title, description, type or parent relationship of a tree node.
+url: "{{baseUrl}}/api/v1/nodes/:id"
+method: PATCH
+headers:
+  Content-Type: application/json
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Node ID
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: json
+  content: |-
+    {
+      "description": "string",
+      "evidence": [
+        {
+          "id": "string",
+          "quote": "string",
+          "source_id": "string"
+        },
+        {
+          "id": "string",
+          "quote": "string",
+          "source_id": "string"
+        }
+      ],
+      "title": "string"
+    }
+  $type: |-
+    {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "quote": {
+                "type": "string"
+              },
+              "source_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    }
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Update properties of a specific node.resources/examples
+order: 1000

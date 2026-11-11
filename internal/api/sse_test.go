@@ -1,6 +1,10 @@
 package api
 
 import (
+	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging"
+	"activity-descriptor/internal/sse"
 	"bufio"
 	"context"
 	"net/http"
@@ -8,11 +12,11 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"activity-descriptor/internal/auth"
-	"activity-descriptor/internal/domain"
-	"activity-descriptor/internal/sse"
 )
+
+func init() {
+	logging.Init()
+}
 
 func collectSSE(br *bufio.Reader) (ids []string, events []string, termErr error) {
 	curID := ""

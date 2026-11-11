@@ -1,0 +1,85 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/v1/runs/:id/tree"
+  method: PUT
+  headers:
+    - key: Content-Type
+      value: application/json
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  pathVariables:
+    - key: id
+      value: string
+      disabled: false
+      description: Run ID
+  body:
+    type: json
+    content: |-
+      [
+        {
+          "description": "string",
+          "evidence": [
+            {
+              "id": "string",
+              "quote": "string",
+              "source_id": "string"
+            },
+            {
+              "id": "string",
+              "quote": "string",
+              "source_id": "string"
+            }
+          ],
+          "id": "string",
+          "parent_id": "string",
+          "title": "string",
+          "type": "action"
+        },
+        {
+          "description": "string",
+          "evidence": [
+            {
+              "id": "string",
+              "quote": "string",
+              "source_id": "string"
+            },
+            {
+              "id": "string",
+              "quote": "string",
+              "source_id": "string"
+            }
+          ],
+          "id": "string",
+          "parent_id": "string",
+          "title": "string",
+          "type": "action"
+        }
+      ]
+response:
+  statusCode: 400
+  statusText: Bad Request
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "code": "string",
+        "message": "string"
+      }
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+order: 2000
