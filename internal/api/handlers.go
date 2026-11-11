@@ -57,6 +57,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v1/nodes/{id}", s.handlePatchNode)
 	mux.HandleFunc("POST /api/v1/evidences/bulk-approve", s.handleBulkApprove)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleDeleteSource)
+	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
+	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -396,4 +398,51 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+
+	runs, err := s.store.ListRuns()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	if runs == nil {
+		runs = []*domain.Run{}
+	}
+	writeJSON(w, http.StatusOK, runs)
+}
+
+func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+		return
+	}
+
+	var req struct {
+		Type    domain.SourceType `json:"type"`
+		Title   string            `json:"title"`
+		Content string            `json:"content,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "title is required")
+		return
+	}
+
+	src := domain.Source{
+		Type:    req.Type,
+		Title:   req.Title,
+		Content: req.Content,
+	}
+
+	created, err := s.store.CreateSource(src)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, created)
 }

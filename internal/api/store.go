@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"activity-descriptor/internal/domain"
 )
@@ -33,6 +34,8 @@ type Store interface {
 	UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error)
 	BulkApproveEvidence(ids []string) (approved int, skipped int, err error)
 	DeleteSource(sourceID string) error
+	ListRuns() ([]*domain.Run, error)
+	CreateSource(src domain.Source) (*domain.Source, error)
 }
 
 type memStore struct {
@@ -40,6 +43,7 @@ type memStore struct {
 	runs           map[string]*domain.Run
 	nodes          map[string][]domain.Node
 	evidences      map[string]domain.Evidence
+	sources        map[string]domain.Source // === NEW ===
 	runEvidenceIDs map[string][]string
 	approved       map[string]bool
 	seq            int
@@ -54,6 +58,7 @@ func newMemStore() *memStore {
 		runs:           map[string]*domain.Run{},
 		nodes:          map[string][]domain.Node{},
 		evidences:      map[string]domain.Evidence{},
+		sources:        map[string]domain.Source{}, // === NEW ===
 		runEvidenceIDs: map[string][]string{},
 		approved:       map[string]bool{},
 	}
@@ -263,4 +268,34 @@ func (m *memStore) DeleteSource(sourceID string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (m *memStore) ListRuns() ([]*domain.Run, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	out := make([]*domain.Run, 0, len(m.runs))
+	for _, r := range m.runs {
+		cp := *r
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+func (m *memStore) CreateSource(src domain.Source) (*domain.Source, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if src.ID == "" {
+		m.seq++
+		src.ID = fmt.Sprintf("src-%d", m.seq)
+	}
+
+	now := time.Now()
+	src.CreatedAt = &now
+
+	m.sources[src.ID] = src
+
+	out := src
+	return &out, nil
 }

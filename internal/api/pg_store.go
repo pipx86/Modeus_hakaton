@@ -289,3 +289,11 @@ func (p *PGStore) BulkApproveEvidence(ids []string) (int, int, error) {
 func (p *PGStore) DeleteSource(sourceID string) error {
 	return fmt.Errorf("DeleteSource not implemented in PGStore yet")
 }
+
+func (p *PGStore) ListRuns() ([]*domain.Run, error) {
+	return nil, fmt.Errorf("ListRuns not implemented in PGStore yet")
+}
+
+func (p *PGStore) CreateSource(src domain.Source) (*domain.Source, error) {
+	return nil, fmt.Errorf("CreateSource not implemented in PGStore yet")
+}
