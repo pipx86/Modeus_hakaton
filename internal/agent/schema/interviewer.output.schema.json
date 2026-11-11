@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "interviewer.output.schema.json",
+  "description": "Interviewer output contract agent.io/v1. One next question at role/function/task/action level with rationale.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["question", "rationale", "is_clarification"],
+  "properties": {
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "level", "text"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "level": { "enum": ["role", "function", "task", "action"] },
+        "text": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string" },
+        "parent_id": { "type": "string", "minLength": 1 },
+        "clarification": { "type": "boolean" },
+        "fallback": { "type": "boolean" }
+      }
+    },
+    "rationale": { "type": "string" },
+    "is_clarification": { "type": "boolean" }
+  }
+}

@@ -3,17 +3,51 @@
   "$id": "run.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "status", "profession"],
+  "required": [
+    "id",
+    "status",
+    "profession"
+  ],
   "properties": {
-    "id": { "type": "string", "minLength": 1 },
-    "status": { "enum": ["pending", "running", "done", "failed"] },
-    "profession": { "type": "string", "minLength": 1 },
-    "root_node_id": { "type": "string" },
-    "started_at": { "type": "string", "format": "date-time" },
-    "finished_at": { "type": "string", "format": "date-time" },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "running",
+        "done",
+        "degraded",
+        "failed"
+      ]
+    },
+    "profession": {
+      "type": "string",
+      "minLength": 1
+    },
+    "root_node_id": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "stage": {
       "type": "string",
-      "enum": ["created", "interview", "analysis", "synthesis", "review", "done", "failed"]
+      "enum": [
+        "created",
+        "interview",
+        "analysis",
+        "synthesis",
+        "review",
+        "done",
+        "failed"
+      ]
     }
   }
 }

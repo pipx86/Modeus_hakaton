@@ -1,0 +1,32 @@
+{
+  "name": "Невалидный JSON от модели заменяется fallback-вопросом",
+  "session_id": "sess-3",
+  "respondent": {
+    "id": "resp-3",
+    "role": "Аналитик данных",
+    "profession": "Аналитик данных"
+  },
+  "responses": [
+    {"kind": "invalid", "text": "это не JSON, а текст"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q2\",\"level\":\"function\",\"text\":\"Какие направления работы входят в вашу роль?\",\"rationale\":\"функции\"},\"rationale\":\"Спуск к функциям\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q3\",\"level\":\"task\",\"text\":\"Какие конкретные задачи вы выполняете?\",\"rationale\":\"задачи\"},\"rationale\":\"Спуск к задачам\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q4\",\"level\":\"action\",\"text\":\"Какими инструментами вы пользуетесь?\",\"rationale\":\"действия\"},\"rationale\":\"Спуск к действиям\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q5\",\"level\":\"task\",\"text\":\"Какую ещё задачу вы выполняете?\",\"rationale\":\"задачи\"},\"rationale\":\"Вторая задача\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q6\",\"level\":\"action\",\"text\":\"Какие действия выполняете с отчётами?\",\"rationale\":\"действия\"},\"rationale\":\"Действия\",\"is_clarification\":false}"}
+  ],
+  "answers": [
+    "Я аналитик данных, отвечаю за отчётность и анализ продаж",
+    "Мои основные функции — отчётность, анализ требований и визуализация",
+    "Каждый день пишу SQL-запросы для отчётов по продажам",
+    "Использую PostgreSQL и DBeaver, пишу запросы и проверяю выгрузки",
+    "Строю дашборды в Superset по готовым выгрузкам",
+    "Настраиваю фильтры и проверяю корректность показателей"
+  ],
+  "expect": {
+    "levels": ["role", "function", "task", "action", "task", "action"],
+    "questions": 6,
+    "clarifications": 0,
+    "fallbacks": 1,
+    "model_errors": 0
+  }
+}

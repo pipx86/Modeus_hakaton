@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "synthesizer.output.schema.json",
+  "description": "Synthesizer output contract agent.io/v1. One role tree, resolved conflicts and agent memory messages.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tree", "conflicts", "messages"],
+  "properties": {
+    "tree": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "title", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["role", "function", "task", "action"] },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "parent_id": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "source_id", "ref_id", "quote"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "source_id": { "type": "string", "minLength": 1 },
+                "ref_id": { "type": "string", "minLength": 1 },
+                "quote": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "node_id", "field", "values", "winner", "reason"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "node_id": { "type": "string", "minLength": 1 },
+          "field": { "type": "string", "minLength": 1 },
+          "values": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source_id", "source_type", "value", "priority"],
+              "properties": {
+                "source_id": { "type": "string", "minLength": 1 },
+                "source_type": { "enum": ["vacancy", "interview", "standard", "document"] },
+                "value": { "type": "string" },
+                "priority": { "type": "integer" }
+              }
+            }
+          },
+          "winner": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_id", "source_type", "value", "priority"],
+            "properties": {
+              "source_id": { "type": "string", "minLength": 1 },
+              "source_type": { "enum": ["vacancy", "interview", "standard", "document"] },
+              "value": { "type": "string" },
+              "priority": { "type": "integer" }
+            }
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "text": { "type": "string" },
+          "payload": {}
+        }
+      }
+    }
+  }
+}

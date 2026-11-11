@@ -3,12 +3,38 @@
   "$id": "source.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "type", "title"],
+  "required": [
+    "id",
+    "type",
+    "title"
+  ],
   "properties": {
-    "id": { "type": "string", "minLength": 1 },
-    "type": { "enum": ["vacancy", "interview", "standard", "document"] },
-    "title": { "type": "string", "minLength": 1 },
-    "content": { "type": "string" },
-    "created_at": { "type": "string", "format": "date-time" }
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "enum": [
+        "vacancy",
+        "interview",
+        "standard",
+        "document"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0
+    }
   }
 }
