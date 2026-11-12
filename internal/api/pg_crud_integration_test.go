@@ -88,6 +88,14 @@ func TestPGStoreCRUD(t *testing.T) {
 	if err != nil || approved != 1 || skipped != 2 {
 		t.Fatalf("%d %d %v", approved, skipped, err)
 	}
+	gotEvidence := do(t, handler, "GET", "/api/v1/evidences/"+evidenceID, "teacher", "")
+	var details evidenceDetails
+	if gotEvidence.Code != 200 || json.Unmarshal(gotEvidence.Body.Bytes(), &details) != nil || details.ID != evidenceID || !details.Approved {
+		t.Fatalf("получение подтверждения: %d %s", gotEvidence.Code, gotEvidence.Body.String())
+	}
+	if missing := do(t, handler, "GET", "/api/v1/evidences/invalid", "teacher", ""); missing.Code != 404 {
+		t.Fatalf("несуществующее подтверждение: %d", missing.Code)
+	}
 	unchanged := []domain.Evidence{{ID: evidenceID, SourceID: source.ID, Quote: "Подтверждённый текст"}, addedEvidence}
 	if _, err = p.UpdateNode(nodeID, NodePatch{Evidence: &unchanged}); err != nil {
 		t.Fatalf("не удалось сохранить подтверждения: %v", err)

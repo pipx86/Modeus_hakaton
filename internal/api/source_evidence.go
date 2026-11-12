@@ -72,6 +72,21 @@ func (p *PGStore) createEvidence(ctx context.Context, nodeID string, item domain
 	return item, translate(err)
 }
 
+type evidenceDetails struct {
+	domain.Evidence
+	Approved bool `json:"approved"`
+}
+
+func (p *PGStore) getEvidence(ctx context.Context, id string) (evidenceDetails, error) {
+	var item evidenceDetails
+	if !validUUID(id) {
+		return item, ErrNotFound
+	}
+	err := p.Pool.QueryRow(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,approved FROM evidence WHERE id=$1`, id).
+		Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &item.Approved)
+	return item, translate(err)
+}
+
 func requirePG(w http.ResponseWriter, s *Server) (*PGStore, bool) {
 	p, ok := s.store.(*PGStore)
 	if !ok {
@@ -134,6 +149,21 @@ func (s *Server) handleListEvidences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, items)
+}
+func (s *Server) handleGetEvidence(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+	p, ok := requirePG(w, s)
+	if !ok {
+		return
+	}
+	item, err := p.getEvidence(r.Context(), r.PathValue("id"))
+	if err != nil {
+		sourceEvidenceError(w, err)
+		return
+	}
+	writeJSON(w, 200, item)
 }
 func (s *Server) handleCreateEvidence(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
