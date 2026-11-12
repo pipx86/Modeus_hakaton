@@ -48,8 +48,8 @@ func NewServer(store Store) *Server {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Serve static files for Swagger UI
-	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs/swagger"))))
+	// Статическая страница и спецификация API.
+	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./api-docs"))))
 
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
@@ -144,7 +144,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			}
 
 			logging.Logger.Info("orchestrator_started", "run_id", id)
-			if err := domain.Orchestrate(bgCtx, workerRun, realSteps, pgStore, reader, 2, 30*time.Second); err != nil {
+			if err := domain.Orchestrate(bgCtx, workerRun, realSteps, eventRunStore{pgStore, s.eventStore}, reader, 2, 30*time.Second); err != nil {
 				logging.Logger.Error("orchestrator_pipeline_failed", "run_id", id, "error", err)
 			} else {
 				logging.Logger.Info("orchestrator_completed_successfully", "run_id", id)
@@ -456,6 +456,11 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := s.store.UpdateNode(nodeID, patch)
 	if err != nil {
+		var validation *domain.TreeValidationError
+		if errors.As(err, &validation) {
+			writeTreeError(w, err)
+			return
+		}
 		if errors.Is(err, ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "node not found")
 			return
@@ -511,7 +516,7 @@ func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteSource godoc
 // @Summary      Delete a data source
-// @Description  Removes a vacancy/interview/standard document and cascades deletion of related evidence.
+// @Description  Удаляет источник только если на него не ссылаются защищённые записи.
 // @Tags         sources
 // @Produce      json
 // @Param        id   path      string  true  "Source ID"
@@ -526,6 +531,10 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	sourceID := r.PathValue("id")
 
 	if err := s.store.DeleteSource(sourceID); err != nil {
+		if errors.Is(err, ErrConflict) {
+			writeErr(w, http.StatusConflict, "SOURCE_IN_USE", "источник используется и не может быть удалён")
+			return
+		}
 		if errors.Is(err, ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "source not found")
 			return
@@ -585,8 +594,8 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		Title   string            `json:"title"`
 		Content string            `json:"content,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
-		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "title is required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" || (req.Type != domain.SourceVacancy && req.Type != domain.SourceInterview && req.Type != domain.SourceStandard && req.Type != domain.SourceDocument) {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "нужны название и допустимый тип источника")
 		return
 	}
 

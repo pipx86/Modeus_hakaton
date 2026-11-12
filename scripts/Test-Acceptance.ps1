@@ -2,7 +2,7 @@ param([string]$DatabaseRepository = (Join-Path $PSScriptRoot '..\..\Modeus_hakat
 $ErrorActionPreference = 'Stop'
 $backend = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $database = (Resolve-Path -LiteralPath $DatabaseRepository).Path
-if (-not (Test-Path -LiteralPath (Join-Path $database 'migrations\20261110000000_run_stage.sql'))) { throw 'Нужна актуальная рабочая папка ветки БД с миграцией этапа.' }
+if (-not (Test-Path -LiteralPath (Join-Path $database 'migrations\20261112000000_run_type.sql'))) { throw 'Нужна актуальная рабочая папка ветки БД с миграцией типа исследования.' }
 Get-Command goose -ErrorAction Stop | Out-Null
 $compose = Join-Path $PSScriptRoot 'acceptance.compose.yaml'
 $artifacts = Join-Path $backend ('data\acceptance\' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

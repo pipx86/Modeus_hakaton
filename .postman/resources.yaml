@@ -3,8 +3,8 @@ workspace:
 localResources:
   specs:
     - ../openapi.yaml
-    - ../docs/swagger/swagger.json
-    - ../docs/swagger/swagger.yaml
+    - ../api-docs/swagger.json
+    - ../api-docs/swagger.yaml
     - ../postman/specs/Activity Descriptor API/swagger.json
 resourceNameMappings:
   specs:

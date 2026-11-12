@@ -47,8 +47,8 @@ func run(ctx context.Context, c config) error {
 		return errors.New("cannot connect to PostgreSQL")
 	}
 	var schemaReady bool
-	if err = pool.QueryRow(connectCtx, "SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname='stage' AND NOT attisdropped)").Scan(&schemaReady); err != nil || !schemaReady {
-		return errors.New("база не подготовлена: примените основные миграции, включая 20261110000000_run_stage.sql")
+	if err = pool.QueryRow(connectCtx, "SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped").Scan(&schemaReady); err != nil || !schemaReady {
+		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000000_run_type.sql")
 	}
 
 	listener, err := net.Listen("tcp", c.address)
@@ -57,7 +57,8 @@ func run(ctx context.Context, c config) error {
 	}
 
 	pgStore := api.NewPGStore(pool)
-	rawHandler := api.NewServer(pgStore).Routes()
+	app := api.NewServer(pgStore)
+	rawHandler := app.Routes()
 	handler := logging.RequestLogger(rawHandler) // === NEW: Оборачиваем в логгер ===
 
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
@@ -67,6 +68,7 @@ func run(ctx context.Context, c config) error {
 	st := store.New(pool)
 	reader := store.NewVacancyAdapter(st)
 	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
+	app.BindResumeProcessor(resumer)
 	go func() {
 		bgCtx := context.Background()
 		if err := resumer.ProcessIncompleteRuns(bgCtx); err != nil {

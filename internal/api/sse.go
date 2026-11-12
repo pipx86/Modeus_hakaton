@@ -73,7 +73,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		lastID = v
 	}
 
-	events, _ := s.eventStore.GetAfter(lastID, 100)
+	ch := make(chan *sse.SSEEvent, 256)
+	unsub := s.eventStore.SubscribeLive(func(ev *sse.SSEEvent) {
+		select {
+		case ch <- ev:
+		default:
+		}
+	})
+	defer unsub()
+	seen := map[string]bool{}
+	events, _ := s.eventStore.GetAfter(lastID, 1000)
 	for _, ev := range events {
 		if ev.RunID != id {
 			continue
@@ -83,6 +92,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		w.Write(data)
+		seen[ev.ID] = true
 
 		if ev.Type == sse.EventDone || ev.Type == sse.EventError {
 			flusher.Flush()
@@ -90,15 +100,6 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	flusher.Flush()
-
-	ch := make(chan *sse.SSEEvent, 16)
-	unsub := s.eventStore.SubscribeLive(func(ev *sse.SSEEvent) {
-		select {
-		case ch <- ev:
-		default:
-		}
-	})
-	defer unsub()
 
 	ctx := r.Context()
 	heartbeat := time.NewTicker(s.sseHeartbeat)
@@ -109,9 +110,10 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case ev := <-ch:
-			if ev.RunID != id {
+			if ev.RunID != id || seen[ev.ID] {
 				continue
 			}
+			seen[ev.ID] = true
 			data, err := ev.Encode()
 			if err != nil {
 				continue
@@ -126,12 +128,8 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			}
 
 		case <-heartbeat.C:
-			hb := sse.NewEvent(id, sse.EventHeartbeat, map[string]any{"ping": true})
-			data, err := hb.Encode()
-			if err != nil {
-				continue
-			}
-			if _, err := w.Write(data); err != nil {
+			// Heartbeat не меняет Last-Event-ID, потому что он не хранится в истории.
+			if _, err := w.Write([]byte("event: heartbeat\ndata: {\"ping\":true}\n\n")); err != nil {
 				return
 			}
 			flusher.Flush()

@@ -503,8 +503,7 @@ paths:
       - sources
   /api/v1/sources/{id}:
     delete:
-      description: Removes a vacancy/interview/standard document and cascades deletion
-        of related evidence.
+      description: Удаляет источник только при отсутствии защищённых связей; иначе возвращается 409.
       parameters:
       - description: Source ID
         in: path

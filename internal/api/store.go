@@ -247,26 +247,15 @@ func (m *memStore) DeleteSource(sourceID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	found := false
-	for k := range m.evidences {
-		ev := m.evidences[k]
-		if ev.SourceID == sourceID {
-			delete(m.evidences, k)
-			found = true
-		}
-	}
-	for runID, ids := range m.runEvidenceIDs {
-		filtered := make([]string, 0, len(ids))
-		for _, id := range ids {
-			if _, exists := m.evidences[id]; exists {
-				filtered = append(filtered, id)
-			}
-		}
-		m.runEvidenceIDs[runID] = filtered
-	}
-	if !found {
+	if _, found := m.sources[sourceID]; !found {
 		return ErrNotFound
 	}
+	for _, ev := range m.evidences {
+		if ev.SourceID == sourceID {
+			return ErrConflict
+		}
+	}
+	delete(m.sources, sourceID)
 	return nil
 }
 

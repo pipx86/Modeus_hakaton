@@ -521,7 +521,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Removes a vacancy/interview/standard document and cascades deletion of related evidence.",
+                "description": "Удаляет источник только при отсутствии защищённых связей; иначе возвращается 409.",
                 "produces": [
                     "application/json"
                 ],

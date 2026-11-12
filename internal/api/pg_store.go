@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -52,7 +51,7 @@ func (p *PGStore) CreateRun(profession string) (*domain.Run, error) {
 		return nil, &domain.TreeValidationError{Code: "EMPTY_PROFESSION", Details: "профессия не задана"}
 	}
 	r := &domain.Run{}
-	err := p.Pool.QueryRow(ctx, "INSERT INTO runs(profession) VALUES($1) RETURNING id::text,profession,status,stage", profession).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage)
+	err := p.Pool.QueryRow(ctx, "INSERT INTO runs(profession) VALUES($1) RETURNING id::text,profession,status,stage,type", profession).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type)
 	return r, translate(err)
 }
 func (p *PGStore) GetRun(id string) (*domain.Run, error) {
@@ -62,7 +61,7 @@ func (p *PGStore) GetRun(id string) (*domain.Run, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	r := &domain.Run{}
-	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,root_node_id::text,started_at,finished_at FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.RootNodeID, &r.StartedAt, &r.FinishedAt)
+	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,type,root_node_id::text,started_at,finished_at FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.RootNodeID, &r.StartedAt, &r.FinishedAt)
 	return r, translate(err)
 }
 func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
@@ -289,21 +288,129 @@ func (p *PGStore) ListIncompleteRuns() ([]*domain.Run, error) {
 }
 
 func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error) {
-	return nil, fmt.Errorf("UpdateNode not implemented in PGStore yet")
+	if !validUUID(nodeID) {
+		return nil, ErrNotFound
+	}
+	if patch.Title != nil && strings.TrimSpace(*patch.Title) == "" {
+		return nil, &domain.TreeValidationError{Code: "EMPTY_TITLE", NodeID: nodeID, Details: "название пустое"}
+	}
+	if patch.Evidence != nil {
+		if len(*patch.Evidence) == 0 {
+			return nil, &domain.TreeValidationError{Code: "MISSING_EVIDENCE", NodeID: nodeID, Details: "нужно хотя бы одно подтверждение"}
+		}
+		for _, e := range *patch.Evidence {
+			if !validUUID(e.ID) || !validUUID(e.SourceID) || strings.TrimSpace(e.Quote) == "" {
+				return nil, &domain.TreeValidationError{Code: "INVALID_EVIDENCE", NodeID: nodeID, Details: "нужны UUID и цитата"}
+			}
+		}
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(context.Background())
+	var n domain.Node
+	var evidence []byte
+	err = tx.QueryRow(ctx, `UPDATE nodes SET title=COALESCE($2,title), description=COALESCE($3,description), updated_at=now() WHERE id=$1 RETURNING id::text,type,title,COALESCE(description,''),parent_id::text`, nodeID, patch.Title, patch.Description).Scan(&n.ID, &n.Type, &n.Title, &n.Description, &n.ParentID)
+	if err != nil {
+		return nil, translate(err)
+	}
+	if patch.Evidence != nil {
+		if _, err = tx.Exec(ctx, `DELETE FROM evidence WHERE node_id=$1`, nodeID); err != nil {
+			return nil, translate(err)
+		}
+		for _, e := range *patch.Evidence {
+			if _, err = tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote) VALUES($1,$2,$3,$4)`, e.ID, nodeID, e.SourceID, e.Quote); err != nil {
+				return nil, translate(err)
+			}
+		}
+	}
+	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'source_id',source_id,'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(evidence, &n.Evidence); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, translate(err)
+	}
+	return &n, nil
 }
 
 func (p *PGStore) BulkApproveEvidence(ids []string) (int, int, error) {
-	return 0, 0, fmt.Errorf("BulkApproveEvidence not implemented in PGStore yet")
+	ctx, cancel := operation()
+	defer cancel()
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback(context.Background())
+	approved := 0
+	for _, id := range ids {
+		if !validUUID(id) {
+			continue
+		}
+		tag, err := tx.Exec(ctx, `UPDATE evidence SET approved=true WHERE id=$1 AND NOT approved`, id)
+		if err != nil {
+			return 0, 0, err
+		}
+		approved += int(tag.RowsAffected())
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return approved, len(ids) - approved, nil
 }
 
 func (p *PGStore) DeleteSource(sourceID string) error {
-	return fmt.Errorf("DeleteSource not implemented in PGStore yet")
+	if !validUUID(sourceID) {
+		return ErrNotFound
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tag, err := p.Pool.Exec(ctx, `DELETE FROM sources WHERE id=$1`, sourceID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return ErrConflict
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (p *PGStore) ListRuns() ([]*domain.Run, error) {
-	return nil, fmt.Errorf("ListRuns not implemented in PGStore yet")
+	ctx, cancel := operation()
+	defer cancel()
+	rows, err := p.Pool.Query(ctx, `SELECT id::text,profession,status,stage,type,root_node_id::text,started_at,finished_at FROM runs ORDER BY created_at DESC,id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []*domain.Run{}
+	for rows.Next() {
+		var r domain.Run
+		if err = rows.Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.RootNodeID, &r.StartedAt, &r.FinishedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, &r)
+	}
+	return result, rows.Err()
 }
 
 func (p *PGStore) CreateSource(src domain.Source) (*domain.Source, error) {
-	return nil, fmt.Errorf("CreateSource not implemented in PGStore yet")
+	ctx, cancel := operation()
+	defer cancel()
+	var result domain.Source
+	err := p.Pool.QueryRow(ctx, `INSERT INTO sources(type,title,content) VALUES($1,$2,$3) RETURNING id::text,type,title,COALESCE(content,''),created_at`, src.Type, src.Title, src.Content).Scan(&result.ID, &result.Type, &result.Title, &result.Content, &result.CreatedAt)
+	if err != nil {
+		return nil, translate(err)
+	}
+	return &result, nil
 }

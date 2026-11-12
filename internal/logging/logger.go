@@ -58,3 +58,13 @@ func (r *responseRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+// Flush передаёт данные потока клиенту, не дожидаясь завершения запроса.
+func (r *responseRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap позволяет стандартному контроллеру ответа работать с исходным writer.
+func (r *responseRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }

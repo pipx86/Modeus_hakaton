@@ -64,28 +64,18 @@ func (s *MemEventStore) GetAfter(lastEventID string, limit int) ([]*SSEEvent, er
 		idx := (s.head - s.size + i + s.capacity) % s.capacity
 		ev := s.buffer[idx]
 		if ev != nil && ev.ID == lastEventID {
-			startPos = idx
+			startPos = i
 			break
 		}
 	}
 
-	readFrom := startPos
-	if readFrom == -1 {
-		readFrom = (s.head - s.size + s.capacity) % s.capacity
-	} else {
-		readFrom = (readFrom + 1) % s.capacity
-	}
-
 	out := make([]*SSEEvent, 0, limit)
-	count := 0
-	current := readFrom
-	for count < s.size && len(out) < limit {
-		ev := s.buffer[current]
+	for i := startPos + 1; i < s.size && len(out) < limit; i++ {
+		idx := (s.head - s.size + i + s.capacity) % s.capacity
+		ev := s.buffer[idx]
 		if ev != nil {
 			out = append(out, ev)
 		}
-		current = (current + 1) % s.capacity
-		count++
 	}
 
 	return out, nil

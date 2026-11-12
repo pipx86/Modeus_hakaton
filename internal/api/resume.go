@@ -6,6 +6,7 @@ import (
 
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
+	"activity-descriptor/internal/sse"
 	"activity-descriptor/internal/steps"
 )
 
@@ -23,7 +24,11 @@ type ResumeProcessor struct {
 	reader     domain.VacancyReader
 	maxRetries int
 	timeout    time.Duration
+	events     sse.EventStore
 }
+
+// BindResumeProcessor подключает события восстанавливаемых исследований к API.
+func (s *Server) BindResumeProcessor(rp *ResumeProcessor) { rp.events = s.eventStore }
 
 func NewResumeProcessor(lister IncompleteLister, saver TreeSaver, reader domain.VacancyReader) *ResumeProcessor {
 	return &ResumeProcessor{
@@ -74,7 +79,11 @@ func (rp *ResumeProcessor) ProcessIncompleteRuns(ctx context.Context) error {
 
 		// Промежуточные данные живут в памяти, поэтому пересчитываем этапы сначала.
 		run.Stage = domain.StageCreated
-		err := domain.Orchestrate(ctx, run, realSteps, ds, rp.reader, rp.maxRetries, rp.timeout)
+		var state domain.Store = ds
+		if rp.events != nil {
+			state = eventRunStore{ds, rp.events}
+		}
+		err := domain.Orchestrate(ctx, run, realSteps, state, rp.reader, rp.maxRetries, rp.timeout)
 		if err != nil {
 			logging.Logger.Error("resume_orchestration_failed", "run_id", run.ID, "error", err)
 			continue

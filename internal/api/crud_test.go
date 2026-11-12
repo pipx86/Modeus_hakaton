@@ -24,6 +24,7 @@ func setupCRUDTest(t *testing.T) (*Server, *httptest.Server) {
 	}
 	m.evidences["ev1"] = domain.Evidence{ID: "ev1", SourceID: "src-go", Quote: "golang"}
 	m.evidences["ev2"] = domain.Evidence{ID: "ev2", SourceID: "src-py", Quote: "python"}
+	m.sources["src-go"] = domain.Source{ID: "src-go", Type: domain.SourceDocument, Title: "Источник Go"}
 	m.runEvidenceIDs[run.ID] = []string{"ev1", "ev2"}
 	m.mu.Unlock()
 
@@ -141,7 +142,7 @@ func TestBulkApproveIdempotent(t *testing.T) {
 	}
 }
 
-func TestDeleteSourceCascade(t *testing.T) {
+func TestDeleteSourceWithEvidenceIsRejected(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
 	tok, _ := auth.Issue("admin-user", auth.RoleAdmin, time.Hour)
@@ -155,8 +156,8 @@ func TestDeleteSourceCascade(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("ожидали 204, получили %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("ожидали 409, получили %d", resp.StatusCode)
 	}
 
 	answersReq, _ := http.NewRequest("GET", ts.URL+"/api/v1/runs/run-1/answers", nil)
@@ -166,10 +167,14 @@ func TestDeleteSourceCascade(t *testing.T) {
 
 	var answers []domain.Evidence
 	json.NewDecoder(answersResp.Body).Decode(&answers)
+	found := false
 	for _, a := range answers {
 		if a.SourceID == "src-go" {
-			t.Fatalf("evidence src-go не удалён каскадно: %+v", a)
+			found = true
 		}
+	}
+	if !found {
+		t.Fatal("подтверждение используемого источника пропало")
 	}
 }
 
