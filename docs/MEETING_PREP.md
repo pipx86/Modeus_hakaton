@@ -340,6 +340,59 @@ n8n-инфраструктура, документация.
 
 Не наша зона: backend-эндпоинты, финальная БД, реальный frontend.
 
+## 10.1. Обновление на 12.11, 18:45
+
+Бэкенд и БД за это время ушли вперёд. На созвоне говорить актуально так.
+
+### Что бэкенд реально добавил
+
+- GET /api/v1/runs;
+- POST /api/v1/sources;
+- PATCH /api/v1/nodes/{id};
+- bulk-approve evidence, delete source, snapshots;
+- исправил гонку при создании run: оркестратор теперь получает отдельный run из БД;
+- resume пропускает чат-прогоны через runs.type batch/chat;
+- добавил logging, Swagger, README, loadcheck, ingest articles.
+
+### Чего у бэкенда ещё нет
+
+В openapi эти маршруты заявлены, но в Routes их нет:
+
+- GET /api/v1/sources;
+- GET /api/v1/sources/{id};
+- GET /api/v1/evidences;
+- POST /api/v1/evidences.
+
+Также нет:
+
+- CORS для фронта;
+- GET/POST /api/v1/runs/{id}/messages;
+- SSE-событий agent_thinking и agent_message;
+- выдачи JWT для фронта;
+- интеграции интервьюера: в README прямо написано, что интервью и глубокий анализ агентами пока не реализованы.
+
+### Что реально добавила БД
+
+- миграция 20261112000000_run_type.sql: runs.type batch/chat;
+- README с архитектурой и снимками;
+- snapshots были в initial schema.
+
+### Чего в БД ещё нет
+
+- evidence.ref_id;
+- agent_messages.dedup_key;
+- prompt_versions;
+- llm_requests, llm_responses, llm_usage;
+- llm_evaluations, pii_findings;
+- статус degraded.
+
+### Что это значит для нашей ветки
+
+- наша AI-ветка сделана от старого BackEnd 87475f9, теперь BackEnd на 25f8d6a;
+- перед PR нужен rebase и слияние chat/SSE/handlers;
+- чат-прогоны должны создаваться с runs.type=chat, иначе resume будет их подхватывать;
+- наши миграции ref_id и dedup нужно согласовать с Rustam.
+
 ## 11. Во время созвона
 
 Можно писать мне в чат. Я быстро подскажу формулировку, открою нужный файл,
