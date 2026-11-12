@@ -45,6 +45,9 @@ func ValidateTree(root TreeNode) error {
 			return fail("MISSING_EVIDENCE", "у узла нет подтверждения")
 		}
 		for _, e := range n.Evidence {
+			if e.RefID.Valid && strings.TrimSpace(e.RefID.String) == "" {
+				return fail("INVALID_EVIDENCE", "ссылка на фрагмент пуста")
+			}
 			if !e.ID.Valid || !e.SourceID.Valid {
 				return fail("INVALID_EVIDENCE", "у подтверждения или источника нет идентификатора")
 			}

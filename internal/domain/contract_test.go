@@ -51,7 +51,7 @@ func validNode() Node {
 	return Node{
 		ID: "n-1", Type: NodeAction, Title: "Написать SQL-запрос",
 		Description: "выгрузка отчётности", ParentID: &pid,
-		Evidence: []Evidence{{ID: "e-1", SourceID: "s-1", Quote: "каждый день пишу запросы"}},
+		Evidence: []Evidence{{ID: "e-1", SourceID: "s-1", RefID: "msg-1", Quote: "каждый день пишу запросы"}},
 	}
 }
 

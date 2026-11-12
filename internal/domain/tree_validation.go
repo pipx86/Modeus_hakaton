@@ -35,7 +35,7 @@ func ValidateTree(nodes []Node) error {
 			return fail("MISSING_EVIDENCE", n.ID, "нет подтверждения")
 		}
 		for _, e := range n.Evidence {
-			if e.ID == "" || e.SourceID == "" || strings.TrimSpace(e.Quote) == "" {
+			if e.ID == "" || e.SourceID == "" || strings.TrimSpace(e.Quote) == "" || (e.RefID != "" && strings.TrimSpace(e.RefID) == "") {
 				return fail("INVALID_EVIDENCE", n.ID, "нужны ID, источник и цитата")
 			}
 			if evidenceIDs[e.ID] {

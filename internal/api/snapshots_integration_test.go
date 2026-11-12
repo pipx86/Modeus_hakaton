@@ -48,9 +48,13 @@ func TestСнимкиЧерезAPI(t *testing.T) {
 	if response := do(t, handler, "POST", path, "teacher", ""); response.Code != 409 {
 		t.Fatalf("пустое дерево: %d %s", response.Code, response.Body.String())
 	}
-	nodes := []domain.Node{{ID: nodeID, Type: domain.NodeRole, Title: "Роль", Evidence: []domain.Evidence{{ID: evidenceID, SourceID: source.ID, Quote: "Первая цитата"}}}}
+	nodes := []domain.Node{{ID: nodeID, Type: domain.NodeRole, Title: "Роль", Evidence: []domain.Evidence{{ID: evidenceID, SourceID: source.ID, RefID: "msg-1", Quote: "Первая цитата"}}}}
 	if err = p.SaveTree(ctx, run.ID, nodes); err != nil {
 		t.Fatal(err)
+	}
+	loaded, err := p.GetTree(run.ID)
+	if err != nil || len(loaded) != 1 || len(loaded[0].Evidence) != 1 || loaded[0].Evidence[0].RefID != "msg-1" {
+		t.Fatalf("ссылка на фрагмент не сохранена: %+v %v", loaded, err)
 	}
 	first := do(t, handler, "POST", path, "teacher", "")
 	if first.Code != 201 {
@@ -61,18 +65,18 @@ func TestСнимкиЧерезAPI(t *testing.T) {
 		Version int             `json:"version"`
 		Tree    json.RawMessage `json:"tree"`
 	}
-	if err = json.Unmarshal(first.Body.Bytes(), &snapshot); err != nil || snapshot.Version != 1 || !strings.Contains(string(snapshot.Tree), "Первая цитата") {
+	if err = json.Unmarshal(first.Body.Bytes(), &snapshot); err != nil || snapshot.Version != 1 || !strings.Contains(string(snapshot.Tree), "Первая цитата") || !strings.Contains(string(snapshot.Tree), `"ref_id":"msg-1"`) {
 		t.Fatalf("%s %v", first.Body.String(), err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE evidence SET quote='Другая цитата' WHERE id=$1`, evidenceID); err != nil {
+	if _, err = pool.Exec(ctx, `UPDATE evidence SET quote='Другая цитата',ref_id='msg-2' WHERE id=$1`, evidenceID); err != nil {
 		t.Fatal(err)
 	}
 	second := do(t, handler, "POST", path, "teacher", "")
-	if second.Code != 201 || !strings.Contains(second.Body.String(), `"version":2`) {
+	if second.Code != 201 || !strings.Contains(second.Body.String(), `"version":2`) || !strings.Contains(second.Body.String(), `"ref_id":"msg-2"`) {
 		t.Fatalf("%d %s", second.Code, second.Body.String())
 	}
 	previous := do(t, handler, "GET", path+"/"+snapshot.ID, "teacher", "")
-	if previous.Code != 200 || !strings.Contains(previous.Body.String(), "Первая цитата") {
+	if previous.Code != 200 || !strings.Contains(previous.Body.String(), "Первая цитата") || !strings.Contains(previous.Body.String(), `"ref_id":"msg-1"`) {
 		t.Fatalf("%d %s", previous.Code, previous.Body.String())
 	}
 	list := do(t, handler, "GET", path, "teacher", "")

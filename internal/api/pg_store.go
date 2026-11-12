@@ -71,7 +71,7 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT n.id::text,n.type,n.title,COALESCE(n.description,''),n.parent_id::text,
- COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'source_id',e.source_id,'quote',e.quote) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
  FROM nodes n WHERE n.run_id=$1 ORDER BY n.level,n.id`, id)
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.source_id::text,e.quote FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
+	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	out := []domain.Evidence{}
 	for rows.Next() {
 		var e domain.Evidence
-		if err = rows.Scan(&e.ID, &e.SourceID, &e.Quote); err != nil {
+		if err = rows.Scan(&e.ID, &e.SourceID, &e.RefID, &e.Quote); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -225,7 +225,7 @@ func (p *PGStore) SaveTree(ctx context.Context, id string, nodes []domain.Node) 
 		result := store.TreeNode{Title: n.Title, Description: pgtype.Text{String: n.Description, Valid: n.Description != ""}}
 		result.ID.Scan(n.ID)
 		for _, e := range n.Evidence {
-			item := store.TreeEvidence{Quote: e.Quote}
+			item := store.TreeEvidence{Quote: e.Quote, RefID: pgtype.Text{String: e.RefID, Valid: e.RefID != ""}}
 			item.ID.Scan(e.ID)
 			item.SourceID.Scan(e.SourceID)
 			result.Evidence = append(result.Evidence, item)
@@ -299,7 +299,7 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 			return nil, &domain.TreeValidationError{Code: "MISSING_EVIDENCE", NodeID: nodeID, Details: "нужно хотя бы одно подтверждение"}
 		}
 		for _, e := range *patch.Evidence {
-			if !validUUID(e.ID) || !validUUID(e.SourceID) || strings.TrimSpace(e.Quote) == "" {
+			if !validUUID(e.ID) || !validUUID(e.SourceID) || strings.TrimSpace(e.Quote) == "" || (e.RefID != "" && strings.TrimSpace(e.RefID) == "") {
 				return nil, &domain.TreeValidationError{Code: "INVALID_EVIDENCE", NodeID: nodeID, Details: "нужны UUID и цитата"}
 			}
 		}
@@ -322,12 +322,12 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 			return nil, translate(err)
 		}
 		for _, e := range *patch.Evidence {
-			if _, err = tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote) VALUES($1,$2,$3,$4)`, e.ID, nodeID, e.SourceID, e.Quote); err != nil {
+			if _, err = tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote,ref_id) VALUES($1,$2,$3,$4,NULLIF($5,''))`, e.ID, nodeID, e.SourceID, e.Quote, e.RefID); err != nil {
 				return nil, translate(err)
 			}
 		}
 	}
-	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'source_id',source_id,'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
+	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
 	if err != nil {
 		return nil, err
 	}

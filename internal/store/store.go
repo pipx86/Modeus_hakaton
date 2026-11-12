@@ -31,6 +31,7 @@ type TreeNode struct {
 type TreeEvidence struct {
 	ID       pgtype.UUID
 	SourceID pgtype.UUID
+	RefID    pgtype.Text
 	Quote    string
 	Approved bool
 }
@@ -66,7 +67,7 @@ func (s *Store) SaveTree(ctx context.Context, runID pgtype.UUID, root TreeNode) 
 			if !e.ID.Valid || !e.SourceID.Valid {
 				return errors.New("evidence ID and source ID are required")
 			}
-			if _, err := q.CreateEvidence(ctx, db.CreateEvidenceParams{ID: e.ID, NodeID: n.ID, SourceID: e.SourceID, Quote: e.Quote, Approved: e.Approved}); err != nil {
+			if _, err := q.CreateEvidence(ctx, db.CreateEvidenceParams{ID: e.ID, NodeID: n.ID, SourceID: e.SourceID, Quote: e.Quote, Approved: e.Approved, RefID: e.RefID}); err != nil {
 				return fmt.Errorf("create evidence: %w", err)
 			}
 		}
