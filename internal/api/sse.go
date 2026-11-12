@@ -62,6 +62,11 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if pg, ok := s.eventStore.(*sse.PGEventStore); ok {
+		s.handlePostgresSSE(w, r, id, flusher, pg)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")

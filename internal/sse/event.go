@@ -1,6 +1,8 @@
 package sse
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -43,8 +45,12 @@ func (e *SSEEvent) Encode() ([]byte, error) {
 var seqCounter uint64
 
 func generateID() string {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err == nil {
+		return "evt-" + hex.EncodeToString(random[:])
+	}
 	n := atomic.AddUint64(&seqCounter, 1)
-	return fmt.Sprintf("evt-%d-%d", time.Now().UnixMilli(), n)
+	return fmt.Sprintf("evt-%d-%d", time.Now().UnixNano(), n)
 }
 
 func NewEvent(runID string, typ EventType, payload any) *SSEEvent {

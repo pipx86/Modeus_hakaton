@@ -35,7 +35,7 @@ func NewServer(store Store) *Server {
 			hb = time.Duration(n) * time.Second
 		}
 	}
-	return &Server{
+	server := &Server{
 		store:        store,
 		autoStart:    true,
 		idemStore:    idempotency.NewMemStore(time.Hour),
@@ -43,6 +43,10 @@ func NewServer(store Store) *Server {
 		ssePoll:      200 * time.Millisecond,
 		sseHeartbeat: hb,
 	}
+	if pg, ok := store.(*PGStore); ok {
+		server.eventStore = sse.NewPGEventStore(pg.Pool)
+	}
+	return server
 }
 
 func (s *Server) Routes() http.Handler {
