@@ -88,6 +88,28 @@ func TestPGStoreCRUD(t *testing.T) {
 	if err != nil || approved != 1 || skipped != 2 {
 		t.Fatalf("%d %d %v", approved, skipped, err)
 	}
+	unchanged := []domain.Evidence{{ID: evidenceID, SourceID: source.ID, Quote: "Подтверждённый текст"}, addedEvidence}
+	if _, err = p.UpdateNode(nodeID, NodePatch{Evidence: &unchanged}); err != nil {
+		t.Fatalf("не удалось сохранить подтверждения: %v", err)
+	}
+	var stillApproved bool
+	if err = pool.QueryRow(ctx, `SELECT approved FROM evidence WHERE id=$1`, evidenceID).Scan(&stillApproved); err != nil || !stillApproved {
+		t.Fatalf("статус неизменённого подтверждения потерян: %v, %v", stillApproved, err)
+	}
+	unchanged[0].Quote = "Исправленная цитата"
+	if _, err = p.UpdateNode(nodeID, NodePatch{Evidence: &unchanged}); err != nil {
+		t.Fatalf("не удалось исправить цитату: %v", err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT approved FROM evidence WHERE id=$1`, evidenceID).Scan(&stillApproved); err != nil || stillApproved {
+		t.Fatalf("изменённая цитата осталась подтверждённой: %v, %v", stillApproved, err)
+	}
+	if err = p.ApproveEvidence(evidenceID); err != nil {
+		t.Fatal(err)
+	}
+	duplicates := []domain.Evidence{unchanged[0], unchanged[0]}
+	if _, err = p.UpdateNode(nodeID, NodePatch{Evidence: &duplicates}); err == nil {
+		t.Fatal("повторяющийся идентификатор подтверждения принят")
+	}
 	bad := []domain.Evidence{{ID: uuid(), SourceID: uuid(), Quote: "цитата"}}
 	if _, err = p.UpdateNode(nodeID, NodePatch{Evidence: &bad}); err == nil {
 		t.Fatal("несуществующий источник принят")

@@ -298,10 +298,16 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 		if len(*patch.Evidence) == 0 {
 			return nil, &domain.TreeValidationError{Code: "MISSING_EVIDENCE", NodeID: nodeID, Details: "нужно хотя бы одно подтверждение"}
 		}
+		seen := make(map[string]bool, len(*patch.Evidence))
 		for _, e := range *patch.Evidence {
 			if !validUUID(e.ID) || !validUUID(e.SourceID) || strings.TrimSpace(e.Quote) == "" || (e.RefID != "" && strings.TrimSpace(e.RefID) == "") {
 				return nil, &domain.TreeValidationError{Code: "INVALID_EVIDENCE", NodeID: nodeID, Details: "нужны UUID и цитата"}
 			}
+			id := strings.ToLower(e.ID)
+			if seen[id] {
+				return nil, &domain.TreeValidationError{Code: "DUPLICATE_EVIDENCE_ID", NodeID: nodeID, Details: "идентификатор подтверждения повторяется"}
+			}
+			seen[id] = true
 		}
 	}
 	ctx, cancel := operation()
@@ -318,13 +324,22 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 		return nil, translate(err)
 	}
 	if patch.Evidence != nil {
-		if _, err = tx.Exec(ctx, `DELETE FROM evidence WHERE node_id=$1`, nodeID); err != nil {
-			return nil, translate(err)
-		}
+		ids := make([]string, 0, len(*patch.Evidence))
 		for _, e := range *patch.Evidence {
-			if _, err = tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote,ref_id) VALUES($1,$2,$3,$4,NULLIF($5,''))`, e.ID, nodeID, e.SourceID, e.Quote, e.RefID); err != nil {
+			tag, err := tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote,ref_id) VALUES($1,$2,$3,$4,NULLIF($5,''))
+ ON CONFLICT (id) DO UPDATE SET source_id=EXCLUDED.source_id, quote=EXCLUDED.quote, ref_id=EXCLUDED.ref_id,
+ approved=CASE WHEN evidence.source_id=EXCLUDED.source_id AND evidence.quote=EXCLUDED.quote AND evidence.ref_id IS NOT DISTINCT FROM EXCLUDED.ref_id THEN evidence.approved ELSE false END
+ WHERE evidence.node_id=EXCLUDED.node_id`, e.ID, nodeID, e.SourceID, e.Quote, e.RefID)
+			if err != nil {
 				return nil, translate(err)
 			}
+			if tag.RowsAffected() != 1 {
+				return nil, &domain.TreeValidationError{Code: "DUPLICATE_EVIDENCE_ID", NodeID: nodeID, Details: "подтверждение принадлежит другому узлу"}
+			}
+			ids = append(ids, e.ID)
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM evidence WHERE node_id=$1 AND NOT (id = ANY($2::uuid[]))`, nodeID, ids); err != nil {
+			return nil, translate(err)
 		}
 	}
 	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'node_id',node_id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
