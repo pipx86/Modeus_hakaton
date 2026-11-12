@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"activity-descriptor/internal/domain"
@@ -22,7 +25,7 @@ func TestPGStoreCRUD(t *testing.T) {
 	}
 	defer pool.Close()
 	p := NewPGStore(pool)
-	source, err := p.CreateSource(domain.Source{Type: domain.SourceDocument, Title: "Проверка CRUD", Content: "Подтверждённый текст"})
+	source, err := p.CreateSource(domain.Source{Type: domain.SourceDocument, Title: "Проверка CRUD", Content: "Подтверждённый текст", SourceURL: "https://example.org/source"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +48,33 @@ func TestPGStoreCRUD(t *testing.T) {
 	nodes := []domain.Node{{ID: nodeID, Type: domain.NodeRole, Title: "Роль", Evidence: []domain.Evidence{{ID: evidenceID, SourceID: source.ID, Quote: "Подтверждённый текст"}}}}
 	if err = p.SaveTree(ctx, run.ID, nodes); err != nil {
 		t.Fatal(err)
+	}
+	handler := NewServer(p).Routes()
+	createdSource := do(t, handler, "POST", "/api/v1/sources", "teacher", `{"type":"document","title":"Источник API","source_url":"https://example.org/api"}`)
+	var apiSource domain.Source
+	if createdSource.Code != 201 || json.Unmarshal(createdSource.Body.Bytes(), &apiSource) != nil || apiSource.SourceURL != "https://example.org/api" {
+		t.Fatalf("создание источника: %d %s", createdSource.Code, createdSource.Body.String())
+	}
+	defer p.DeleteSource(apiSource.ID)
+	sourceResponse := do(t, handler, "GET", "/api/v1/sources/"+source.ID, "teacher", "")
+	if sourceResponse.Code != 200 || !strings.Contains(sourceResponse.Body.String(), "Проверка CRUD") || !strings.Contains(sourceResponse.Body.String(), "https://example.org/source") {
+		t.Fatalf("источник: %d %s", sourceResponse.Code, sourceResponse.Body.String())
+	}
+	sources := do(t, handler, "GET", "/api/v1/sources", "teacher", "")
+	if sources.Code != 200 || !strings.Contains(sources.Body.String(), source.ID) {
+		t.Fatalf("список источников: %d %s", sources.Code, sources.Body.String())
+	}
+	added := do(t, handler, "POST", "/api/v1/evidences", "teacher", fmt.Sprintf(`{"node_id":%q,"source_id":%q,"ref_id":"строка-7","quote":"Подтверждённый текст"}`, nodeID, source.ID))
+	if added.Code != 201 {
+		t.Fatalf("добавление подтверждения: %d %s", added.Code, added.Body.String())
+	}
+	var addedEvidence domain.Evidence
+	if err = json.Unmarshal(added.Body.Bytes(), &addedEvidence); err != nil || addedEvidence.ID == "" || addedEvidence.NodeID != nodeID || addedEvidence.RefID != "строка-7" {
+		t.Fatalf("%s %v", added.Body.String(), err)
+	}
+	listed := do(t, handler, "GET", "/api/v1/evidences?node_id="+nodeID, "teacher", "")
+	if listed.Code != 200 || !strings.Contains(listed.Body.String(), addedEvidence.ID) || !strings.Contains(listed.Body.String(), nodeID) {
+		t.Fatalf("подтверждения: %d %s", listed.Code, listed.Body.String())
 	}
 	title := "Изменённая роль"
 	updated, err := p.UpdateNode(nodeID, NodePatch{Title: &title})

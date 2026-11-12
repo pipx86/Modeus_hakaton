@@ -41,6 +41,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/api/v1/runs -Headers $
 - go run ./cmd/webhook-worker отдельно читает очередь run.completed. Нужны DATABASE_URL, WEBHOOK_URL, WEBHOOK_SECRET. Реальный n8n требует настройки принимающей стороны.
 - scripts/Configure-Hh.ps1 сохраняет уже действующий токен hh.ru в Windows DPAPI вне проекта. scripts/Import-HhVacancies.ps1 использует его без перевыпуска.
 - GET /api/v1/runs, POST /api/v1/sources, PATCH /api/v1/nodes/{id}, POST /api/v1/evidences/bulk-approve и DELETE /api/v1/sources/{id} работают через PostgreSQL. Источник, на который ссылаются подтверждения или другие защищённые записи, удалить нельзя: возвращается 409.
+- GET /api/v1/sources и GET /api/v1/sources/{id} читают источники; GET /api/v1/evidences позволяет отфильтровать подтверждения по `node_id` или `source_id`. POST /api/v1/evidences добавляет подтверждение к существующему узлу и требует `node_id`, `source_id` и цитату. При чтении за один запрос возвращается не больше 1000 записей.
 - POST /api/v1/runs/{id}/snapshots явно создаёт новую версию снимка; GET по этому адресу возвращает версии, а GET /api/v1/runs/{id}/snapshots/{snapshot_id} — выбранный снимок. В каждом снимке сохранены дерево, цитаты и сведения об источниках на момент создания. Снимок пустого дерева создать нельзя.
 - Подтверждение может содержать `ref_id` — идентификатор фрагмента или сообщения в исходном материале. Он сохраняется вместе с цитатой и попадает в новые снимки; старые подтверждения без `ref_id` продолжают работать.
 

@@ -71,7 +71,7 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT n.id::text,n.type,n.title,COALESCE(n.description,''),n.parent_id::text,
- COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
  FROM nodes n WHERE n.run_id=$1 ORDER BY n.level,n.id`, id)
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
+	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.node_id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	out := []domain.Evidence{}
 	for rows.Next() {
 		var e domain.Evidence
-		if err = rows.Scan(&e.ID, &e.SourceID, &e.RefID, &e.Quote); err != nil {
+		if err = rows.Scan(&e.ID, &e.NodeID, &e.SourceID, &e.RefID, &e.Quote); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -327,7 +327,7 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 			}
 		}
 	}
-	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
+	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'node_id',node_id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +408,7 @@ func (p *PGStore) CreateSource(src domain.Source) (*domain.Source, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	var result domain.Source
-	err := p.Pool.QueryRow(ctx, `INSERT INTO sources(type,title,content) VALUES($1,$2,$3) RETURNING id::text,type,title,COALESCE(content,''),created_at`, src.Type, src.Title, src.Content).Scan(&result.ID, &result.Type, &result.Title, &result.Content, &result.CreatedAt)
+	err := p.Pool.QueryRow(ctx, `INSERT INTO sources(type,title,content,source_url) VALUES($1,$2,$3,NULLIF($4,'')) RETURNING id::text,type,title,COALESCE(content,''),COALESCE(source_url,''),created_at`, src.Type, src.Title, src.Content, src.SourceURL).Scan(&result.ID, &result.Type, &result.Title, &result.Content, &result.SourceURL, &result.CreatedAt)
 	if err != nil {
 		return nil, translate(err)
 	}

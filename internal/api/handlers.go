@@ -69,6 +69,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleDeleteSource)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
+	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
+	mux.HandleFunc("GET /api/v1/sources/{id}", s.handleGetSource)
+	mux.HandleFunc("GET /api/v1/evidences", s.handleListEvidences)
+	mux.HandleFunc("POST /api/v1/evidences", s.handleCreateEvidence)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -593,9 +597,10 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Type    domain.SourceType `json:"type"`
-		Title   string            `json:"title"`
-		Content string            `json:"content,omitempty"`
+		Type      domain.SourceType `json:"type"`
+		Title     string            `json:"title"`
+		Content   string            `json:"content,omitempty"`
+		SourceURL string            `json:"source_url,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" || (req.Type != domain.SourceVacancy && req.Type != domain.SourceInterview && req.Type != domain.SourceStandard && req.Type != domain.SourceDocument) {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "нужны название и допустимый тип источника")
@@ -603,9 +608,10 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	src := domain.Source{
-		Type:    req.Type,
-		Title:   req.Title,
-		Content: req.Content,
+		Type:      req.Type,
+		Title:     req.Title,
+		Content:   req.Content,
+		SourceURL: req.SourceURL,
 	}
 
 	created, err := s.store.CreateSource(src)

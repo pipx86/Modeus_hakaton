@@ -67,6 +67,8 @@ paths:
                   minLength: 1
                 content:
                   type: string
+                source_url:
+                  type: string
       responses:
         "201":
           description: Created source (server-assigned id)
@@ -182,10 +184,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [source_id, quote]
+              required: [node_id, source_id, quote]
               additionalProperties: false
               properties:
+                node_id:
+                  type: string
+                  format: uuid
                 source_id:
+                  type: string
+                  minLength: 1
+                ref_id:
                   type: string
                   minLength: 1
                 quote:
@@ -741,6 +749,9 @@ components:
         id:
           type: string
           minLength: 1
+        node_id:
+          type: string
+          minLength: 1
         source_id:
           type: string
           minLength: 1
@@ -785,6 +796,8 @@ components:
           type: string
           minLength: 1
         content:
+          type: string
+        source_url:
           type: string
         created_at:
           type: string
