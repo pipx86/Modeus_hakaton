@@ -36,6 +36,7 @@ const (
 
 type Evidence struct {
 	ID       string `json:"id"`
+	NodeID   string `json:"node_id,omitempty"`
 	SourceID string `json:"source_id"`
 	RefID    string `json:"ref_id,omitempty"`
 	Quote    string `json:"quote"`
@@ -62,6 +63,7 @@ type Source struct {
 	Type      SourceType `json:"type"`
 	Title     string     `json:"title"`
 	Content   string     `json:"content,omitempty"`
+	SourceURL string     `json:"source_url,omitempty"`
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 

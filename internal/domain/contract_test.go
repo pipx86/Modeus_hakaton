@@ -92,7 +92,7 @@ func TestEvidenceSchemaValid(t *testing.T) {
 
 func TestSourceSchemaValid(t *testing.T) {
 	now := time.Now().UTC()
-	s := Source{ID: "s-1", Type: SourceVacancy, Title: "Data Analyst", Content: "...", CreatedAt: &now}
+	s := Source{ID: "s-1", Type: SourceVacancy, Title: "Data Analyst", Content: "...", SourceURL: "https://example.org/source", CreatedAt: &now}
 	if err := compile(t, "source.schema.json").Validate(roundTrip(t, s)); err != nil {
 		t.Fatalf("source rejected: %v", err)
 	}

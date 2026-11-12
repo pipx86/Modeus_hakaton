@@ -19,6 +19,7 @@
         "required": ["id", "source_id", "quote"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
+          "node_id": { "type": "string", "minLength": 1 },
           "source_id": { "type": "string", "minLength": 1 },
           "ref_id": { "type": "string", "minLength": 1 },
           "quote": { "type": "string" }
