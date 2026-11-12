@@ -129,6 +129,15 @@ type RunSource struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type RunSseEvent struct {
+	SequenceID int64              `json:"sequence_id"`
+	EventID    string             `json:"event_id"`
+	RunID      pgtype.UUID        `json:"run_id"`
+	EventType  string             `json:"event_type"`
+	Payload    []byte             `json:"payload"`
+	OccurredAt pgtype.Timestamptz `json:"occurred_at"`
+}
+
 type Snapshot struct {
 	ID        pgtype.UUID        `json:"id"`
 	RunID     pgtype.UUID        `json:"run_id"`
