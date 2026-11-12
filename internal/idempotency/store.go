@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -15,6 +16,7 @@ type Entry struct {
 	BodyHash  string
 	Response  []byte
 	Status    int
+	Headers   http.Header
 	CreatedAt time.Time
 	TTL       time.Duration
 }
@@ -26,7 +28,7 @@ func (e *Entry) Expired(now time.Time) bool {
 type Store interface {
 	Put(entry *Entry) (existing *Entry, ok bool)
 	Get(key string) *Entry
-	UpdateResponse(key string, resp []byte) error
+	UpdateResponse(key string, resp []byte, status int, headers http.Header) error
 }
 
 func HashBody(b []byte) string {
@@ -77,13 +79,16 @@ func (m *MemStore) Get(key string) *Entry {
 	return e
 }
 
-func (m *MemStore) UpdateResponse(key string, resp []byte) error {
+func (m *MemStore) UpdateResponse(key string, resp []byte, status int, headers http.Header) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	e, ok := m.entries[key]
 	if !ok {
 		return errors.New("entry not found")
 	}
-	e.Response = resp
+	e.Response = make([]byte, len(resp))
+	copy(e.Response, resp)
+	e.Status = status
+	e.Headers = headers.Clone()
 	return nil
 }

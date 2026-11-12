@@ -7,6 +7,7 @@ import (
 )
 
 type roleKey struct{}
+type subjectKey struct{}
 
 func WithRole(ctx context.Context, role Role) context.Context {
 	return context.WithValue(ctx, roleKey{}, role)
@@ -16,6 +17,9 @@ func FromContext(ctx context.Context) (Role, bool) {
 	r, ok := ctx.Value(roleKey{}).(Role)
 	return r, ok
 }
+
+// Subject возвращает идентификатор пользователя из проверенного токена.
+func Subject(ctx context.Context) string { value, _ := ctx.Value(subjectKey{}).(string); return value }
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +44,7 @@ func Middleware(next http.Handler) http.Handler {
 		}
 
 		ctx := WithRole(r.Context(), Role(claims.Role))
+		ctx = context.WithValue(ctx, subjectKey{}, claims.Sub)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
