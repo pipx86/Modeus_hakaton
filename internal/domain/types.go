@@ -37,6 +37,7 @@ const (
 type Evidence struct {
 	ID       string `json:"id"`
 	SourceID string `json:"source_id"`
+	RefID    string `json:"ref_id,omitempty"`
 	Quote    string `json:"quote"`
 }
 

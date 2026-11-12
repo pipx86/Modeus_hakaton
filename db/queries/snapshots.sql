@@ -11,7 +11,7 @@ SELECT jsonb_build_object(
             'type', n.type, 'title', n.title, 'description', n.description,
             'evidence', COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
-                    'id', e.id, 'quote', e.quote, 'approved', e.approved,
+                    'id', e.id, 'ref_id', e.ref_id, 'quote', e.quote, 'approved', e.approved,
                     'source', jsonb_build_object(
                         'id', s.id, 'type', s.type, 'title', s.title, 'source_url', s.source_url
                     )

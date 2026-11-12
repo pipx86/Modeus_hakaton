@@ -54,6 +54,7 @@ type Evidence struct {
 	Approved  bool               `json:"approved"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	RunID     pgtype.UUID        `json:"run_id"`
+	RefID     pgtype.Text        `json:"ref_id"`
 }
 
 type IdempotencyKey struct {

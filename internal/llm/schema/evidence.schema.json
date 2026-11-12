@@ -7,6 +7,7 @@
   "properties": {
     "id": { "type": "string", "minLength": 1 },
     "source_id": { "type": "string", "minLength": 1 },
+    "ref_id": { "type": "string", "minLength": 1 },
     "quote": { "type": "string" }
   }
 }
