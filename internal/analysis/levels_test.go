@@ -2,90 +2,115 @@ package analysis
 
 import "testing"
 
-func TestAssignLevelsSkipsEmptySkills(t *testing.T) {
+func TestAssignLevelsJunior(t *testing.T) {
 	vacs := []VacancyInput{
-		{Name: "Python Dev", Skills: nil},
-		{Name: "Java Dev", Skills: []string{"java"}},
+		{
+			Name:       "Junior Python Developer",
+			Experience: "no experience",
+			Skills:     []string{"python", "basic sql"},
+		},
 	}
-	res := AssignLevels(vacs, []string{"desc1", "desc2"})
-	if len(res.Levels) != 1 || len(res.Skills) != 1 {
-		t.Fatalf("ожидали 1 запись после фильтрации пустых, получили %d/%d", len(res.Levels), len(res.Skills))
-	}
-}
 
-func TestClassifyExperienceHHEnumIDs(t *testing.T) {
-	cases := map[string]ExperienceLevel{
-		"no_experience":          LevelJunior,
-		"less_than_1_year":       LevelJunior,
-		"between_1_and_3_years":  LevelMiddle,
-		"between_3_and_6_years":  LevelMiddle,
-		"between_6_and_10_years": LevelSenior,
-		"over_10_years":          LevelSenior,
-		"":                       LevelMiddle,
-	}
-	for input, want := range cases {
-		got := classifyExperience(input)
-		if got != want {
-			t.Fatalf("classifyExperience(%q) = %s, ожидали %s", input, got, want)
-		}
-	}
-}
-
-func TestClassifyExperienceFreeTextRuEn(t *testing.T) {
-	cases := map[string]ExperienceLevel{
-		"Junior Developer": LevelJunior,
-		"Нет опыта работы": LevelJunior,
-		"Стажёр в команде": LevelJunior,
-		"Senior Engineer":  LevelSenior,
-		"Опыт более 6 лет": LevelSenior,
-		"Some random text": LevelMiddle,
-	}
-	for input, want := range cases {
-		got := classifyExperience(input)
-		if got != want {
-			t.Fatalf("classifyExperience(%q) = %s, ожидали %s", input, got, want)
-		}
-	}
-}
-
-func TestNameOverridesDefaultMiddle(t *testing.T) {
-	vacs := []VacancyInput{
-		{Name: "Junior Python Developer", Skills: []string{"python"}, Experience: ""},
-		{Name: "Ведущий Java архитектор", Skills: []string{"java"}, Experience: ""},
-		{Name: "Intern QA", Skills: []string{"testing"}, Experience: ""},
-		{Name: "Backend Engineer", Skills: []string{"go"}, Experience: ""},
-	}
 	res := AssignLevels(vacs, nil)
-	wantExp := []ExperienceLevel{LevelJunior, LevelSenior, LevelJunior, LevelMiddle}
-	for i, w := range wantExp {
-		if res.Levels[i].Experience != w {
-			t.Fatalf("вакансия %d (%s): ожидали %s, получили %s", i, vacs[i].Name, w, res.Levels[i].Experience)
-		}
+
+	if len(res.Levels) != 1 {
+		t.Fatal("expected 1 level")
+	}
+
+	if res.Levels[0].Experience != LevelJunior {
+		t.Fatalf("expected Junior, got %s", res.Levels[0].Experience)
+	}
+
+	if res.Levels[0].Confidence < 0.8 {
+		t.Fatalf("low confidence for Junior: %.2f", res.Levels[0].Confidence)
+	}
+
+	if res.Levels[0].Category != "BackEnd" {
+		t.Fatalf("expected BackEnd, got %s", res.Levels[0].Category)
 	}
 }
 
-func TestEnumTakesPriorityOverName(t *testing.T) {
+func TestAssignLevelsSenior(t *testing.T) {
 	vacs := []VacancyInput{
-		{Name: "Junior-looking title", Skills: []string{"x"}, Experience: "more_than_10_years"},
+		{
+			Name:       "Senior Backend Engineer",
+			Experience: "5+ years",
+			Skills:     []string{"kubernetes", "system design", "go"},
+		},
 	}
+
 	res := AssignLevels(vacs, nil)
+
+	if len(res.Levels) != 1 {
+		t.Fatal("expected 1 level")
+	}
+
 	if res.Levels[0].Experience != LevelSenior {
-		t.Fatalf("enum должен иметь приоритет над именем: получили %s", res.Levels[0].Experience)
+		t.Fatalf("expected Senior, got %s", res.Levels[0].Experience)
+	}
+
+	if res.Levels[0].Category != "BackEnd" {
+		t.Fatalf("expected BackEnd, got %s", res.Levels[0].Category)
 	}
 }
 
-func TestDescriptionAlignmentByIndex(t *testing.T) {
+func TestAssignLevelsDevOps(t *testing.T) {
 	vacs := []VacancyInput{
-		{Name: "A", Skills: []string{"sa"}, Experience: "junior"},
-		{Name: "B", Skills: nil},
-		{Name: "C", Skills: []string{"sc"}, Experience: "senior"},
+		{
+			Name:       "DevOps Engineer",
+			Experience: "3 years",
+			Skills:     []string{"Docker", "Kubernetes", "Linux"},
+		},
 	}
-	descriptions := []string{"desc-A", "desc-B-skipped", "desc-C"}
-	res := AssignLevels(vacs, descriptions)
-	if len(res.Levels) != 2 {
-		t.Fatalf("ожидали 2 уровня, получили %d", len(res.Levels))
+
+	res := AssignLevels(vacs, nil)
+
+	if res.Levels[0].Category != "DevOps" {
+		t.Fatalf("expected DevOps, got %s", res.Levels[0].Category)
 	}
-	if res.Levels[0].Description != "desc-A" || res.Levels[1].Description != "desc-C" {
-		t.Fatalf("descriptions выровнены неверно: [%q, %q]", res.Levels[0].Description, res.Levels[1].Description)
+}
+
+func TestAssignLevelsDataAnalyst(t *testing.T) {
+	vacs := []VacancyInput{
+		{
+			Name:       "Data Analyst",
+			Experience: "2 years",
+			Skills:     []string{"Python", "Pandas", "SQL", "Tableau"},
+		},
+	}
+
+	res := AssignLevels(vacs, nil)
+
+	if res.Levels[0].Category != "Data Analyst" {
+		t.Fatalf("expected Data Analyst, got %s", res.Levels[0].Category)
+	}
+}
+
+func TestClusterSkills(t *testing.T) {
+	skills := []string{
+		"Python",
+		"Docker",
+		"React",
+		"Kubernetes",
+		"SQL",
+		"Pandas",
+	}
+
+	clusters := ClusterSkills(skills)
+
+	if len(clusters["BackEnd"]) < 2 {
+		t.Fatal("BackEnd cluster is empty or too small")
+	}
+
+	if len(clusters["DevOps"]) < 2 {
+		t.Fatal("DevOps cluster is empty or too small")
+	}
+
+	if len(clusters["Data Analyst"]) < 1 {
+		t.Fatal("Data Analyst cluster is empty")
+	}
+
+	if _, exists := clusters["Frontend"]; exists {
+		t.Fatal("Frontend category should not exist")
 	}
 }

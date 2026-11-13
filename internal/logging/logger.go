@@ -1,49 +1,89 @@
 package logging
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
+	"path/filepath"
+	"strconv"
 	"time"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-var (
-	Logger *slog.Logger
-	once   sync.Once
-)
+var Logger *slog.Logger
 
-// Init явная инициализация (вызывается из main.go)
-func Init() {
-	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
-	Logger = slog.New(slog.NewJSONHandler(os.Stdout, opts))
+func init() {
+	Logger = newLogger(os.Stdout, levelFromEnv())
 	slog.SetDefault(Logger)
 }
 
-// L безопасный доступ к логгеру (если не инициализирован — инициализирует тихо)
-func L() *slog.Logger {
-	once.Do(func() {
-		if Logger == nil {
-			Init()
+func Init() {
+	file := os.Getenv("LOG_FILE")
+	if file == "" {
+		file = filepath.Join("logs", "app.log")
+	}
+	maxMB := 1024
+	if v := os.Getenv("LOG_MAX_SIZE_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxMB = n
 		}
-	})
+	}
+
+	writer := NewRotatingWriter(file, maxMB)
+	Logger = newLogger(io.MultiWriter(os.Stdout, writer), levelFromEnv())
+	slog.SetDefault(Logger)
+	Logger.Info("logging initialized", "file", file, "max_size_mb", maxMB)
+}
+
+func NewRotatingWriter(path string, maxSizeMB int) io.WriteCloser {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		_ = os.MkdirAll(dir, 0o755)
+	}
+	return &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    maxSizeMB,
+		MaxBackups: 5,
+		MaxAge:     30,
+		Compress:   true,
+		LocalTime:  true,
+	}
+}
+
+func L() *slog.Logger {
+	if Logger == nil {
+		Logger = newLogger(os.Stdout, levelFromEnv())
+	}
 	return Logger
 }
 
-// Middleware логирует каждый запрос с контекстом
+func newLogger(w io.Writer, lvl slog.Level) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lvl}))
+}
+
+func levelFromEnv() slog.Level {
+	lvl := slog.LevelInfo
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		if err := lvl.UnmarshalText([]byte(v)); err != nil {
+			return slog.LevelInfo
+		}
+	}
+	return lvl
+}
+
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rec := &responseRecorder{ResponseWriter: w, status: 200}
+		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
 
 		next.ServeHTTP(rec, r)
 
-		duration := time.Since(start)
 		L().Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration_ms", duration.Milliseconds(),
+			"duration_ms", time.Since(start).Milliseconds(),
 			"remote_addr", r.RemoteAddr,
 		)
 	})

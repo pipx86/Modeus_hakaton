@@ -14,14 +14,19 @@ import (
 	"time"
 
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/outbox"
 	"activity-descriptor/internal/store"
 	"activity-descriptor/internal/webhook"
+
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Этот сценарий проверяет соединение компонентов, шаги агентов заменены фикстурами.
+func init() {
+	logging.Init()
+}
+
 func TestОбщийСценарийИсследования(t *testing.T) {
 	if os.Getenv("MODEUS_ACCEPTANCE_EXCLUSIVE") != "1" {
 		t.Skip("нужна отдельная БД и MODEUS_ACCEPTANCE_EXCLUSIVE=1")

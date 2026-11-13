@@ -54,3 +54,38 @@ func writeUnauthorized(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = w.Write([]byte(`{"code":"UNAUTHORIZED","message":"missing or invalid token"}`))
 }
+
+func MiddlewareWithWhitelist(next http.Handler, whitelistPaths []string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, path := range whitelistPaths {
+			if strings.HasPrefix(r.URL.Path, path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// Если не в белом списке — обычная проверка токена
+		var tokenStr string
+
+		h := r.Header.Get("Authorization")
+		if strings.HasPrefix(h, "Bearer ") {
+			tokenStr = strings.TrimSpace(h[len("Bearer "):])
+		} else if q := r.URL.Query().Get("access_token"); q != "" {
+			tokenStr = q
+		}
+
+		if tokenStr == "" {
+			writeUnauthorized(w)
+			return
+		}
+
+		claims, err := Parse(tokenStr)
+		if err != nil {
+			writeUnauthorized(w)
+			return
+		}
+
+		ctx := WithRole(r.Context(), Role(claims.Role))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}

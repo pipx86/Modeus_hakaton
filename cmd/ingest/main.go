@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"activity-descriptor/internal/ingestion"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

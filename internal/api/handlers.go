@@ -1,6 +1,13 @@
 package api
 
 import (
+	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/idempotency"
+	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
+	"activity-descriptor/internal/sse"
+	"activity-descriptor/internal/steps"
+	"activity-descriptor/internal/store"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,14 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"activity-descriptor/internal/auth"
-	"activity-descriptor/internal/domain"
-	"activity-descriptor/internal/idempotency"
-	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
-	"activity-descriptor/internal/sse"
-	"activity-descriptor/internal/steps"
-	"activity-descriptor/internal/store"
 )
 
 type Server struct {
@@ -85,7 +84,7 @@ func (s *Server) Routes() http.Handler {
 	})
 
 	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
-	root.Handle("/", auth.Middleware(protected))
+	root.Handle("/", auth.MiddlewareWithWhitelist(protected, []string{"/swagger"}))
 	return root
 }
 
@@ -109,14 +108,23 @@ type errorBody struct {
 // @Failure      400   {object}  errorBody
 // @Security     BearerAuth
 // @Router       /api/v1/runs [post]
+
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
 		return
 	}
 
 	var req createRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Profession) == "" {
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logging.Logger.Warn("create_run_bad_request", "error", err)
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+		return
+	}
+
+	req.Profession = strings.TrimSpace(req.Profession)
+	if req.Profession == "" {
+		logging.Logger.Warn("create_run_bad_request", "error", "profession is empty")
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "profession is required")
 		return
 	}
@@ -133,6 +141,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		"status":  string(domain.RunPending),
 		"message": "Research created",
 	})
+
 	if appendErr := s.eventStore.Append(initialEvent); appendErr != nil {
 		logging.Logger.Error("event_append_failed", "run_id", run.ID, "error", appendErr)
 	}

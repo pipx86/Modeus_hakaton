@@ -10,7 +10,12 @@ import (
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/logging"
 )
+
+func init() {
+	logging.Init()
+}
 
 func setupCRUDEndpointTest(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()

@@ -26,6 +26,7 @@ func BuildActivityTree(profession string, levels []map[string]any, reports []Gap
 	for i, lv := range levels {
 		exp, _ := lv["experience"].(string)
 		skillsRaw, _ := lv["skills"].([]string)
+
 		if exp == "" || len(skillsRaw) == 0 {
 			continue
 		}
@@ -35,6 +36,7 @@ func BuildActivityTree(profession string, levels []map[string]any, reports []Gap
 		parentRef := rootID
 
 		ev := make([]domain.Evidence, 0, len(skillsRaw))
+
 		for j, sk := range skillsRaw {
 			ev = append(ev, domain.Evidence{
 				ID:       slugify(fmt.Sprintf("ev-fn%d-s%d", i, j)),
@@ -54,6 +56,7 @@ func BuildActivityTree(profession string, levels []map[string]any, reports []Gap
 		for k, sk := range skillsRaw {
 			taskID := slugify(fmt.Sprintf("task-%s-%d-%d", exp, i, k))
 			funcRef := funcID
+
 			nodes = append(nodes, domain.Node{
 				ID:       taskID,
 				Type:     domain.NodeTask,
@@ -72,6 +75,7 @@ func BuildActivityTree(profession string, levels []map[string]any, reports []Gap
 		for _, rec := range rep.Recommendations {
 			actID := slugify(fmt.Sprintf("act-%d-%s", ri, rec.Skill))
 			parentForRec := rootID
+
 			nodes = append(nodes, domain.Node{
 				ID:       actID,
 				Type:     domain.NodeAction,
@@ -92,6 +96,7 @@ func BuildActivityTree(profession string, levels []map[string]any, reports []Gap
 func slugify(s string) string {
 	b := make([]byte, 0, len(s))
 	prevDash := true
+
 	for _, r := range strings.ToLower(s) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
@@ -104,19 +109,44 @@ func slugify(s string) string {
 			}
 		}
 	}
-	out := strings.TrimRight(string(b), "-") //
+
+	out := strings.TrimRight(string(b), "-")
 	if len(out) > 64 {
 		out = out[:64]
 	}
+
 	return out
 }
 
 func titleCase(s string) string {
 	words := strings.Fields(s)
+
 	for i, w := range words {
 		if len(w) > 0 {
 			words[i] = strings.ToUpper(w[:1]) + w[1:]
 		}
 	}
+
 	return strings.Join(words, " ")
+}
+
+func ClusterSkills(skills []string) map[string][]string {
+	clusters := make(map[string][]string)
+
+	for _, skill := range skills {
+		skillLower := strings.ToLower(skill)
+		category := categorizeSkill(skillLower)
+
+		if category == "" {
+			continue
+		}
+
+		clusters[category] = append(clusters[category], skill)
+	}
+
+	return clusters
+}
+
+func categorizeSkill(skill string) string {
+	return getCategoryForSkill(skill)
 }
