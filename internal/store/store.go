@@ -6,17 +6,22 @@ import (
 	"fmt"
 
 	"activity-descriptor/internal/store/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type database interface {
+	db.DBTX
+	Begin(context.Context) (pgx.Tx, error)
+}
 
 // Store предоставляет запросы sqlc и сохраняет дерево одной транзакцией.
 type Store struct {
 	*db.Queries
-	pool *pgxpool.Pool
+	pool database
 }
 
-func New(pool *pgxpool.Pool) *Store { return &Store{Queries: db.New(pool), pool: pool} }
+func New(pool database) *Store { return &Store{Queries: db.New(pool), pool: pool} }
 
 // TreeNode содержит узел и потомков; каждый узел требует подтверждение источником.
 type TreeNode struct {

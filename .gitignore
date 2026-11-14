@@ -3,6 +3,7 @@ bin/
 *.test
 coverage.out
 coverage-db.out
+coverage-db-unit.out
 .env
 .env.*
 go.work
