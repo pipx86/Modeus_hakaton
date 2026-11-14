@@ -1,9 +1,9 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"errors"
-	"math"
 	"os"
 	"testing"
 
@@ -38,7 +38,7 @@ func TestПоискСПереключениемНаBM25(t *testing.T) {
 	}
 	vector := make([]float32, 768)
 	vector[0] = 1
-	literal, _ := formatVector(vector)
+	literal := vectorLiteral(vector)
 	if _, err = pool.Exec(ctx, `INSERT INTO fragment_embeddings(fragment_id,model,embedding) VALUES($1,'тест',$2::vector)`, fragment, literal); err != nil {
 		t.Fatal(err)
 	}
@@ -47,10 +47,10 @@ func TestПоискСПереключениемНаBM25(t *testing.T) {
 		return nil, errors.New("модель недоступна")
 	}
 	invalid := func(context.Context, string) ([]float32, error) { return []float32{1, 2}, nil }
-	s := New(pool)
+	s := store.New(pool)
 	for _, tc := range []struct {
 		name     string
-		provider EmbeddingFunc
+		provider store.EmbeddingFunc
 		want     string
 	}{{"вектор", success, "vector"}, {"ошибка модели", failed, "bm25"}, {"неверная размерность", invalid, "bm25"}, {"нет модели", nil, "bm25"}} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,23 +60,20 @@ func TestПоискСПереключениемНаBM25(t *testing.T) {
 			}
 		})
 	}
+	hybridHits, mode, err := s.SearchHybrid(ctx, run, "анализ данных", "тест", 5, success)
+	if err != nil || mode != "hybrid" || len(hybridHits) != 1 || hybridHits[0].RefID != fragment {
+		t.Fatalf("гибридный поиск: режим=%s результаты=%v ошибка=%v", mode, hybridHits, err)
+	}
+	fallbackHits, mode, err := s.SearchHybrid(ctx, run, "анализ данных", "тест", 5, failed)
+	if err != nil || mode != "bm25" || len(fallbackHits) != 1 || fallbackHits[0].RefID != fragment {
+		t.Fatalf("резервный гибридный поиск: режим=%s результаты=%v ошибка=%v", mode, fallbackHits, err)
+	}
+	if _, _, err := s.SearchHybrid(ctx, run, " ", "тест", 5, success); err == nil {
+		t.Fatal("пустой запрос принят гибридным поиском")
+	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	if _, _, err := s.SearchFragments(cancelled, run, "анализ данных", "тест", 5, success); !errors.Is(err, context.Canceled) {
 		t.Fatalf("отмена запроса потеряна: %v", err)
-	}
-}
-func TestПроверкаРазмерностиВектора(t *testing.T) {
-	vector := make([]float32, 768)
-	if _, ok := formatVector(vector); ok {
-		t.Fatal("нулевой вектор нельзя сравнить косинусом")
-	}
-	vector[0] = float32(math.NaN())
-	if _, ok := formatVector(vector); ok {
-		t.Fatal("NaN недопустим")
-	}
-	vector[0] = 1
-	if _, ok := formatVector(vector); !ok {
-		t.Fatal("корректный вектор отклонён")
 	}
 }

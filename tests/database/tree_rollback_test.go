@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"os"
 	"testing"
@@ -39,8 +40,8 @@ func TestОткатДереваПриОшибкеБазы(t *testing.T) {
 		return id
 	}
 	missingSource := newID()
-	root := TreeNode{ID: newID(), Title: "роль", Evidence: []TreeEvidence{{ID: newID(), SourceID: source, Quote: "цитата"}}, Children: []TreeNode{{ID: newID(), Title: "функция", Evidence: []TreeEvidence{{ID: newID(), SourceID: missingSource, Quote: "другая цитата"}}}}}
-	s := New(pool)
+	root := store.TreeNode{ID: newID(), Title: "роль", Evidence: []store.TreeEvidence{{ID: newID(), SourceID: source, Quote: "цитата"}}, Children: []store.TreeNode{{ID: newID(), Title: "функция", Evidence: []store.TreeEvidence{{ID: newID(), SourceID: missingSource, Quote: "другая цитата"}}}}}
+	s := store.New(pool)
 	if err := s.SaveTree(ctx, run, root); err == nil {
 		t.Fatal("ожидалась ошибка несуществующего источника")
 	}

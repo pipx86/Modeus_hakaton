@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"errors"
 	"fmt"
@@ -43,11 +44,11 @@ func TestБазаОтклоняетНекорректноеДерево(t *testi
 		return id
 	}
 	root, first, second, grandchild := newID(), newID(), newID(), newID()
-	node := func(id pgtype.UUID, title string, children ...TreeNode) TreeNode {
-		return TreeNode{ID: id, Title: title, Evidence: []TreeEvidence{{ID: newID(), SourceID: source, Quote: "подтверждение"}}, Children: children}
+	node := func(id pgtype.UUID, title string, children ...store.TreeNode) store.TreeNode {
+		return store.TreeNode{ID: id, Title: title, Evidence: []store.TreeEvidence{{ID: newID(), SourceID: source, Quote: "подтверждение"}}, Children: children}
 	}
 	tree := node(root, "роль", node(first, "первая функция", node(grandchild, "задача")), node(second, "вторая функция"))
-	if err = New(pool).SaveTree(ctx, run, tree); err != nil {
+	if err = store.New(pool).SaveTree(ctx, run, tree); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -114,8 +115,8 @@ func TestПоследниеПодтвержденияПриПараллельн�
 		return id
 	}
 	node, first, second = newID(), newID(), newID()
-	root := TreeNode{ID: node, Title: "роль", Evidence: []TreeEvidence{{ID: first, SourceID: source, Quote: "первая"}, {ID: second, SourceID: source, Quote: "вторая"}}}
-	if err = New(pool).SaveTree(ctx, run, root); err != nil {
+	root := store.TreeNode{ID: node, Title: "роль", Evidence: []store.TreeEvidence{{ID: first, SourceID: source, Quote: "первая"}, {ID: second, SourceID: source, Quote: "вторая"}}}
+	if err = store.New(pool).SaveTree(ctx, run, root); err != nil {
 		t.Fatal(err)
 	}
 	tx1, err := pool.Begin(ctx)

@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"os"
 	"testing"
@@ -42,8 +43,8 @@ func TestРодительВДругомИсследовании(t *testing.T) {
 		return id
 	}
 	root, child := newID(), newID()
-	tree := TreeNode{ID: root, Title: "первая роль", Evidence: []TreeEvidence{{ID: newID(), SourceID: source, Quote: "цитата"}}, Children: []TreeNode{{ID: child, Title: "своя функция", Evidence: []TreeEvidence{{ID: newID(), SourceID: source, Quote: "цитата"}}}}}
-	if err = New(pool).SaveTree(ctx, first, tree); err != nil {
+	tree := store.TreeNode{ID: root, Title: "первая роль", Evidence: []store.TreeEvidence{{ID: newID(), SourceID: source, Quote: "цитата"}}, Children: []store.TreeNode{{ID: child, Title: "своя функция", Evidence: []store.TreeEvidence{{ID: newID(), SourceID: source, Quote: "цитата"}}}}}
+	if err = store.New(pool).SaveTree(ctx, first, tree); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO nodes(run_id,parent_id,type,title) VALUES($1,$2,'function','чужая функция')`, second, root); err == nil {

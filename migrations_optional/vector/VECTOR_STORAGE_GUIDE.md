@@ -17,7 +17,7 @@ goose -table goose_vector_versions -dir migrations_optional/vector postgres $env
 
 ```powershell
 $env:VECTOR_TEST_DATABASE_URL = $env:DATABASE_URL
-go test -v -count=1 ./internal/store/...
+go test -v -count=1 ./tests/database/...
 ```
 
 Откат пакета удаляет таблицы фрагментов и векторов; перед откатом в среде с данными необходима резервная копия. Расширение `vector` при откате не удаляется, поскольку его могут использовать другие компоненты. Нельзя откатывать базовую миграцию связей раньше, чем векторный пакет.

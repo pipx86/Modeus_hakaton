@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"os"
 	"testing"
@@ -26,7 +27,7 @@ func TestRunStatusCreatesCompletionEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Exec(ctx, `DELETE FROM runs WHERE id=$1::uuid`, id)
-	adapter := RunStatusStore{Store: New(pool), Timeout: 5 * time.Second}
+	adapter := store.RunStatusStore{Store: store.New(pool), Timeout: 5 * time.Second}
 	run := &domain.Run{ID: id, Profession: "status test", Status: domain.RunRunning}
 	if err := adapter.Save(run); err != nil {
 		t.Fatal(err)

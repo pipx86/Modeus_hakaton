@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -75,7 +76,7 @@ func TestСнимокСохраняетИсторию(t *testing.T) {
 	if err = setup.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	s := New(pool)
+	s := store.New(pool)
 	old, err := s.SaveSnapshot(ctx, runID)
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +217,7 @@ func TestСнимокБезКорня(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Exec(ctx, `DELETE FROM runs WHERE id=$1`, runID)
-	s := New(pool)
+	s := store.New(pool)
 	if _, err := s.SaveSnapshot(ctx, runID); err == nil {
 		t.Fatal("для исследования без корня снимок должен отклоняться")
 	}

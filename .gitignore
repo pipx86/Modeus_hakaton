@@ -2,6 +2,7 @@ bin/
 *.exe
 *.test
 coverage.out
+coverage-db.out
 .env
 .env.*
 go.work

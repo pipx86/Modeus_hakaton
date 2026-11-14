@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"os"
 	"testing"
@@ -35,7 +36,7 @@ func TestОбщийИсточникИЗащитаПодтверждений(t *t
 	if err = pool.QueryRow(ctx, `INSERT INTO sources(run_id,type,title) VALUES($1,'document','общий источник') RETURNING id`, first).Scan(&sourceID); err != nil {
 		t.Fatal(err)
 	}
-	s := New(pool)
+	s := store.New(pool)
 	firstList, err := s.ListSourcesByRun(ctx, first)
 	if err != nil || len(firstList) != 1 {
 		t.Fatalf("старая связь: %v %v", firstList, err)
@@ -58,7 +59,7 @@ func TestОбщийИсточникИЗащитаПодтверждений(t *t
 	if err = pool.QueryRow(ctx, `SELECT gen_random_uuid()`).Scan(&evidenceID); err != nil {
 		t.Fatal(err)
 	}
-	root := TreeNode{ID: nodeID, Title: "роль", Evidence: []TreeEvidence{{ID: evidenceID, SourceID: sourceID, Quote: "цитата"}}}
+	root := store.TreeNode{ID: nodeID, Title: "роль", Evidence: []store.TreeEvidence{{ID: evidenceID, SourceID: sourceID, Quote: "цитата"}}}
 	if err = s.SaveTree(ctx, first, root); err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +110,8 @@ func TestАвтопривязкаИсточникаДляПодтвержден�
 	if err = pool.QueryRow(ctx, `SELECT gen_random_uuid()`).Scan(&evidenceID); err != nil {
 		t.Fatal(err)
 	}
-	root := TreeNode{ID: node, Title: "роль", Evidence: []TreeEvidence{{ID: evidenceID, SourceID: source, Quote: "цитата"}}}
-	if err = New(pool).SaveTree(ctx, run, root); err != nil {
+	root := store.TreeNode{ID: node, Title: "роль", Evidence: []store.TreeEvidence{{ID: evidenceID, SourceID: source, Quote: "цитата"}}}
+	if err = store.New(pool).SaveTree(ctx, run, root); err != nil {
 		t.Fatal(err)
 	}
 	var links int

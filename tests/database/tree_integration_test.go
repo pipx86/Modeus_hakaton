@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"os"
 	"testing"
@@ -39,12 +40,12 @@ func TestSaveMultiLevelTree(t *testing.T) {
 		}
 		return id
 	}
-	evidence := func() []TreeEvidence {
-		return []TreeEvidence{{ID: newID(), SourceID: sourceID, Quote: "test citation"}}
+	evidence := func() []store.TreeEvidence {
+		return []store.TreeEvidence{{ID: newID(), SourceID: sourceID, Quote: "test citation"}}
 	}
 	roleID, functionID, taskID, actionID := newID(), newID(), newID(), newID()
-	root := TreeNode{ID: roleID, Title: "role", Evidence: evidence(), Children: []TreeNode{{ID: functionID, Title: "function", Evidence: evidence(), Children: []TreeNode{{ID: taskID, Title: "task", Evidence: evidence(), Children: []TreeNode{{ID: actionID, Title: "action", Evidence: evidence()}}}}}}}
-	s := New(pool)
+	root := store.TreeNode{ID: roleID, Title: "role", Evidence: evidence(), Children: []store.TreeNode{{ID: functionID, Title: "function", Evidence: evidence(), Children: []store.TreeNode{{ID: taskID, Title: "task", Evidence: evidence(), Children: []store.TreeNode{{ID: actionID, Title: "action", Evidence: evidence()}}}}}}}
+	s := store.New(pool)
 	if err := s.SaveTree(ctx, runID, root); err != nil {
 		t.Fatal(err)
 	}

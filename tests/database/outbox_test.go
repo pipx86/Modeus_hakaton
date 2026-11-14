@@ -1,4 +1,4 @@
-package outbox
+package database_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"activity-descriptor/internal/outbox"
 	"activity-descriptor/internal/webhook"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -68,7 +69,7 @@ func TestTriggerAndSignedDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker := Worker{Pool: pool, Sender: sender, RetryDelay: time.Minute}
+	worker := outbox.Worker{Pool: pool, Sender: sender, RetryDelay: time.Minute}
 	if found, err := worker.DeliverOne(ctx); !found || err == nil {
 		t.Fatalf("first attempt: found=%v err=%v", found, err)
 	}

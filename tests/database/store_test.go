@@ -1,6 +1,7 @@
-package store
+package database_test
 
 import (
+	"activity-descriptor/internal/store"
 	"context"
 	"os"
 	"testing"
@@ -51,7 +52,7 @@ func TestStorePostgres(t *testing.T) {
 	}
 	defer pool.Exec(ctx, "DELETE FROM sources WHERE id=$1", sourceID)
 	defer pool.Exec(ctx, "DELETE FROM runs WHERE id=$1", runID)
-	s := New(pool)
+	s := store.New(pool)
 	additionalID := uuid(t, "00000000-0000-4000-8000-000000000004")
 	if _, err := s.CreateSource(ctx, db.CreateSourceParams{ID: additionalID, RunID: runID, Type: "document", Title: "created", ProcessingStatus: "pending"}); err != nil {
 		t.Fatal(err)
@@ -61,10 +62,10 @@ func TestStorePostgres(t *testing.T) {
 	}
 	rootID := uuid(t, "00000000-0000-4000-8000-000000000001")
 	evidenceID := uuid(t, "00000000-0000-4000-8000-000000000002")
-	root := TreeNode{ID: rootID, Title: "role", Evidence: []TreeEvidence{{ID: evidenceID, SourceID: sourceID, Quote: "proof"}}}
+	root := store.TreeNode{ID: rootID, Title: "role", Evidence: []store.TreeEvidence{{ID: evidenceID, SourceID: sourceID, Quote: "proof"}}}
 	// Дерево с некорректным дочерним узлом должно быть отклонено целиком.
 	bad := root
-	bad.Children = []TreeNode{{ID: uuid(t, "00000000-0000-4000-8000-000000000003"), Title: "child"}}
+	bad.Children = []store.TreeNode{{ID: uuid(t, "00000000-0000-4000-8000-000000000003"), Title: "child"}}
 	if err := s.SaveTree(ctx, runID, bad); err == nil {
 		t.Fatal("expected invalid tree to fail")
 	}

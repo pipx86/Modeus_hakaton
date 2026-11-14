@@ -49,11 +49,12 @@ jobs:
         env:
           STORE_TEST_DATABASE_URL: postgres://postgres:dbtest@127.0.0.1:5432/dbtest?sslmode=disable
           VECTOR_TEST_DATABASE_URL: postgres://postgres:dbtest@127.0.0.1:5432/dbtest?sslmode=disable
-        run: go test -count=1 ./internal/store/... ./internal/demofill/... ./cmd/data-audit/... ./cmd/demo-fixture/...
-      - name: Проверить отправку событий
-        env:
           OUTBOX_TEST_DATABASE_URL: postgres://postgres:dbtest@127.0.0.1:5432/dbtest?sslmode=disable
-        run: go test -count=1 ./internal/outbox/... ./internal/webhook/... ./internal/domain/...
+        run: make db-coverage
+      - name: Проверить минимальное покрытие логики БД
+        run: |
+          coverage="$(go tool cover -func=coverage-db.out | awk '/^total:/ {gsub("%", "", $3); print $3}')"
+          awk -v coverage="$coverage" 'BEGIN { if (coverage < 70) exit 1 }'
       - name: Дважды создать демонстрационные данные
         run: |
           make seed

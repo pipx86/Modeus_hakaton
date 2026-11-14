@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -74,5 +75,12 @@ func TestПравилаДерева(t *testing.T) {
 				t.Fatalf("ожидался %s, получено %v", tc.code, err)
 			}
 		})
+	}
+}
+
+func TestОшибкаПроверкиДереваСодержитКод(t *testing.T) {
+	err := (&TreeValidationError{Code: "EMPTY_TITLE", Details: "название узла пустое"}).Error()
+	if !strings.Contains(err, "EMPTY_TITLE") || !strings.Contains(err, "название узла пустое") {
+		t.Fatalf("неверное описание ошибки: %s", err)
 	}
 }
