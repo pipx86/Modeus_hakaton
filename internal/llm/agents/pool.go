@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"activity-descriptor/internal/llm"
+	agentmetrics "activity-descriptor/internal/llm/metrics"
 	"activity-descriptor/internal/llm/openai"
 )
 
@@ -11,6 +12,7 @@ import (
 type Pool struct {
 	gate    *Gate
 	clients map[AgentName]llm.ChatClient
+	metrics *agentmetrics.Registry
 }
 
 // NewPool builds a gated client for every agent. All clients share one
@@ -29,13 +31,15 @@ func NewPoolWithGate(cfg Config, gate *Gate) (*Pool, error) {
 	if gate == nil {
 		return nil, fmt.Errorf("agents: nil gate")
 	}
-	pool := &Pool{gate: gate, clients: make(map[AgentName]llm.ChatClient, len(Names()))}
+	registry := agentmetrics.New()
+	pool := &Pool{gate: gate, clients: make(map[AgentName]llm.ChatClient, len(Names())), metrics: registry}
 	for _, name := range Names() {
 		spec, ok := cfg.Agents[name]
 		if !ok {
 			return nil, fmt.Errorf("agents: missing spec for %s", name)
 		}
 		temperature := spec.Temperature
+		agentName := string(name)
 		raw, err := openai.New(openai.Config{
 			BaseURL:         cfg.BaseURL,
 			APIKey:          cfg.APIKey,
@@ -44,7 +48,9 @@ func NewPoolWithGate(cfg Config, gate *Gate) (*Pool, error) {
 			MaxTokens:       spec.MaxTokens,
 			Temperature:     &temperature,
 			ReasoningEffort: spec.ReasoningEffort,
-		})
+		}, openai.WithUsageObserver(func(u llm.Usage) {
+			registry.ObserveUsage(agentName, u)
+		}))
 		if err != nil {
 			return nil, fmt.Errorf("agents: client for %s: %w", name, err)
 		}
@@ -56,7 +62,7 @@ func NewPoolWithGate(cfg Config, gate *Gate) (*Pool, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agents: circuit breaker for %s: %w", name, err)
 		}
-		runner, err := NewRunner(name, breaker, gate)
+		runner, err := NewRunnerWithMetrics(name, breaker, gate, spec.Model, spec.ReasoningEffort, registry)
 		if err != nil {
 			return nil, err
 		}
@@ -87,6 +93,14 @@ func (p *Pool) Clients() map[AgentName]llm.ChatClient {
 		copy[name] = client
 	}
 	return copy
+}
+
+// Metrics returns the shared agent metrics registry.
+func (p *Pool) Metrics() *agentmetrics.Registry {
+	if p == nil {
+		return nil
+	}
+	return p.metrics
 }
 
 // Gate returns the shared gate.

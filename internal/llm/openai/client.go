@@ -35,6 +35,7 @@ type Client struct {
 	responseFormat  json.RawMessage
 	http            *http.Client
 	logger          *slog.Logger
+	usageObserver   llm.UsageObserver
 }
 
 // Option customises Client.
@@ -46,6 +47,13 @@ func WithHTTPClient(client *http.Client) Option {
 		if client != nil {
 			c.http = client
 		}
+	}
+}
+
+// WithUsageObserver receives token usage for every successful call.
+func WithUsageObserver(observer llm.UsageObserver) Option {
+	return func(c *Client) {
+		c.usageObserver = observer
 	}
 }
 
@@ -152,6 +160,11 @@ type chatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 		Code    int    `json:"code"`
@@ -251,6 +264,14 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 		err := errors.New("empty response content")
 		c.logFailure(ctx, "empty response", resp.StatusCode, time.Since(start), err)
 		return "", llm.NewDomainError(llm.ErrorInvalidResponse, "openai", 0, false, fmt.Errorf("%w: %v", ErrDecode, err))
+	}
+	if c.usageObserver != nil {
+		c.usageObserver(llm.Usage{
+			PromptTokens:     decoded.Usage.PromptTokens,
+			CompletionTokens: decoded.Usage.CompletionTokens,
+			TotalTokens:      decoded.Usage.TotalTokens,
+			Model:            c.model,
+		})
 	}
 	return decoded.Choices[0].Message.Content, nil
 }

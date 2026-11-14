@@ -264,3 +264,37 @@ func TestChatBodyTimeoutIsTimeout(t *testing.T) {
 		t.Fatalf("err = %v, must not be ErrDecode", err)
 	}
 }
+
+func TestChatReportsUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	usageCh := make(chan llm.Usage, 1)
+	client, err := New(Config{
+		BaseURL: srv.URL,
+		APIKey:  testKey,
+		Model:   "qwen/qwen3-32b",
+		Timeout: time.Second,
+	}, WithLogger(discardLogger()), WithUsageObserver(func(usage llm.Usage) {
+		usageCh <- usage
+	}))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.Chat(context.Background(), userMessage("hi")); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	select {
+	case usage := <-usageCh:
+		if usage.PromptTokens != 11 || usage.CompletionTokens != 7 || usage.TotalTokens != 18 {
+			t.Fatalf("usage = %+v", usage)
+		}
+		if usage.Model != "qwen/qwen3-32b" {
+			t.Fatalf("model = %q", usage.Model)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("usage observer was not called")
+	}
+}

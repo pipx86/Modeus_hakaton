@@ -22,3 +22,15 @@ type Message struct {
 type ChatClient interface {
 	Chat(ctx context.Context, messages []Message) (string, error)
 }
+
+// Usage is token and model usage reported by a provider for one successful call.
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	Model            string
+}
+
+// UsageObserver receives usage for every successful provider call. It must be
+// safe for concurrent use.
+type UsageObserver func(Usage)

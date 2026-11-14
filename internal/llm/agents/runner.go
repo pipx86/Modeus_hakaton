@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/llm"
+	agentmetrics "activity-descriptor/internal/llm/metrics"
 )
 
 // Gate is the shared parallel/concurrency/rate-limit gate for all agent calls.
@@ -37,20 +38,28 @@ func NewGate(maxConcurrency, requestsPerMinute, retryMax int) (*Gate, error) {
 
 // Runner wraps one agent's ChatClient with the shared gate.
 type Runner struct {
-	name AgentName
-	next llm.ChatClient
-	gate *Gate
+	name    AgentName
+	next    llm.ChatClient
+	gate    *Gate
+	model   string
+	reason  string
+	metrics *agentmetrics.Registry
 }
 
 // NewRunner creates a gated client for one agent.
 func NewRunner(name AgentName, next llm.ChatClient, gate *Gate) (*Runner, error) {
+	return NewRunnerWithMetrics(name, next, gate, "", "", nil)
+}
+
+// NewRunnerWithMetrics creates a gated client that records per-agent metrics.
+func NewRunnerWithMetrics(name AgentName, next llm.ChatClient, gate *Gate, model, reasoning string, registry *agentmetrics.Registry) (*Runner, error) {
 	if next == nil {
 		return nil, fmt.Errorf("agents: nil client for %s", name)
 	}
 	if gate == nil {
 		return nil, fmt.Errorf("agents: nil gate")
 	}
-	return &Runner{name: name, next: next, gate: gate}, nil
+	return &Runner{name: name, next: next, gate: gate, model: model, reason: reasoning, metrics: registry}, nil
 }
 
 // Name returns the agent name.
@@ -85,7 +94,11 @@ func (r *Runner) Chat(ctx context.Context, messages []llm.Message) (string, erro
 			case <-timer.C:
 			}
 		}
+		start := time.Now()
 		answer, err := r.next.Chat(ctx, messages)
+		if r.metrics != nil {
+			r.metrics.ObserveCall(string(r.name), r.model, r.reason, time.Since(start), err)
+		}
 		if err == nil {
 			return answer, nil
 		}

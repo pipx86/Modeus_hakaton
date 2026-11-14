@@ -3,12 +3,14 @@ package agents
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"activity-descriptor/internal/llm"
+	agentmetrics "activity-descriptor/internal/llm/metrics"
 	"activity-descriptor/internal/llm/openai"
 )
 
@@ -164,4 +166,32 @@ func TestGateSharedAcrossAgents(t *testing.T) {
 		t.Fatalf("shared gate max concurrency = %d, want 1", max)
 	}
 	_ = atomic.LoadInt64(&max)
+}
+
+func TestRunnerRecordsMetrics(t *testing.T) {
+	gate, _ := NewGate(1, 1000, 0)
+	fake := &fakeClient{answer: "ok"}
+	registry := agentmetrics.New()
+	runner, err := NewRunnerWithMetrics(Analyst, fake, gate, "nemotron", "low", registry)
+	if err != nil {
+		t.Fatalf("NewRunnerWithMetrics: %v", err)
+	}
+	if _, err := runner.Chat(context.Background(), []llm.Message{{Role: llm.RoleUser, Content: "hi"}}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	var buf strings.Builder
+	if err := registry.WritePrometheus(&buf); err != nil {
+		t.Fatalf("WritePrometheus: %v", err)
+	}
+	for _, want := range []string{
+		`agent="analyst"`,
+		`model="nemotron"`,
+		`status="ok"`,
+		`reasoning="low"`,
+		`activity_descriptor_agent_calls_total`,
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("metrics missing %q:\n%s", want, buf.String())
+		}
+	}
 }

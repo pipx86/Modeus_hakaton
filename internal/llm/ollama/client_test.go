@@ -221,3 +221,28 @@ func TestChatBodyTimeoutIsTimeout(t *testing.T) {
 		t.Fatalf("err = %v, must not be ErrDecode", err)
 	}
 }
+
+func TestChatReportsUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"message":{"role":"assistant","content":"ok"},"prompt_eval_count":9,"eval_count":4,"done":true}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	usageCh := make(chan llm.Usage, 1)
+	client, err := New(Config{BaseURL: srv.URL, Model: testModel, Timeout: time.Second},
+		WithLogger(discardLogger()), WithUsageObserver(func(usage llm.Usage) { usageCh <- usage }))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.Chat(context.Background(), userMessage("hi")); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	select {
+	case usage := <-usageCh:
+		if usage.PromptTokens != 9 || usage.CompletionTokens != 4 || usage.TotalTokens != 13 {
+			t.Fatalf("usage = %+v", usage)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("usage observer was not called")
+	}
+}

@@ -25,6 +25,7 @@ type prompt struct {
 func main() {
 	parallel := flag.Bool("parallel", true, "run the three agent calls concurrently")
 	timeoutS := flag.Int("timeout", 240, "overall smoke timeout in seconds")
+	showMetrics := flag.Bool("metrics", false, "print per-agent metrics after the smoke run")
 	flag.Parse()
 
 	cfg, err := agents.FromEnv()
@@ -126,6 +127,10 @@ func main() {
 		}
 	}
 	fmt.Printf("\ntotal: %s, failures: %d\n", time.Since(start).Round(time.Millisecond), failures)
+	if *showMetrics && pool.Metrics() != nil {
+		fmt.Println("\n# agent metrics")
+		_ = pool.Metrics().WritePrometheus(os.Stdout)
+	}
 	if failures > 0 {
 		os.Exit(1)
 	}

@@ -24,10 +24,11 @@ const (
 
 // Client is an HTTP client for Ollama's /api/chat endpoint.
 type Client struct {
-	baseURL string
-	model   string
-	http    *http.Client
-	logger  *slog.Logger
+	baseURL       string
+	model         string
+	http          *http.Client
+	logger        *slog.Logger
+	usageObserver llm.UsageObserver
 }
 
 // Option customises Client.
@@ -39,6 +40,13 @@ func WithHTTPClient(client *http.Client) Option {
 		if client != nil {
 			c.http = client
 		}
+	}
+}
+
+// WithUsageObserver receives token usage for every successful call.
+func WithUsageObserver(observer llm.UsageObserver) Option {
+	return func(c *Client) {
+		c.usageObserver = observer
 	}
 }
 
@@ -85,8 +93,10 @@ type chatResponse struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"message"`
-	Done  bool   `json:"done"`
-	Error string `json:"error"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	EvalCount       int    `json:"eval_count"`
+	Done            bool   `json:"done"`
+	Error           string `json:"error"`
 }
 
 // Chat sends messages to Ollama and returns the assistant content.
@@ -172,6 +182,14 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 		err := errors.New("empty response content")
 		c.logFailure(ctx, "empty response", resp.StatusCode, time.Since(start), err)
 		return "", llm.NewDomainError(llm.ErrorInvalidResponse, "ollama", 0, false, fmt.Errorf("%w: %v", ErrDecode, err))
+	}
+	if c.usageObserver != nil {
+		c.usageObserver(llm.Usage{
+			PromptTokens:     decoded.PromptEvalCount,
+			CompletionTokens: decoded.EvalCount,
+			TotalTokens:      decoded.PromptEvalCount + decoded.EvalCount,
+			Model:            c.model,
+		})
 	}
 	return decoded.Message.Content, nil
 }
