@@ -23,8 +23,8 @@ func (s *AgentAnalysisStep) Name() domain.Stage { return domain.StageAnalysis }
 
 // Execute implements domain.Step. Chat analysis needs the transcript, so the
 // data-aware path must be used.
-func (s *AgentAnalysisStep) Execute(context.Context, *domain.Run) error {
-	return fmt.Errorf("agent analysis step requires data; use ExecuteWithData")
+func (s *AgentAnalysisStep) Execute(ctx context.Context, run *domain.Run) error {
+	return s.ExecuteWithData(ctx, run, nil)
 }
 
 // ExecuteWithData implements domain.DataStep. Vacancies are not used: the

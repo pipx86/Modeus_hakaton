@@ -87,7 +87,7 @@ steps := []domain.Step{
     &steps.SaveAITreeStep{Store: treeStore},
 }
 
-err := domain.Orchestrate(ctx, run, steps, eventStore, nil, 2, 2*time.Minute)
+err := domain.Orchestrate(ctx, run, steps, runStore, nil, 2, 2*time.Minute)
 ```
 
 Оркестратор увидит, что run уже на стадии `interview`, пропустит interview и
