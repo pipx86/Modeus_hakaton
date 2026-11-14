@@ -118,17 +118,17 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			c.logFailure(ctx, "request cancelled", 0, duration, ctxErr)
 			if errors.Is(ctxErr, context.DeadlineExceeded) {
-				return "", fmt.Errorf("%w: %v", ErrTimeout, ctxErr)
+				return "", llm.NewDomainError(llm.ErrorTimeout, "ollama", 0, true, fmt.Errorf("%w: %v", ErrTimeout, ctxErr))
 			}
-			return "", fmt.Errorf("ollama: chat cancelled: %w", ctxErr)
+			return "", llm.NewDomainError(llm.ErrorCanceled, "ollama", 0, false, fmt.Errorf("ollama: chat cancelled: %w", ctxErr))
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
 			c.logFailure(ctx, "request timeout", 0, duration, err)
-			return "", fmt.Errorf("%w: %v", ErrTimeout, err)
+			return "", llm.NewDomainError(llm.ErrorTimeout, "ollama", 0, true, fmt.Errorf("%w: %v", ErrTimeout, err))
 		}
 		c.logFailure(ctx, "request failed", 0, duration, err)
-		return "", fmt.Errorf("ollama: chat request: %w", err)
+		return "", llm.NewDomainError(llm.ErrorUnavailable, "ollama", 0, true, fmt.Errorf("ollama: chat request: %w", err))
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -141,7 +141,7 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 			Body:       strings.TrimSpace(string(body)),
 		}
 		c.logFailure(ctx, "upstream error", resp.StatusCode, duration, upstream)
-		return "", upstream
+		return "", llm.NewDomainError(llm.KindForStatus(resp.StatusCode), "ollama", resp.StatusCode, llm.RetryableStatus(resp.StatusCode), upstream)
 	}
 
 	var decoded chatResponse
@@ -151,27 +151,27 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			c.logFailure(ctx, "decode timeout", resp.StatusCode, elapsed, ctxErr)
 			if errors.Is(ctxErr, context.DeadlineExceeded) {
-				return "", fmt.Errorf("%w: %v", ErrTimeout, ctxErr)
+				return "", llm.NewDomainError(llm.ErrorTimeout, "ollama", 0, true, fmt.Errorf("%w: %v", ErrTimeout, ctxErr))
 			}
-			return "", fmt.Errorf("ollama: chat cancelled: %w", ctxErr)
+			return "", llm.NewDomainError(llm.ErrorCanceled, "ollama", 0, false, fmt.Errorf("ollama: chat cancelled: %w", ctxErr))
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
 			c.logFailure(ctx, "decode timeout", resp.StatusCode, elapsed, err)
-			return "", fmt.Errorf("%w: %v", ErrTimeout, err)
+			return "", llm.NewDomainError(llm.ErrorTimeout, "ollama", 0, true, fmt.Errorf("%w: %v", ErrTimeout, err))
 		}
 		c.logFailure(ctx, "decode error", resp.StatusCode, elapsed, err)
-		return "", fmt.Errorf("%w: %v", ErrDecode, err)
+		return "", llm.NewDomainError(llm.ErrorInvalidResponse, "ollama", 0, false, fmt.Errorf("%w: %v", ErrDecode, err))
 	}
 	if decoded.Error != "" {
 		upstream := &UpstreamError{StatusCode: resp.StatusCode, Body: decoded.Error}
 		c.logFailure(ctx, "upstream error", resp.StatusCode, time.Since(start), upstream)
-		return "", upstream
+		return "", llm.NewDomainError(llm.KindForStatus(resp.StatusCode), "ollama", resp.StatusCode, llm.RetryableStatus(resp.StatusCode), upstream)
 	}
 	if decoded.Message.Content == "" {
 		err := errors.New("empty response content")
 		c.logFailure(ctx, "empty response", resp.StatusCode, time.Since(start), err)
-		return "", fmt.Errorf("%w: %v", ErrDecode, err)
+		return "", llm.NewDomainError(llm.ErrorInvalidResponse, "ollama", 0, false, fmt.Errorf("%w: %v", ErrDecode, err))
 	}
 	return decoded.Message.Content, nil
 }

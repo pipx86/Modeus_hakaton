@@ -2,13 +2,11 @@ package agents
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"activity-descriptor/internal/llm"
-	"activity-descriptor/internal/llm/openai"
 )
 
 // Gate is the shared parallel/concurrency/rate-limit gate for all agent calls.
@@ -100,11 +98,7 @@ func (r *Runner) Chat(ctx context.Context, messages []llm.Message) (string, erro
 }
 
 func retryable(err error) bool {
-	var upstream *openai.UpstreamError
-	if errors.As(err, &upstream) {
-		return upstream.StatusCode == 429 || upstream.StatusCode >= 500
-	}
-	return errors.Is(err, openai.ErrTimeout)
+	return llm.IsRetryable(err)
 }
 
 // Job is one independent model call executed by Parallel.

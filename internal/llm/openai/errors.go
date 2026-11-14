@@ -3,6 +3,8 @@ package openai
 import (
 	"errors"
 	"fmt"
+
+	"activity-descriptor/internal/llm"
 )
 
 var (
@@ -26,3 +28,12 @@ func (e *UpstreamError) Error() string {
 
 // Unwrap allows errors.Is(err, ErrUpstream).
 func (e *UpstreamError) Unwrap() error { return ErrUpstream }
+
+// Kind implements llm.Classified.
+func (e *UpstreamError) Kind() llm.ErrorKind { return llm.KindForStatus(e.StatusCode) }
+
+// Retryable implements llm.Classified.
+func (e *UpstreamError) Retryable() bool { return llm.RetryableStatus(e.StatusCode) }
+
+// HTTPStatus implements llm.Classified.
+func (e *UpstreamError) HTTPStatus() int { return e.StatusCode }
