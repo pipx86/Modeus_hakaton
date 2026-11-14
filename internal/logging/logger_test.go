@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRotatingWriterCreatesSecondFileAfterSlice(t *testing.T) {
@@ -45,14 +46,10 @@ func TestInitWritesToFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	// Создаём writer напрямую, чтобы иметь возможность закрыть его
 	writer := NewRotatingWriter(path, 1)
-
-	// Пишем через slog напрямую в этот writer
 	testLogger := slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	testLogger.Info("hello rotation", "key", "value")
 
-	// Закрываем writer, чтобы Windows отпустила файл
 	if closer, ok := writer.(io.Closer); ok {
 		closer.Close()
 	}
@@ -71,4 +68,80 @@ func TestLoggerNotNilByDefault(t *testing.T) {
 		t.Fatal("Logger обязан быть инициализирован пакетом при загрузке")
 	}
 	Logger.Info("package init works")
+}
+
+// === НОВЫЕ ТЕСТЫ ДЛЯ ПОДНЯТИЯ ПОКРЫТИЯ (Windows-safe) ===
+
+func TestLoggerDifferentLevels(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "levels.log")
+
+	writer := NewRotatingWriter(path, 10) // Большой лимит, чтобы не ротировать
+	defer func() {
+		if c, ok := writer.(io.Closer); ok {
+			c.Close()
+		}
+	}()
+
+	testLogger := slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	testLogger.Debug("debug message")
+	testLogger.Info("info message")
+	testLogger.Warn("warn message")
+	testLogger.Error("error message")
+
+	// Даем время на запись
+	time.Sleep(100 * time.Millisecond)
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	// Проверяем, что все уровни записались
+	for _, msg := range []string{"debug message", "info message", "warn message", "error message"} {
+		if !strings.Contains(content, msg) {
+			t.Errorf("в логе отсутствует сообщение уровня: %s", msg)
+		}
+	}
+}
+
+func TestRotatingWriterEmptyWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.log")
+
+	w := NewRotatingWriter(path, 1)
+	defer func() {
+		if c, ok := w.(io.Closer); ok {
+			c.Close()
+		}
+	}()
+
+	// Пустая запись не должна вызывать панику
+	n, err := w.Write([]byte{})
+	if err != nil {
+		t.Fatalf("пустая запись вернула ошибку: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("пустая запись вернула n=%d, ожидалось 0", n)
+	}
+}
+
+func TestRotatingWriterNilData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nil.log")
+
+	w := NewRotatingWriter(path, 1)
+	defer func() {
+		if c, ok := w.(io.Closer); ok {
+			c.Close()
+		}
+	}()
+
+	// Запись nil не должна вызывать панику
+	n, err := w.Write(nil)
+	if err != nil {
+		t.Fatalf("запись nil вернула ошибку: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("запись nil вернула n=%d, ожидалось 0", n)
+	}
 }

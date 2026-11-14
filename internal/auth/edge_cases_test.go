@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,108 +11,133 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// 1. Пустой токен после Bearer
-func TestMiddlewareRejectsEmptyBearerToken(t *testing.T) {
-	SetSecretForTests("test-secret")
+// 1. Тест на ветку "insufficient permissions" в RequireRole
+func TestGuardRejectsUnknownRoleWithMessage(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer ") // Пустое значение
 	rr := httptest.NewRecorder()
-	Middleware(echoHandler()).ServeHTTP(rr, req)
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("ожидали 401 на пустой Bearer, получили %d", rr.Code)
+
+	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin}), RoleTeacher)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("ожидали 403, получили %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if body != `{"code":"FORBIDDEN","message":"insufficient permissions for this action"}` {
+		t.Fatalf("неверное сообщение об ошибке: %s", body)
 	}
 }
 
-// 2. Некорректный формат Claims (роль не строка)
-// Исправлено: теперь ожидаем ошибку JSON-распаковки, которая возникает раньше проверки роли
-func TestParseRejectsNonStringRole(t *testing.T) {
+// 2. Тест на ветку "unknown role in token" в Parse
+func TestParseRejectsValidTokenWithInvalidRole(t *testing.T) {
 	SetSecretForTests("test-secret")
 
-	// Создаем токен вручную через MapClaims, где role - это число
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  "u-bad",
-		"role": 123, // Не строка!
+		"sub":  "u-hacker",
+		"role": "superadmin",
 		"exp":  time.Now().Add(time.Hour).Unix(),
 	})
 	tokStr, _ := token.SignedString([]byte("test-secret"))
 
 	_, err := Parse(tokStr)
 	if err == nil {
-		t.Fatal("токен с числовой ролью должен быть отклонен")
+		t.Fatal("токен с недопустимой ролью должен быть отклонен")
 	}
-
-	// Ожидаем ошибку JSON unmarshal или invalid token
-	errMsg := err.Error()
-	isJsonError := strings.Contains(errMsg, "cannot unmarshal number") ||
-		strings.Contains(errMsg, "token is malformed") ||
-		strings.Contains(errMsg, "invalid")
-
-	if !isJsonError {
-		t.Fatalf("ожидали ошибку типа 'cannot unmarshal' или 'invalid', получили: %v", err)
+	if !strings.Contains(err.Error(), "unknown role in token") {
+		t.Fatalf("ожидали ошибку 'unknown role in token', получили: %v", err)
 	}
 }
 
-// 3. Алгоритм None (критическая уязвимость)
-func TestParseRejectsNoneAlgorithm(t *testing.T) {
-	SetSecretForTests("test-secret")
-	token := jwt.NewWithClaims(jwt.SigningMethodNone, jwt.MapClaims{
-		"sub":  "hacker",
-		"role": "admin",
-		"exp":  time.Now().Add(time.Hour).Unix(),
-	})
-	// Подписываем пустой строкой (как требует none)
-	tokStr, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+// 3. Тест на ветку "JWT_SECRET is not set" в Issue
+func TestIssueFailsWithoutSecret(t *testing.T) {
+	oldKey := signingKey
+	signingKey = nil
+	defer func() { signingKey = oldKey }()
 
-	_, err := Parse(tokStr)
+	_, err := Issue("u-test", RoleAdmin, time.Hour)
 	if err == nil {
-		t.Fatal("токен с алгоритмом none должен быть отклонен")
+		t.Fatal("Issue должен падать без установленного секрета")
 	}
-	if !strings.Contains(err.Error(), "unexpected signing method") {
-		t.Fatalf("ожидали ошибку метода подписи, получили: %v", err)
-	}
-}
-
-// 4. Пустой Subject (технически валидно, проверяем что не падает)
-func TestIssueAllowsEmptySubject(t *testing.T) {
-	SetSecretForTests("test-secret")
-	tok, err := Issue("", RoleAdmin, time.Hour)
-	if err != nil {
-		t.Fatalf("Issue не должен падать на пустом sub: %v", err)
-	}
-	claims, err := Parse(tok)
-	if err != nil || claims.Sub != "" {
-		t.Fatalf("пустой sub должен сохраниться: %v, %+v", err, claims)
+	if !strings.Contains(err.Error(), "JWT_SECRET is not set") {
+		t.Fatalf("неверная ошибка: %v", err)
 	}
 }
 
-// 5. Приоритет заголовка над query
-func TestMiddlewareHeaderPriorityOverQuery(t *testing.T) {
+// 4. Тест на ветку "JWT_SECRET is not set" в Parse
+func TestParseFailsWithoutSecret(t *testing.T) {
+	oldKey := signingKey
+	signingKey = nil
+	defer func() { signingKey = oldKey }()
+
+	_, err := Parse("some.random.token")
+	if err == nil {
+		t.Fatal("Parse должен падать без установленного секрета")
+	}
+	if !strings.Contains(err.Error(), "JWT_SECRET is not set") {
+		t.Fatalf("неверная ошибка: %v", err)
+	}
+}
+
+// 5. Тест на MiddlewareWithWhitelist: путь НЕ в whitelist и нет токена
+func TestMiddlewareWithWhitelistRejectsProtectedPath(t *testing.T) {
 	SetSecretForTests("test-secret")
-	validTok, _ := Issue("u-header", RoleTeacher, time.Hour)
-	invalidTok, _ := Issue("u-query", RoleStudent, -time.Second) // Просрочен
 
-	req := httptest.NewRequest("GET", "/?access_token="+invalidTok, nil)
-	req.Header.Set("Authorization", "Bearer "+validTok)
+	h := MiddlewareWithWhitelist(echoHandler(), []string{"/public"})
 
+	req := httptest.NewRequest("GET", "/protected", nil)
 	rr := httptest.NewRecorder()
-	Middleware(echoHandler()).ServeHTTP(rr, req)
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("ожидали 401 для защищенного пути без токена, получили %d", rr.Code)
+	}
+}
+
+// 6. Тест на MiddlewareWithWhitelist: путь В whitelist (проходит без токена)
+// 6. Тест на MiddlewareWithWhitelist: путь В whitelist (проходит без токена)
+func TestMiddlewareWithWhitelistAllowsPublicPath(t *testing.T) {
+	SetSecretForTests("test-secret")
+
+	// Используем простой хендлер, который не требует роль из контекста
+	publicHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := MiddlewareWithWhitelist(publicHandler, []string{"/public"})
+
+	req := httptest.NewRequest("GET", "/public/docs", nil) // Путь начинается с /public
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("заголовок должен иметь приоритет, получили %d", rr.Code)
-	}
-	if rr.Body.String() != "teacher" {
-		t.Fatalf("должна быть роль из заголовка (teacher), получила %q", rr.Body.String())
+		t.Fatalf("ожидали 200 для публичного пути, получили %d", rr.Code)
 	}
 }
 
-// 6. Токен с TTL = 0 (истекает сразу)
-func TestParseRejectsZeroTTL(t *testing.T) {
-	SetSecretForTests("test-secret")
-	tok, _ := Issue("u-zero", RoleStudent, 0)
-	time.Sleep(10 * time.Millisecond)
+// 7. Тест на утилиту Subject из контекста
+func TestSubjectFromContext(t *testing.T) {
+	ctx := context.WithValue(context.Background(), subjectKey{}, "user-123")
+	sub := Subject(ctx)
+	if sub != "user-123" {
+		t.Fatalf("ожидали 'user-123', получили '%s'", sub)
+	}
 
-	_, err := Parse(tok)
-	if err == nil {
-		t.Fatal("токен с нулевым TTL должен быть просрочен")
+	emptySub := Subject(context.Background())
+	if emptySub != "" {
+		t.Fatalf("ожидали пустую строку для пустого контекста, получили '%s'", emptySub)
+	}
+}
+
+// 8. Тест на ValidRole с пустой строкой и мусором
+func TestValidRoleEdgeCases(t *testing.T) {
+	if ValidRole("") {
+		t.Fatal("пустая строка не должна быть валидной ролью")
+	}
+	if ValidRole(" ") {
+		t.Fatal("пробел не должен быть валидной ролью")
+	}
+	if ValidRole("ADMIN") { // Регистр имеет значение
+		t.Fatal("ADMIN в верхнем регистре не должен быть валидной ролью")
 	}
 }

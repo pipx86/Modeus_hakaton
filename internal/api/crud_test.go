@@ -193,3 +193,59 @@ func TestDeleteSourceNotFound(t *testing.T) {
 		t.Fatalf("ожидали 404, получили %d", resp.StatusCode)
 	}
 }
+
+// === ДОБАВИТЬ В КОНЕЦ crud_test.go ===
+
+func TestPatchNodeInvalidJSON(t *testing.T) {
+	_, ts := setupCRUDTest(t)
+	auth.EnsureTestSecret()
+	tok, _ := auth.Issue("admin-user", auth.RoleAdmin, time.Hour)
+
+	req, _ := http.NewRequest("PATCH", ts.URL+"/api/v1/nodes/n1", bytes.NewReader([]byte("{bad json")))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("ожидали 400 для невалидного JSON, получили %d", resp.StatusCode)
+	}
+}
+
+func TestBulkApproveEmptyArray(t *testing.T) {
+	_, ts := setupCRUDTest(t)
+	auth.EnsureTestSecret()
+	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+
+	reqBody := bulkApproveRequest{IDs: []string{}}
+	body, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/evidences/bulk-approve", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("ожидали 400 для пустого массива, получили %d", resp.StatusCode)
+	}
+}
+
+func TestBulkApproveInvalidJSON(t *testing.T) {
+	_, ts := setupCRUDTest(t)
+	auth.EnsureTestSecret()
+	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/evidences/bulk-approve", bytes.NewReader([]byte("{bad")))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("ожидали 400 для невалидного JSON, получили %d", resp.StatusCode)
+	}
+}

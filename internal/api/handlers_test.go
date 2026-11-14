@@ -266,3 +266,42 @@ func TestIdempotentCreateRunRace(t *testing.T) {
 		t.Fatalf("идемпотентность нарушена: ожидали 1 прогон, получили %d", count)
 	}
 }
+func TestGetRunInvalidUUID(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	rr := do(t, h, "GET", "/api/v1/runs/not-a-uuid", "admin", "")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("ожидали 404 для невалидного UUID, получили %d", rr.Code)
+	}
+}
+
+func TestExportRunNotFound(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	rr := do(t, h, "GET", "/api/v1/runs/nonexistent/export", "admin", "")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("ожидали 404 для экспорта несуществующего run, получили %d", rr.Code)
+	}
+}
+
+func TestGetTreeNotFound(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	rr := do(t, h, "GET", "/api/v1/runs/nonexistent/tree", "admin", "")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("ожидали 404 для дерева несуществующего run, получили %d", rr.Code)
+	}
+}
+
+func TestGetAnswersNotFound(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	rr := do(t, h, "GET", "/api/v1/runs/nonexistent/answers", "admin", "")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("ожидали 404 для answers несуществующего run, получили %d", rr.Code)
+	}
+}
+
+func TestApproveEvidenceNotFound(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	rr := do(t, h, "POST", "/api/v1/evidences/nonexistent/approve", "teacher", "")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("ожидали 404 для approve несуществующего evidence, получили %d", rr.Code)
+	}
+}
