@@ -21,13 +21,17 @@ type Result[T any] struct {
 	initialized bool
 }
 
-func Success[T any](value T) Result[T] { return Result[T]{value: value, initialized: true} }
+func Success[T any](value T) Result[T] {
+	return Result[T]{value: value, initialized: true}
+}
+
 func Failure[T any](err error) Result[T] {
 	if err == nil {
 		err = ErrUninitializedResult
 	}
 	return Result[T]{err: err, initialized: true}
 }
+
 func (r Result[T]) Unwrap() (T, error) {
 	if !r.initialized {
 		var zero T
@@ -73,7 +77,18 @@ func (r Result[T]) AndThen(fn func(T) Result[T]) Result[T] {
 	return fn(r.value)
 }
 
-//domain error
+// === Расширенный домен ошибок для всего бэкенда ===
+
+// Коды ошибок предметной области
+const (
+	CodeNotFound   = "NOT_FOUND"
+	CodeValidation = "VALIDATION_ERROR"
+	CodeAuth       = "AUTH_ERROR"
+	CodeInternal   = "INTERNAL_ERROR"
+	CodeConflict   = "CONFLICT"
+	CodeParse      = "PARSE_ERROR"
+)
+
 // NewDomainError создает типизированную ошибку домена.
 func NewDomainError(code, message string, cause error) *Error {
 	return &Error{
@@ -83,9 +98,36 @@ func NewDomainError(code, message string, cause error) *Error {
 	}
 }
 
-// Удобные константы для частых ошибок (пример)
+// Стандартные ошибки-синглтоны для всего бэкенда.
+// Доступны через импорт пакета domain: domain.ErrNotFound
 var (
-	ErrNotFound     = NewDomainError("NOT_FOUND", "сущность не найдена", nil)
-	ErrValidation   = NewDomainError("VALIDATION_ERROR", "ошибка валидации данных", nil)
-	ErrUnauthorized = NewDomainError("UNAUTHORIZED", "доступ запрещен", nil)
+	ErrNotFound     = NewDomainError(CodeNotFound, "сущность не найдена", nil)
+	ErrValidation   = NewDomainError(CodeValidation, "ошибка валидации данных", nil)
+	ErrUnauthorized = NewDomainError(CodeAuth, "доступ запрещен", nil)
+	ErrInternal     = NewDomainError(CodeInternal, "внутренняя ошибка сервера", nil)
+	ErrConflict     = NewDomainError(CodeConflict, "конфликт состояния", nil)
+	ErrParse        = NewDomainError(CodeParse, "ошибка парсинга данных", nil)
 )
+
+// Хелперы для быстрой проверки типа ошибки в любом месте бэкенда.
+// Пример использования: if domain.IsNotFound(err) { ... }
+
+func IsNotFound(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code == CodeNotFound
+}
+
+func IsValidation(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code == CodeValidation
+}
+
+func IsAuth(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code == CodeAuth
+}
+
+func IsInternal(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code == CodeInternal
+}
