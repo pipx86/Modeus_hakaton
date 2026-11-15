@@ -20,3 +20,13 @@ Migration: `20261115000000_llm_observability.sql`.
 - `prompt_version_id` может быть NULL для старых/внешних вызовов.
 - `llm_responses.raw_text` и `llm_requests.messages` могут содержать чувствительные данные; retention и маскирование должен обеспечивать слой приложения.
 - `pii_findings` не хранит исходный PII-текст: только тип, хэш и позиции.
+
+
+## Runtime-поля агентов
+
+Миграция `20261115000001_agent_runtime.sql`:
+
+- `runs.status` разрешает `degraded`;
+- `runs.degraded_reason` хранит причину;
+- `llm_requests.attempt` и `max_attempts` хранят попытки и лимит;
+- `pii_findings.response_id` ссылается на `llm_responses`.
