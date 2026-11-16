@@ -1,0 +1,123 @@
+$kind: http-request
+description: Replaces or creates the full node hierarchy for the specified run. Validates structure before saving.
+url: "{{baseUrl}}/api/v1/runs/:id/tree"
+method: PUT
+headers:
+  Content-Type: application/json
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Run ID
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: json
+  content: |-
+    [
+      {
+        "description": "string",
+        "evidence": [
+          {
+            "id": "string",
+            "quote": "string",
+            "source_id": "string"
+          },
+          {
+            "id": "string",
+            "quote": "string",
+            "source_id": "string"
+          }
+        ],
+        "id": "string",
+        "parent_id": "string",
+        "title": "string",
+        "type": "action"
+      },
+      {
+        "description": "string",
+        "evidence": [
+          {
+            "id": "string",
+            "quote": "string",
+            "source_id": "string"
+          },
+          {
+            "id": "string",
+            "quote": "string",
+            "source_id": "string"
+          }
+        ],
+        "id": "string",
+        "parent_id": "string",
+        "title": "string",
+        "type": "action"
+      }
+    ]
+  $type: |-
+    {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string"
+                },
+                "source_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "role",
+              "function",
+              "task",
+              "action"
+            ]
+          }
+        }
+      }
+    }
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Save competency tree for a run.resources/examples
+order: 2000

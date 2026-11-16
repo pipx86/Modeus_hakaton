@@ -1,0 +1,4 @@
+$kind: collection
+description: Backend service for extracting competency trees from job descriptions and interviews.
+variables:
+  baseUrl: /api/v1

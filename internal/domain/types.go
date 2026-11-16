@@ -67,11 +67,62 @@ type Source struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 
+type RunType string
+
+const (
+	RunTypeBatch RunType = "batch"
+	RunTypeChat  RunType = "chat"
+)
+
 type Run struct {
-	ID         string     `json:"id"`
-	Status     RunStatus  `json:"status"`
-	Profession string     `json:"profession"`
-	RootNodeID *string    `json:"root_node_id,omitempty"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ID               string             `json:"id"`
+	Status           RunStatus          `json:"status"`
+	Profession       string             `json:"profession"`
+	Type             RunType            `json:"type,omitempty"`
+	RootNodeID       *string            `json:"root_node_id,omitempty"`
+	StartedAt        *time.Time         `json:"started_at,omitempty"`
+	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
+	Stage            Stage              `json:"stage,omitempty"`
+	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
+	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
+	PerVacancySkills [][]string         `json:"-"`
+	LevelData        []map[string]any   `json:"level_data,omitempty"`
+	LevelSkills      [][]string         `json:"-"`
+	Data             map[string]any     `json:"-"`
+}
+type Stage string
+
+const (
+	StageCreated   Stage = "created"
+	StageInterview Stage = "interview"
+	StageAnalysis  Stage = "analysis"
+	StageSynthesis Stage = "synthesis"
+	StageReview    Stage = "review"
+	StageDone      Stage = "done"
+	StageFailed    Stage = "failed"
+)
+
+var ErrInvalidTransition = errors.New("INVALID_TRANSITION")
+
+var allowedTransitions = map[Stage][]Stage{
+	StageCreated:   {StageInterview, StageFailed},
+	StageInterview: {StageAnalysis, StageFailed},
+	StageAnalysis:  {StageSynthesis, StageFailed},
+	StageSynthesis: {StageReview, StageFailed},
+	StageReview:    {StageDone, StageFailed},
+	StageDone:      {},
+	StageFailed:    {},
+}
+
+func CanTransition(from, to Stage) bool {
+	// Resume: разрешаем повторный запуск текущей стадии после перезапуска сервера.
+	if from == to {
+		return true
+	}
+	for _, s := range allowedTransitions[from] {
+		if s == to {
+			return true
+		}
+	}
+	return false
 }

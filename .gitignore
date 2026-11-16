@@ -9,4 +9,6 @@ coverage-db-unit.out
 go.work
 go.work.sum
 node_modules/
+data/acceptance/
 data/reports/
+logs/

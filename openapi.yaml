@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Modeus activity-descriptor API
   version: 0.1.0
-  description: Contract for the multi-agent activity-descriptor backend (card 1).
+  description: Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20).
 servers:
   - url: /api/v1
 tags:
@@ -11,12 +11,15 @@ tags:
   - name: evidences
   - name: runs
   - name: nodes
+security:
+  - bearerAuth: []
 paths:
   "/health":
     get:
       tags: [system]
       summary: Service liveness probe
       operationId: getHealth
+      security: []
       responses:
         "200":
           description: Service is up
@@ -38,6 +41,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Source"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [sources]
       summary: Create a source
@@ -58,6 +67,8 @@ paths:
                   minLength: 1
                 content:
                   type: string
+                source_url:
+                  type: string
       responses:
         "201":
           description: Created source (server-assigned id)
@@ -65,6 +76,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Source"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/sources/{id}":
     get:
       tags: [sources]
@@ -83,6 +106,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Source"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
           content:
@@ -102,6 +131,12 @@ paths:
       responses:
         "204":
           description: Deleted, no content
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
           content:
@@ -133,6 +168,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Evidence"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [evidences]
       summary: Attach an evidence to a node
@@ -143,10 +184,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [source_id, quote]
+              required: [node_id, source_id, quote]
               additionalProperties: false
               properties:
+                node_id:
+                  type: string
+                  format: uuid
                 source_id:
+                  type: string
+                  minLength: 1
+                ref_id:
                   type: string
                   minLength: 1
                 quote:
@@ -158,6 +205,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Evidence"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: Validation failed
           content:
@@ -179,8 +238,20 @@ paths:
       responses:
         "204":
           description: Approved, no content
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Evidence already approved
           content:
             application/json:
               schema:
@@ -199,6 +270,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Run"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [runs]
       summary: Start a run (triggers agents)
@@ -222,6 +299,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/runs/{id}":
     get:
       tags: [runs]
@@ -240,6 +329,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
           content:
@@ -267,8 +362,157 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Node"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [runs]
+      summary: Сохранить новое дерево одной транзакцией
+      operationId: saveRunTree
+      description: Требуется роль admin, teacher или rop. Существующее дерево не заменяется.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: "#/components/schemas/Node"}
+      responses:
+        "204": {description: Дерево сохранено}
+        "400": {description: Неверный JSON}
+        "401": {description: Нужен JWT}
+        "403": {description: Недостаточно прав}
+        "404": {description: Исследование не найдено}
+        "409": {description: Дерево уже существует}
+        "422":
+          description: Дерево нарушает правила
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, details]
+                properties:
+                  code: {type: string}
+                  details: {type: string}
+                  node_id: {type: string}
+  "/runs/{id}/answers":
+    get:
+      tags: [runs]
+      summary: List evidence answers collected by a run
+      operationId: getRunAnswers
+      description: Flat array of evidences gathered across the run's nodes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of evidences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Evidence"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs/{id}/export":
+    get:
+      tags: [runs]
+      summary: Export run result (tree)
+      operationId: exportRun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exported nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Run not finished yet, nothing to export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/runs/{id}/events":
+    get:
+      tags: [runs]
+      summary: Stream run progress (SSE)
+      operationId: streamRunEvents
+      description: text/event-stream; events per stage; heartbeat; reconnect via Last-Event-ID without duplicates; closes on done/failed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: ID of the last received event; server resumes after it without duplicates.
+      responses:
+        "200":
+          description: Server-sent events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Run not found
           content:
             application/json:
               schema:
@@ -313,8 +557,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Node"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Run already finished, node locked
           content:
             application/json:
               schema:
@@ -325,8 +587,135 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  "/runs/{id}/search":
+    get:
+      tags: [runs]
+      summary: Найти фрагменты в источниках исследования
+      operationId: searchRunFragments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 5}
+        - name: strategy
+          in: query
+          schema: {type: string, enum: [vector, hybrid], default: vector}
+      responses:
+        "200":
+          description: Режим vector или bm25 и список найденных фрагментов
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode, hits]
+                properties:
+                  mode: {type: string, enum: [vector, bm25, hybrid]}
+                  hits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ref_id: {type: string, format: uuid}
+                        source_id: {type: string, format: uuid}
+                        quote: {type: string}
+                        score: {type: number}
+        "400": {description: Неверный запрос или пакет поиска не применён}
+        "401": {description: Нужен JWT}
+        "403": {description: Недостаточно прав}
+        "404": {description: Исследование не найдено}
+        "501": {description: Хранилище не поддерживает поиск}
+  "/sources/{id}/index":
+    post:
+      tags: [sources]
+      summary: Создать фрагменты источника и их векторы
+      operationId: indexSourceFragments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204": {description: Индекс сохранён}
+        "400": {description: Неверный ID}
+        "401": {description: Нужен JWT}
+        "403": {description: Нужна роль admin или teacher}
+        "501": {description: Хранилище не поддерживает индексирование}
+        "502": {description: Источник или модель недоступны; прежний индекс сохранён}
+  "/runs/{id}/snapshots":
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [runs]
+      summary: Создать снимок сохранённого дерева
+      operationId: createSnapshot
+      responses:
+        "201":
+          description: Снимок создан
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Snapshot"}
+        "404": {description: Исследование не найдено}
+        "409": {description: Дерево ещё не сохранено}
+    get:
+      tags: [runs]
+      summary: Получить снимки исследования
+      operationId: listSnapshots
+      responses:
+        "200":
+          description: Снимки в порядке версий
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Snapshot"}
+        "404": {description: Исследование не найдено}
+  "/runs/{id}/snapshots/{snapshot_id}":
+    get:
+      tags: [runs]
+      summary: Получить снимок исследования
+      operationId: getSnapshot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: snapshot_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Сохранённый снимок
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Snapshot"}
+        "404": {description: Снимок не найден}
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
+    Snapshot:
+      type: object
+      required: [id, run_id, version, tree, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        version: {type: integer, minimum: 1}
+        tree: {type: object, additionalProperties: true}
+        created_at: {type: string, format: date-time}
     HealthResponse:
       type: object
       required: [status]
@@ -360,7 +749,13 @@ components:
         id:
           type: string
           minLength: 1
+        node_id:
+          type: string
+          minLength: 1
         source_id:
+          type: string
+          minLength: 1
+        ref_id:
           type: string
           minLength: 1
         quote:
@@ -402,6 +797,8 @@ components:
           minLength: 1
         content:
           type: string
+        source_url:
+          type: string
         created_at:
           type: string
           format: date-time
@@ -426,3 +823,6 @@ components:
         finished_at:
           type: string
           format: date-time
+        stage:
+          type: string
+          enum: [created, interview, analysis, synthesis, review, done, failed]

@@ -1,0 +1,146 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/v1/runs"
+  method: GET
+  headers:
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      [
+        {
+          "finished_at": "string",
+          "hybrid_weights_raw": {
+            "key_0": 390.5679180912458
+          },
+          "id": "string",
+          "level_data": [
+            {
+              "key_0": "string",
+              "key_1": 7872.336410272846,
+              "key_2": 3899.578876579395,
+              "key_3": 4196.676776721315
+            },
+            {
+              "key_0": 4175.701838385303,
+              "key_1": "string"
+            }
+          ],
+          "profession": "string",
+          "root_node_id": "string",
+          "skill_freq": {
+            "key_0": 8209,
+            "key_1": 9079
+          },
+          "stage": "done",
+          "started_at": "string",
+          "status": "done",
+          "type": "chat"
+        },
+        {
+          "finished_at": "string",
+          "hybrid_weights_raw": {
+            "key_0": 5585.839301458729,
+            "key_1": 1173.117994022005
+          },
+          "id": "string",
+          "level_data": [
+            {
+              "key_0": "string"
+            },
+            {
+              "key_0": 9345,
+              "key_1": 1119.9879858803197,
+              "key_2": 5176.593613647505,
+              "key_3": 7548.749240172483
+            }
+          ],
+          "profession": "string",
+          "root_node_id": "string",
+          "skill_freq": {
+            "key_0": 6128
+          },
+          "stage": "analysis",
+          "started_at": "string",
+          "status": "done",
+          "type": "chat"
+        }
+      ]
+    $type: |-
+      {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "finished_at": {
+              "type": "string"
+            },
+            "hybrid_weights_raw": {
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "level_data": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "profession": {
+              "type": "string"
+            },
+            "root_node_id": {
+              "type": "string"
+            },
+            "skill_freq": {
+              "type": "object"
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "created",
+                "interview",
+                "analysis",
+                "synthesis",
+                "review",
+                "done",
+                "failed"
+              ]
+            },
+            "started_at": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "running",
+                "done",
+                "failed"
+              ]
+            },
+            "type": {
+              "description": "=== NEW ===",
+              "allOf": [
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      }
+order: 1000

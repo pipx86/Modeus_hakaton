@@ -1,0 +1,35 @@
+$kind: http-request
+description: Marks a specific quote/snippet as verified and usable in synthesis.
+url: "{{baseUrl}}/api/v1/evidences/:id/approve"
+method: POST
+headers:
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Evidence ID
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: text
+  content: ""
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Approve a single piece of evidence.resources/examples
+order: 1000

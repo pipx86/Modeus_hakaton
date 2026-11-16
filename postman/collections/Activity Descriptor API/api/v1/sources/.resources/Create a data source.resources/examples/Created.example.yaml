@@ -1,0 +1,63 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/v1/sources"
+  method: POST
+  headers:
+    - key: Content-Type
+      value: application/json
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  body:
+    type: json
+    content: |-
+      {
+        "content": "string",
+        "title": "string",
+        "type": "string"
+      }
+response:
+  statusCode: 201
+  statusText: Created
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "content": "string",
+        "created_at": "string",
+        "id": "string",
+        "title": "string",
+        "type": "interview"
+      }
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "vacancy",
+              "interview",
+              "standard",
+              "document"
+            ]
+          }
+        }
+      }
+order: 1000

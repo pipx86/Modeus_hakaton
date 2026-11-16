@@ -1,0 +1,62 @@
+name: Проверка бэкенда и PostgreSQL
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      database:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: acceptance-only
+          POSTGRES_DB: acceptance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d acceptance"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://postgres:acceptance-only@127.0.0.1:5432/acceptance?sslmode=disable
+    steps:
+      - name: Получить бэкенд
+        uses: actions/checkout@v6
+      - name: Получить миграции из отдельной ветки БД
+        uses: actions/checkout@v6
+        with:
+          ref: feature/rustam/goose-migrations
+          path: .ci-db
+      - name: Установить Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Установить Goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.29.0
+      - name: Применить обе группы миграций
+        run: |
+          goose -dir .ci-db/migrations postgres "$DATABASE_URL" up
+          goose -table goose_vector_versions -dir .ci-db/migrations_optional/vector postgres "$DATABASE_URL" up
+      - name: Проверить бэкенд и общий сценарий
+        env:
+          INGEST_TEST_DATABASE_URL: postgres://postgres:acceptance-only@127.0.0.1:5432/acceptance?sslmode=disable
+          MODEUS_ACCEPTANCE_EXCLUSIVE: "1"
+        run: go test -v -count=1 ./...
+      - name: Проверить повторное наполнение и качество
+        working-directory: .ci-db
+        run: |
+          make seed
+          make seed
+          make check-data
+      - name: Сохранить отчёт
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-data-quality
+          path: .ci-db/data/reports/
+          if-no-files-found: ignore

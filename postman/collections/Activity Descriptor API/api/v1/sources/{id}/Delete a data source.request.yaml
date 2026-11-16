@@ -1,0 +1,35 @@
+$kind: http-request
+description: Удаляет источник только при отсутствии защищённых связей; иначе возвращается 409.
+url: "{{baseUrl}}/api/v1/sources/:id"
+method: DELETE
+headers:
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Source ID
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: text
+  content: ""
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Delete a data source.resources/examples
+order: 1000

@@ -1,0 +1,46 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/v1/evidences/bulk-approve"
+  method: POST
+  headers:
+    - key: Content-Type
+      value: application/json
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  body:
+    type: json
+    content: |-
+      {
+        "ids": [
+          "string",
+          "string"
+        ]
+      }
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "approved": 4574,
+        "skipped": 2506
+      }
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "approved": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer"
+          }
+        }
+      }
+order: 1000

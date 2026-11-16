@@ -1,0 +1,39 @@
+$kind: http-request
+description: Adds a new vacancy, interview transcript, or standard document to the system.
+url: "{{baseUrl}}/api/v1/sources"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: json
+  content: |-
+    {
+      "content": "string",
+      "title": "string",
+      "type": "string"
+    }
+  $type: |-
+    {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    }
+auth:
+  type: apikey
+  credentials:
+    key: Authorization
+    value: "{{apiKey}}"
+    in: header
+settings: {}
+examples: ./.resources/Create a data source.resources/examples
+order: 1000

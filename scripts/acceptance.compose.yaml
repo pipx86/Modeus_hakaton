@@ -1,0 +1,36 @@
+services:
+  database:
+    image: pgvector/pgvector:0.8.0-pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: acceptance-only
+      POSTGRES_DB: acceptance
+    ports:
+      - "127.0.0.1::5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d acceptance"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  checks:
+    image: golang:1.26.10-alpine
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:acceptance-only@database:5432/acceptance?sslmode=disable
+      GOFLAGS: -buildvcs=false
+      MODEUS_ACCEPTANCE_EXCLUSIVE: "1"
+    volumes:
+      - type: bind
+        source: ${MODEUS_DB_PATH:?Укажите путь к рабочей папке ветки БД}
+        target: /schema
+        read_only: true
+      - type: bind
+        source: ${MODEUS_BACKEND_PATH:?Укажите путь к рабочей папке бэкенда}
+        target: /backend
+        read_only: true
+      - type: bind
+        source: ${MODEUS_ARTIFACTS_PATH:?Укажите папку результатов}
+        target: /artifacts
+    entrypoint: ["sh", "/backend/scripts/run-acceptance.sh"]
