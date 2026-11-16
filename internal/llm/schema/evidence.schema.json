@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "source_id", "quote"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "node_id": { "type": "string", "minLength": 1 },
+    "source_id": { "type": "string", "minLength": 1 },
+    "ref_id": { "type": "string", "minLength": 1 },
+    "quote": { "type": "string" }
+  }
+}

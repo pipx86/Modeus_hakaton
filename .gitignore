@@ -1,0 +1,12 @@
+bin/
+*.exe
+*.test
+coverage.out
+coverage-db.out
+coverage-db-unit.out
+.env
+.env.*
+go.work
+go.work.sum
+node_modules/
+data/reports/
