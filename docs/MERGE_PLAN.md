@@ -9,20 +9,20 @@ Python-наследия и без лишних конфликтов.
 
 | Ветка | Коммит | Что это |
 |---|---|---|
-| `origin/feature/Mikrozaym/BackEnd` | `7d1580d` | база интеграции |
+| `origin/feature/Mikrozaym/BackEnd` | `90c32d5` | база интеграции |
 | `feature/db-llm` | `f58c82c` | схема БД: LLM + runtime |
-| `origin/feature/ai-on-backend` | `8c8b8e2` | AI, чат, агенты, метрики |
+| `origin/feature/ai-on-backend` | `14ab829` | AI, чат, агенты, метрики |
 | `origin/feature/devops-go` | `f062fdd` | Docker, CI, Grafana, n8n |
 | `origin/feature/frontend` | `f37e2df` | фронт, подключается отдельно |
 
 ## Порядок
 
-1. Взять за базу **`origin/feature/Mikrozaym/BackEnd`** (`7d1580d`).
+1. Взять за базу **`origin/feature/Mikrozaym/BackEnd`** (`90c32d5`).
    `main` пока пустой, туда рано.
 2. Из **`feature/db-llm`** (`f58c82c`) перенести **только `migrations/`**.
    Код БД-ветки не мержить: он конфликтует с BackEnd в store, outbox, webhook
    и `go.mod`.
-3. На результат перенести **AI-ветку** (`8c8b8e2`):
+3. На результат перенести **AI-ветку** (`14ab829`):
    - новые каталоги целиком;
    - 8 общих файлов правим вручную.
 4. После AI перенести DevOps: **не мержить ветку целиком**, а cherry-pick
