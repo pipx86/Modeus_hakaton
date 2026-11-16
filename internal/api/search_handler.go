@@ -4,10 +4,11 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/embeddings"
 	"activity-descriptor/internal/search"
-	"github.com/jackc/pgx/v5/pgtype"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Server) searchService() (search.Service, bool) {

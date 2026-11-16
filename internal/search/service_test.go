@@ -4,14 +4,15 @@ import (
 	"activity-descriptor/internal/embeddings"
 	"context"
 	"encoding/json"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func searchFixture(t *testing.T) (*pgxpool.Pool, pgtype.UUID, pgtype.UUID) {

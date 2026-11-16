@@ -15,6 +15,7 @@ import (
 
 	"activity-descriptor/internal/outbox"
 	"activity-descriptor/internal/webhook"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

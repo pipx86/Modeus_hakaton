@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"activity-descriptor/internal/demofill"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

@@ -32,53 +32,10 @@ import {
   SearchXIcon,
 } from "lucide-react"
 import type { ActivityNode, Evidence, NodeType } from "@/lib/api/client"
-
-/**
- * Узел дерева с восстановленными детьми. Контракт отдаёт плоский список {@link ActivityNode},
- * где иерархия выражена полем `parent_id`; эта типа-обёртка добавляет массив `children`,
- * собранный {@link buildTree}.
- */
-export type TreeNode = ActivityNode & { children: TreeNode[] }
-
-/**
- * Человеческие подписи типов узлов. Экспортируется, чтобы страница Research использовала
- * те же строки в диалоге редактирования (select типа) без дублирования литералов.
- */
-export const NODE_TYPE_LABELS: Record<NodeType, string> = {
-  role: "Роль",
-  function: "Функция",
-  task: "Задача",
-  action: "Действие",
-}
+import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "./activity-tree-model"
 
 /** Порядок типов для чипов-фильтров: от общего к частному, как в самой методологии дерева. */
 const TYPE_ORDER: NodeType[] = ["role", "function", "task", "action"]
-
-/**
- * Собирает иерархию из плоского списка контракта.
- *
- * Алгоритм двухпроходный: сначала индексируем все узлы в `Map` id -> {@link TreeNode}
- * с пустым `children`, затем для каждого узла находим родителя по `parent_id` и
- * прицепляем в его `children`; узлы без родителя (или с отсутствующим родителем)
- * становятся корнями. Отсутствие второго обхода дерева делает сборку O(n).
- *
- * @param nodes Плоский массив узлов из `GET /runs/{id}/tree`.
- * @return Корни леса; каждый корень несёт рекурсивно собранных потомков в `children`.
- */
-export function buildTree(nodes: ActivityNode[]): TreeNode[] {
-  const map = new Map<string, TreeNode>()
-  for (const node of nodes) map.set(node.id, { ...node, children: [] })
-
-  const roots: TreeNode[] = []
-  for (const node of nodes) {
-    const current = map.get(node.id)
-    if (!current) continue
-    const parent = node.parent_id ? map.get(node.parent_id) : undefined
-    if (parent) parent.children.push(current)
-    else roots.push(current)
-  }
-  return roots
-}
 
 /**
  * Заголовок узла с подсветкой совпадения поиска. Если запрос пуст или не найден -
@@ -381,6 +338,8 @@ export function ActivityTree({
    */
   useEffect(() => {
     if (!filtersActive) {
+      // Автораскрытие синхронизирует открытые ветки с результатом фильтрации дерева.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpanded(new Set(roots.map((root) => root.id)))
       return
     }

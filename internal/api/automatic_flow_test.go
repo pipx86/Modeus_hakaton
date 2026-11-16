@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/domain"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

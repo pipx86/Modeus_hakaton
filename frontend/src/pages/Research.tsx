@@ -33,7 +33,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
-import { ActivityTree, NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree"
+import { ActivityTree } from "@/components/activity-tree"
+import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
   apiClient,
   type ActivityNode,
@@ -142,20 +143,34 @@ function SourcesTab() {
   }, [])
 
   useEffect(() => {
-    if (!quotesSourceId) {
-      setQuotes([])
-      return
-    }
+    if (!quotesSourceId) return
+    let cancelled = false
     const loadQuotes = async () => {
       setQuotesLoading(true)
       const { data } = await apiClient.GET("/evidences", {
         params: { query: { source_id: quotesSourceId } },
       })
+      if (cancelled) return
       setQuotes(data ?? [])
       setQuotesLoading(false)
     }
     void loadQuotes()
+    return () => {
+      cancelled = true
+    }
   }, [quotesSourceId])
+
+  const toggleQuotes = (sourceId: string) => {
+    if (quotesSourceId === sourceId) {
+      setQuotesSourceId(null)
+      setQuotes([])
+      setQuotesLoading(false)
+      return
+    }
+    setQuotes([])
+    setQuotesLoading(true)
+    setQuotesSourceId(sourceId)
+  }
 
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -196,7 +211,11 @@ function SourcesTab() {
       return
     }
     setSources((prev) => prev.filter((source) => source.id !== sourceId))
-    if (quotesSourceId === sourceId) setQuotesSourceId(null)
+    if (quotesSourceId === sourceId) {
+      setQuotesSourceId(null)
+      setQuotes([])
+      setQuotesLoading(false)
+    }
     toast.success("Источник удалён")
   }
 
@@ -293,7 +312,7 @@ function SourcesTab() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setQuotesSourceId(expanded ? null : source.id)}
+                    onClick={() => toggleQuotes(source.id)}
                     aria-label={expanded ? "Скрыть цитаты" : "Показать цитаты"}
                     aria-expanded={expanded}
                   >
@@ -382,19 +401,11 @@ function NodeEditDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }) {
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [type, setType] = useState<NodeType>("task")
-  const [parentId, setParentId] = useState("")
+  const [title, setTitle] = useState(node?.title ?? "")
+  const [description, setDescription] = useState(node?.description ?? "")
+  const [type, setType] = useState<NodeType>(node?.type ?? "task")
+  const [parentId, setParentId] = useState(node?.parent_id ?? "")
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!node) return
-    setTitle(node.title)
-    setDescription(node.description ?? "")
-    setType(node.type)
-    setParentId(node.parent_id ?? "")
-  }, [node])
 
   const candidates = useMemo(() => {
     if (!node) return []
@@ -667,6 +678,8 @@ function TreeTab({ id, active }: { id: string; active: boolean }) {
   }, [id])
 
   useEffect(() => {
+    // Загрузка дерева меняет состояние после ответа API и нужна при открытии вкладки.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
     if (!active) return
     const timer = setInterval(() => void load(), 5000)
@@ -742,6 +755,7 @@ function TreeTab({ id, active }: { id: string; active: boolean }) {
         onAttach={setAttaching}
       />
       <NodeEditDialog
+        key={editing?.id ?? "closed"}
         node={editing}
         nodes={nodes}
         open={editing !== null}
@@ -790,6 +804,8 @@ export function Research() {
   }, [id])
 
   useEffect(() => {
+    // Первичная загрузка прогона выполняется асинхронно; состояние обновит ответ API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRun()
   }, [loadRun])
 

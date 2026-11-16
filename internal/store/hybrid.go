@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5/pgtype"
 	"sort"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // SearchHybrid объединяет ранги векторного и лексического поиска методом RRF.

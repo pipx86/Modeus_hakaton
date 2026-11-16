@@ -1,8 +1,9 @@
 package store
 
 import (
-	"github.com/jackc/pgx/v5/pgtype"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestСлияниеРанговПоиска(t *testing.T) {

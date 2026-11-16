@@ -9,6 +9,7 @@ import (
 
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/store"
+
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pashagolub/pgxmock/v4"
 )

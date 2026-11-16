@@ -47,6 +47,8 @@ export function ChatTab({ runId, active }: ChatTabProps) {
   }, [runId, appendMessages])
 
   useEffect(() => {
+    // История загружается из API; состояние обновляется асинхронно после ответа.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadHistory()
   }, [loadHistory])
 

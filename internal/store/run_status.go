@@ -8,6 +8,7 @@ import (
 
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/store/db"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

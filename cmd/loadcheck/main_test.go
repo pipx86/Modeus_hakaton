@@ -10,6 +10,7 @@ import (
 
 	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/auth"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

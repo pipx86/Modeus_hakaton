@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { ActivityTree, buildTree, NODE_TYPE_LABELS } from "@/components/activity-tree"
+import { ActivityTree } from "@/components/activity-tree"
+import { buildTree, NODE_TYPE_LABELS } from "@/components/activity-tree-model"
 import type { ActivityNode, Evidence } from "@/lib/api/client"
 
 const evidence = (id: string): Evidence => ({ id, source_id: "src-1", quote: `Цитата ${id}` })

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"activity-descriptor/internal/store"
+
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pashagolub/pgxmock/v4"
 )

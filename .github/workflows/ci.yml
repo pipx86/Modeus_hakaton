@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, dev, "feature/**"]
   pull_request:
   workflow_dispatch:
 
@@ -34,9 +34,9 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: v1.62.2
+          version: v2.15.0
           args: --timeout=5m
 
   test:
@@ -183,7 +183,7 @@ jobs:
       - if: steps.detect.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - if: steps.detect.outputs.exists == 'true'
@@ -191,6 +191,9 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm run lint
+          npm run typecheck
+          npm test
           npm run build
 
   docker:
@@ -210,7 +213,7 @@ jobs:
           docker run -d --name api-smoke -p 18080:8080 \
             -e JWT_SECRET=ci-demo-jwt-secret-at-least-32-bytes-long \
             activity-descriptor-api:local
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18080/health >/dev/null; then break; fi
             sleep 1
           done

@@ -77,7 +77,10 @@ func TestPatchNodeNotFound(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
@@ -132,7 +135,10 @@ func TestBulkApproveIdempotent(t *testing.T) {
 	req2, _ := http.NewRequest("POST", ts.URL+"/api/v1/evidences/bulk-approve", bytes.NewReader(body2))
 	req2.Header.Set("Authorization", "Bearer "+tok)
 	req2.Header.Set("Content-Type", "application/json")
-	resp2, _ := http.DefaultClient.Do(req2)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer resp2.Body.Close()
 
 	var result bulkApproveResponse
@@ -162,7 +168,10 @@ func TestDeleteSourceWithEvidenceIsRejected(t *testing.T) {
 
 	answersReq, _ := http.NewRequest("GET", ts.URL+"/api/v1/runs/run-1/answers", nil)
 	answersReq.Header.Set("Authorization", "Bearer "+tok)
-	answersResp, _ := http.DefaultClient.Do(answersReq)
+	answersResp, err := http.DefaultClient.Do(answersReq)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer answersResp.Body.Close()
 
 	var answers []domain.Evidence
@@ -186,7 +195,10 @@ func TestDeleteSourceNotFound(t *testing.T) {
 	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v1/sources/nonexistent", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
@@ -205,7 +217,10 @@ func TestPatchNodeInvalidJSON(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
@@ -225,7 +240,10 @@ func TestBulkApproveEmptyArray(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
@@ -242,7 +260,10 @@ func TestBulkApproveInvalidJSON(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("ошибка HTTP-запроса: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {

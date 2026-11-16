@@ -84,7 +84,7 @@ func TestNodeDomainOK(t *testing.T) {
 }
 
 func TestEvidenceSchemaValid(t *testing.T) {
-	e := Evidence{ID: "e-1", SourceID: "s-1", Quote: "q"}
+	e := Evidence{ID: "e-1", SourceID: "s-1", RefID: "ref-1", Quote: "q"}
 	if err := compile(t, "evidence.schema.json").Validate(roundTrip(t, e)); err != nil {
 		t.Fatalf("evidence rejected: %v", err)
 	}

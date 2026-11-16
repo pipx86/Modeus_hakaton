@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/auth"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
