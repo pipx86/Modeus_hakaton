@@ -157,9 +157,9 @@ func (p *PGStore) SetStatus(id string, status domain.RunStatus) error {
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	tag, err := p.Pool.Exec(ctx, `UPDATE runs SET status=$2,stage=CASE WHEN $2 IN ('done','failed') THEN $2 ELSE stage END,
+	tag, err := p.Pool.Exec(ctx, `UPDATE runs SET status=$2,stage=CASE WHEN $2='degraded' THEN 'done' WHEN $2 IN ('done','failed') THEN $2 ELSE stage END,
  started_at=CASE WHEN $2='running' THEN COALESCE(started_at,now()) ELSE started_at END,
- finished_at=CASE WHEN $2 IN ('done','failed') THEN now() ELSE finished_at END,updated_at=now() WHERE id=$1`, id, string(status))
+ finished_at=CASE WHEN $2 IN ('done','failed','degraded') THEN now() ELSE finished_at END,updated_at=now() WHERE id=$1`, id, string(status))
 	if err != nil {
 		return translate(err)
 	}
@@ -168,6 +168,26 @@ func (p *PGStore) SetStatus(id string, status domain.RunStatus) error {
 	}
 	return nil
 }
+
+func (p *PGStore) SetRunType(id string, runType domain.RunType) error {
+	if !validUUID(id) {
+		return ErrNotFound
+	}
+	if runType != domain.RunTypeBatch && runType != domain.RunTypeChat {
+		return errors.New("INVALID_RUN_TYPE")
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tag, err := p.Pool.Exec(ctx, `UPDATE runs SET type=$2,updated_at=now() WHERE id=$1`, id, string(runType))
+	if err != nil {
+		return translate(err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (p *PGStore) Save(r *domain.Run) error {
 	if r == nil || !validUUID(r.ID) {
 		return ErrNotFound
@@ -176,7 +196,7 @@ func (p *PGStore) Save(r *domain.Run) error {
 	defer cancel()
 	tag, err := p.Pool.Exec(ctx, `UPDATE runs SET status=$2,stage=$3,
  started_at=CASE WHEN $2='running' THEN COALESCE(started_at,now()) ELSE started_at END,
- finished_at=CASE WHEN $2 IN ('done','failed') THEN now() ELSE finished_at END,updated_at=now() WHERE id=$1`, r.ID, string(r.Status), string(r.Stage))
+ finished_at=CASE WHEN $2 IN ('done','failed','degraded') THEN now() ELSE finished_at END,updated_at=now() WHERE id=$1`, r.ID, string(r.Status), string(r.Stage))
 	if err != nil {
 		return translate(err)
 	}

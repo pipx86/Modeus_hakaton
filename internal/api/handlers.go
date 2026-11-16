@@ -2,6 +2,7 @@ package api
 
 import (
 	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/idempotency"
 	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
@@ -21,6 +22,7 @@ import (
 type Server struct {
 	store        Store
 	autoStart    bool
+	chat         *chat.Service
 	idemStore    idempotency.Store
 	eventStore   sse.EventStore
 	ssePoll      time.Duration
@@ -28,6 +30,10 @@ type Server struct {
 }
 
 func NewServer(store Store) *Server {
+	return NewServerWithChat(store, nil)
+}
+
+func NewServerWithChat(store Store, chatService *chat.Service) *Server {
 	hb := 15 * time.Second
 	if v := os.Getenv("SSE_HEARTBEAT_S"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -37,6 +43,7 @@ func NewServer(store Store) *Server {
 	server := &Server{
 		store:        store,
 		autoStart:    true,
+		chat:         chatService,
 		idemStore:    idempotency.NewMemStore(time.Hour),
 		eventStore:   sse.NewMemEventStore(1000),
 		ssePoll:      200 * time.Millisecond,
@@ -65,6 +72,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
+	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
+	mux.HandleFunc("POST /api/v1/runs/{id}/messages", s.handlePostMessage)
 	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)
 	mux.HandleFunc("POST /api/v1/sources/{id}/index", s.handleIndexSource)
 	mux.HandleFunc("PATCH /api/v1/nodes/{id}", s.handlePatchNode)
@@ -85,7 +94,7 @@ func (s *Server) Routes() http.Handler {
 
 	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
 	root.Handle("/", auth.MiddlewareWithWhitelist(protected, []string{"/swagger"}))
-	return root
+	return withCORS(root)
 }
 
 type createRunRequest struct {
@@ -144,6 +153,38 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 
 	if appendErr := s.eventStore.Append(initialEvent); appendErr != nil {
 		logging.Logger.Error("event_append_failed", "run_id", run.ID, "error", appendErr)
+	}
+
+	if s.chat != nil {
+		if pgStore, ok := s.store.(*PGStore); ok {
+			if err := pgStore.SetRunType(run.ID, domain.RunTypeChat); err != nil {
+				logging.Logger.Error("chat_run_type_store_failed", "run_id", run.ID, "error", err)
+				writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+				return
+			}
+			run.Type = domain.RunTypeChat
+		}
+		if err := s.store.SetStage(run.ID, domain.StageInterview); err != nil {
+			logging.Logger.Error("chat_run_stage_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		run.Stage = domain.StageInterview
+		if err := s.chat.Start(run.ID, run.Profession); err != nil {
+			_ = s.store.SetStage(run.ID, domain.StageFailed)
+			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		stageEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
+			"stage":  string(domain.StageInterview),
+			"status": string(domain.RunRunning),
+		})
+		if err := s.eventStore.Append(stageEvent); err != nil {
+			logging.Logger.Error("chat_stage_event_failed", "run_id", run.ID, "error", err)
+		}
+		writeJSON(w, http.StatusCreated, run)
+		return
 	}
 
 	if pgStore, ok := s.store.(*PGStore); s.autoStart && ok && pgStore.Pool != nil {

@@ -1,0 +1,25 @@
+{
+  "name": "Короткие ответы: серия уточнений",
+  "session_id": "sess-5",
+  "respondent": {
+    "id": "resp-5",
+    "role": "Аналитик данных",
+    "profession": "Аналитик данных"
+  },
+  "responses": [
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q1\",\"level\":\"role\",\"text\":\"Чем вы занимаетесь в роли аналитика данных?\",\"rationale\":\"роль\"},\"rationale\":\"Первый вопрос о роли\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q2\",\"level\":\"function\",\"text\":\"Какие крупные направления работы входят в вашу роль?\",\"rationale\":\"функции\"},\"rationale\":\"Спуск к функциям\",\"is_clarification\":true}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q3\",\"level\":\"task\",\"text\":\"Какие конкретные задачи вы выполняете?\",\"rationale\":\"задачи\"},\"rationale\":\"Спуск к задачам\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q4\",\"level\":\"action\",\"text\":\"Какими инструментами вы пользуетесь?\",\"rationale\":\"действия\"},\"rationale\":\"Спуск к действиям\",\"is_clarification\":true}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q5\",\"level\":\"task\",\"text\":\"Какую ещё задачу вы выполняете?\",\"rationale\":\"задачи\"},\"rationale\":\"Вторая задача\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q6\",\"level\":\"action\",\"text\":\"Какие действия выполняете с отчётами?\",\"rationale\":\"действия\"},\"rationale\":\"Действия\",\"is_clarification\":true}"}
+  ],
+  "answers": ["Да", "Всякое", "Не знаю", "По-разному", "Как-то так", "Ну, бывает"],
+  "expect": {
+    "levels": ["role", "function", "task", "action", "task", "action"],
+    "questions": 6,
+    "clarifications": 3,
+    "fallbacks": 0,
+    "model_errors": 0
+  }
+}

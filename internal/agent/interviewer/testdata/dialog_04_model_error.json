@@ -1,0 +1,28 @@
+{
+  "name": "Отказы модели не прерывают диалог",
+  "session_id": "sess-4",
+  "respondent": {
+    "id": "resp-4",
+    "role": "Аналитик данных",
+    "profession": "Аналитик данных"
+  },
+  "responses": [
+    {"kind": "error", "error": "provider returned status 500"},
+    {"kind": "error", "error": "context deadline exceeded"}
+  ],
+  "answers": [
+    "Я аналитик данных, отвечаю за отчётность и анализ продаж",
+    "Мои основные функции — отчётность, анализ требований и визуализация",
+    "Каждый день пишу SQL-запросы для отчётов по продажам",
+    "Использую PostgreSQL и DBeaver, пишу запросы и проверяю выгрузки",
+    "Строю дашборды в Superset по готовым выгрузкам",
+    "Настраиваю фильтры и проверяю корректность показателей"
+  ],
+  "expect": {
+    "levels": ["role", "function", "task", "action", "task", "action"],
+    "questions": 6,
+    "clarifications": 0,
+    "fallbacks": 6,
+    "model_errors": 6
+  }
+}

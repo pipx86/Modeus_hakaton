@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analyst.output.schema.json",
+  "description": "Analyst output contract agent.io/v1. Every entity has a verbatim quote with source and ref id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entities"],
+  "properties": {
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "title", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["role", "function", "task", "action"] },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "parent_id": { "type": "string", "minLength": 1 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "source_id", "ref_id", "quote"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "source_id": { "type": "string", "minLength": 1 },
+                "ref_id": { "type": "string", "minLength": 1 },
+                "quote": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

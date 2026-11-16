@@ -1,9 +1,12 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
+	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/sse"
 )
@@ -78,6 +81,15 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		lastID = v
 	}
 
+	var chatEvents <-chan chat.Event
+	if s.chat != nil {
+		stream, cancel, err := s.chat.Subscribe(id)
+		if err == nil {
+			chatEvents = stream
+			defer cancel()
+		}
+	}
+
 	ch := make(chan *sse.SSEEvent, 256)
 	unsub := s.eventStore.SubscribeLive(func(ev *sse.SSEEvent) {
 		select {
@@ -132,6 +144,22 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+		case chatEvent, ok := <-chatEvents:
+			if !ok {
+				chatEvents = nil
+				continue
+			}
+			payload, err := json.Marshal(chatEvent)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", chatEvent.Type, payload); err != nil {
+				return
+			}
+			flusher.Flush()
+			if chatEvent.Type == "run_status" && (chatEvent.Status == "done" || chatEvent.Status == "degraded" || chatEvent.Status == "failed") {
+				return
+			}
 		case <-heartbeat.C:
 			// Heartbeat не меняет Last-Event-ID, потому что он не хранится в истории.
 			if _, err := w.Write([]byte("event: heartbeat\ndata: {\"ping\":true}\n\n")); err != nil {

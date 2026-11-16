@@ -24,3 +24,24 @@ func (s eventRunStore) Save(run *domain.Run) error {
 	}
 	return s.events.Append(sse.NewEvent(run.ID, typ, map[string]any{"stage": run.Stage, "status": run.Status, "pct": stagePct[run.Stage]}))
 }
+
+func (s *Server) AppendRunStatusEvent(runID string, status domain.RunStatus) error {
+	typ := sse.EventStageChange
+	stage := domain.StageInterview
+	switch status {
+	case domain.RunDone:
+		typ = sse.EventDone
+		stage = domain.StageDone
+	case domain.RunDegraded:
+		typ = sse.EventDone
+		stage = domain.StageDone
+	case domain.RunFailed:
+		typ = sse.EventError
+		stage = domain.StageFailed
+	}
+	return s.eventStore.Append(sse.NewEvent(runID, typ, map[string]any{
+		"stage":  stage,
+		"status": status,
+		"pct":    stagePct[stage],
+	}))
+}

@@ -14,6 +14,10 @@ import (
 	"time"
 
 	"activity-descriptor/internal/api"
+	"activity-descriptor/internal/chat"
+	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/llm"
+	"activity-descriptor/internal/llm/agents"
 	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
 
@@ -57,7 +61,36 @@ func run(ctx context.Context, c config) error {
 	}
 
 	pgStore := api.NewPGStore(pool)
-	app := api.NewServer(pgStore)
+	var app *api.Server
+	var chatClient llm.ChatClient = chat.UnavailableClient{}
+	var analystClient llm.ChatClient
+	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
+		if agentPool, poolErr := agents.NewPool(cfg); poolErr == nil {
+			if interviewerClient, clientErr := agentPool.Client(agents.Interviewer); clientErr == nil {
+				chatClient = interviewerClient
+			}
+			if client, clientErr := agentPool.Client(agents.Analyst); clientErr == nil {
+				analystClient = client
+			}
+		}
+	} else {
+		logging.Logger.Info("LLM provider is not configured; using fallback interview")
+	}
+	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
+		if err := pgStore.SetStatus(runID, status); err != nil {
+			logging.Logger.Error("chat_status_store_failed", "run_id", runID, "error", err)
+			return
+		}
+		if app != nil {
+			if err := app.AppendRunStatusEvent(runID, status); err != nil {
+				logging.Logger.Error("chat_status_event_failed", "run_id", runID, "error", err)
+			}
+		}
+	})
+	if analystClient != nil {
+		chatService.SetFinalizer(newTreeFinalizer(pgStore, analystClient))
+	}
+	app = api.NewServerWithChat(pgStore, chatService)
 	rawHandler := app.Routes()
 	handler := logging.RequestLogger(rawHandler) // === NEW: Оборачиваем в логгер ===
 

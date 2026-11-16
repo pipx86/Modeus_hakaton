@@ -1,0 +1,60 @@
+{
+  "version": "2024.1",
+  "entries": [
+    {
+      "id": "tax-role-data-analyst",
+      "type": "role",
+      "title": "Аналитик данных",
+      "aliases": ["data analyst", "аналитик данных"]
+    },
+    {
+      "id": "tax-fn-reporting",
+      "type": "function",
+      "title": "Отчётность и визуализация",
+      "parent_id": "tax-role-data-analyst",
+      "aliases": ["отчётность", "визуализация", "отчетность"]
+    },
+    {
+      "id": "tax-fn-requirements",
+      "type": "function",
+      "title": "Анализ требований",
+      "parent_id": "tax-role-data-analyst",
+      "aliases": ["анализ требований", "сбор требований"]
+    },
+    {
+      "id": "tax-task-sql",
+      "type": "task",
+      "title": "Писать SQL-запросы",
+      "parent_id": "tax-fn-reporting",
+      "aliases": ["sql", "sql-запросы", "писать sql-запросы", "писать sql запросы"]
+    },
+    {
+      "id": "tax-task-dashboards",
+      "type": "task",
+      "title": "Строить дашборды",
+      "parent_id": "tax-fn-reporting",
+      "aliases": ["дашборд", "дашборды", "строить дашборды"]
+    },
+    {
+      "id": "tax-task-gather",
+      "type": "task",
+      "title": "Собирать требования",
+      "parent_id": "tax-fn-requirements",
+      "aliases": ["собирать требования", "сбор требований к отчётам"]
+    },
+    {
+      "id": "tax-act-optimize",
+      "type": "action",
+      "title": "Оптимизировать SQL-запросы",
+      "parent_id": "tax-task-sql",
+      "aliases": ["оптимизировать запросы", "оптимизировать sql"]
+    },
+    {
+      "id": "tax-act-verify",
+      "type": "action",
+      "title": "Проверять выгрузки",
+      "parent_id": "tax-task-sql",
+      "aliases": ["проверять выгрузки", "проверка выгрузок"]
+    }
+  ]
+}

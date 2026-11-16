@@ -1,0 +1,33 @@
+{
+  "name": "Аналитик данных: полный план уровней",
+  "session_id": "sess-1",
+  "respondent": {
+    "id": "resp-1",
+    "name": "Иван",
+    "role": "Аналитик данных",
+    "profession": "Аналитик данных"
+  },
+  "responses": [
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q1\",\"level\":\"role\",\"text\":\"Чем вы занимаетесь в роли аналитика данных и за что отвечаете?\",\"rationale\":\"нужно зафиксировать границы роли\"},\"rationale\":\"Первый вопрос о роли\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q2\",\"level\":\"function\",\"text\":\"Какие крупные направления работы входят в вашу роль?\",\"rationale\":\"переходим к функциям\"},\"rationale\":\"Спуск к функциям\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q3\",\"level\":\"task\",\"text\":\"Какие конкретные задачи вы выполняете каждый день?\",\"rationale\":\"нужны задачи внутри функций\"},\"rationale\":\"Спуск к задачам\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q4\",\"level\":\"action\",\"text\":\"Какими инструментами и шагами вы пользуетесь при выполнении этой задачи?\",\"rationale\":\"нужны конкретные действия\"},\"rationale\":\"Спуск к действиям\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q5\",\"level\":\"task\",\"text\":\"Какую ещё регулярную задачу вы выполняете с отчётами?\",\"rationale\":\"расширяем задачи\"},\"rationale\":\"Вторая задача\",\"is_clarification\":false}"},
+    {"kind": "answer", "text": "{\"question\":{\"id\":\"q6\",\"level\":\"action\",\"text\":\"Какие действия вы выполняете, когда строите дашборд?\",\"rationale\":\"нужны действия по второй задаче\"},\"rationale\":\"Действия\",\"is_clarification\":false}"}
+  ],
+  "answers": [
+    "Я аналитик данных, отвечаю за отчётность и анализ продаж",
+    "Мои основные функции — отчётность, анализ требований и визуализация",
+    "Каждый день пишу SQL-запросы для отчётов по продажам",
+    "Использую PostgreSQL и DBeaver, пишу запросы и проверяю выгрузки",
+    "Строю дашборды в Superset по готовым выгрузкам",
+    "Настраиваю фильтры и проверяю корректность показателей"
+  ],
+  "expect": {
+    "levels": ["role", "function", "task", "action", "task", "action"],
+    "questions": 6,
+    "clarifications": 0,
+    "fallbacks": 0,
+    "model_errors": 0
+  }
+}

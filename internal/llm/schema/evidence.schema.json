@@ -3,12 +3,12 @@
   "$id": "evidence.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "source_id", "quote"],
+  "required": ["id", "source_id", "ref_id", "quote"],
   "properties": {
-    "id": { "type": "string", "minLength": 1 },
-    "node_id": { "type": "string", "minLength": 1 },
-    "source_id": { "type": "string", "minLength": 1 },
-    "ref_id": { "type": "string", "minLength": 1 },
-    "quote": { "type": "string" }
+    "id": {"type": "string", "minLength": 1},
+    "node_id": {"type": "string", "minLength": 1},
+    "source_id": {"type": "string", "minLength": 1},
+    "ref_id": {"type": "string", "minLength": 1},
+    "quote": {"type": "string", "minLength": 1}
   }
 }

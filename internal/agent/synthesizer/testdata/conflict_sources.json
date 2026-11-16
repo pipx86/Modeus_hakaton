@@ -1,0 +1,85 @@
+{
+  "profession": "Аналитик данных",
+  "sources": [
+    {"id": "src-interview-1", "type": "interview", "title": "Интервью с аналитиком"},
+    {"id": "src-standard-1", "type": "standard", "title": "Профессиональный стандарт"},
+    {"id": "src-vacancy-1", "type": "vacancy", "title": "Вакансия аналитика данных"}
+  ],
+  "interview": [
+    {
+      "id": "tax-role-data-analyst",
+      "type": "role",
+      "title": "Аналитик данных",
+      "evidence": [
+        {"id": "ev-i-role", "source_id": "src-interview-1", "ref_id": "msg-1", "quote": "Я аналитик данных, отвечаю за отчётность"}
+      ]
+    },
+    {
+      "id": "tax-fn-reporting",
+      "type": "function",
+      "title": "Отчётность и визуализация",
+      "parent_id": "tax-role-data-analyst",
+      "evidence": [
+        {"id": "ev-i-fn", "source_id": "src-interview-1", "ref_id": "msg-2", "quote": "Мои основные функции — отчётность и визуализация"}
+      ]
+    },
+    {
+      "id": "tax-task-sql",
+      "type": "task",
+      "title": "Писать SQL-запросы",
+      "parent_id": "tax-fn-reporting",
+      "evidence": [
+        {"id": "ev-i-sql", "source_id": "src-interview-1", "ref_id": "msg-3", "quote": "Каждый день пишу SQL-запросы для отчётов"}
+      ]
+    },
+    {
+      "id": "tax-act-optimize",
+      "type": "action",
+      "title": "Оптимизировать SQL-запросы",
+      "parent_id": "tax-task-sql",
+      "evidence": [
+        {"id": "ev-i-act", "source_id": "src-interview-1", "ref_id": "msg-4", "quote": "Оптимизирую медленные запросы"}
+      ]
+    }
+  ],
+  "standard": [
+    {
+      "id": "tax-task-sql",
+      "type": "task",
+      "title": "Готовить SQL-выгрузки",
+      "parent_id": "tax-fn-reporting",
+      "evidence": [
+        {"id": "ev-s-sql", "source_id": "src-standard-1", "ref_id": "req-3.1", "quote": "Подготовка SQL-выгрузок для отчётности"}
+      ]
+    },
+    {
+      "id": "tax-fn-reporting",
+      "type": "function",
+      "title": "Отчётность",
+      "parent_id": "tax-role-data-analyst",
+      "evidence": [
+        {"id": "ev-s-fn", "source_id": "src-standard-1", "ref_id": "req-3", "quote": "Формирование отчётности"}
+      ]
+    }
+  ],
+  "vacancy": [
+    {
+      "id": "tax-task-sql",
+      "type": "task",
+      "title": "Готовить выгрузки",
+      "parent_id": "tax-fn-reporting",
+      "evidence": [
+        {"id": "ev-v-sql", "source_id": "src-vacancy-1", "ref_id": "line-2", "quote": "Подготовка выгрузок по запросу заказчика"}
+      ]
+    },
+    {
+      "id": "tax-task-dashboards",
+      "type": "task",
+      "title": "Строить дашборды",
+      "parent_id": "tax-fn-reporting",
+      "evidence": [
+        {"id": "ev-v-dash", "source_id": "src-vacancy-1", "ref_id": "line-3", "quote": "Построение дашбордов в Superset"}
+      ]
+    }
+  ]
+}

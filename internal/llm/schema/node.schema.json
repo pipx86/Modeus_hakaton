@@ -5,24 +5,24 @@
   "additionalProperties": false,
   "required": ["id", "type", "title", "evidence"],
   "properties": {
-    "id": { "type": "string", "minLength": 1 },
-    "type": { "enum": ["role", "function", "task", "action"] },
-    "title": { "type": "string", "minLength": 1 },
-    "description": { "type": "string" },
-    "parent_id": { "type": "string" },
+    "id": {"type": "string", "minLength": 1},
+    "type": {"enum": ["role", "function", "task", "action"]},
+    "title": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "parent_id": {"type": "string"},
     "evidence": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "source_id", "quote"],
+        "required": ["id", "source_id", "ref_id", "quote"],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "node_id": { "type": "string", "minLength": 1 },
-          "source_id": { "type": "string", "minLength": 1 },
-          "ref_id": { "type": "string", "minLength": 1 },
-          "quote": { "type": "string" }
+          "id": {"type": "string", "minLength": 1},
+          "node_id": {"type": "string", "minLength": 1},
+          "source_id": {"type": "string", "minLength": 1},
+          "ref_id": {"type": "string", "minLength": 1},
+          "quote": {"type": "string", "minLength": 1}
         }
       }
     }
