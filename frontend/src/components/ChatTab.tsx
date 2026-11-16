@@ -151,7 +151,7 @@ export function ChatTab({ runId, active }: ChatTabProps) {
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive">
           <WifiOffIcon className="size-3.5 shrink-0" />
           {streamState === "reconnecting"
-            ? "Соединение потеряно — переподключаюсь…"
+            ? "Соединение потеряно - переподключаюсь…"
             : "SSE-поток недоступен: новые сообщения приходят опросом раз в 5 секунд."}
           {streamState === "failed" && (
             <Button
@@ -170,7 +170,7 @@ export function ChatTab({ runId, active }: ChatTabProps) {
       <div className="max-h-[480px] space-y-3 overflow-y-auto rounded-xl border p-4">
         {messages.length === 0 && !thinking && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Агент ещё не задал первый вопрос — он появится здесь.
+            Агент ещё не задал первый вопрос - он появится здесь.
           </p>
         )}
         {messages.map((message) => (
@@ -208,7 +208,7 @@ export function ChatTab({ runId, active }: ChatTabProps) {
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           rows={2}
-          placeholder="Ответ на вопрос агента… Enter — отправить, Shift+Enter — новая строка"
+          placeholder="Ответ на вопрос агента… Enter - отправить, Shift+Enter - новая строка"
         />
         <Button onClick={() => void send()} disabled={!draft.trim() || sending} className="shrink-0">
           {sending ? <Loader2Icon className="size-4 animate-spin" /> : <SendIcon className="size-4" />}

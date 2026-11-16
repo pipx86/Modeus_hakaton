@@ -227,11 +227,13 @@ const Row = memo(function Row({
           aria-label={`Узел ${node.title}: показать обоснования`}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium transition-colors hover:text-primary"
         >
-          <span className="truncate">
-            <HighlightedTitle title={node.title} query={query} />
-          </span>
-          <span className="shrink-0 text-xs font-normal text-muted-foreground">
-            {NODE_TYPE_LABELS[node.type]}
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate">
+              <HighlightedTitle title={node.title} query={query} />
+            </span>
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">
+              {NODE_TYPE_LABELS[node.type]}
+            </span>
           </span>
           {evidenceCount > 0 && (
             <span className="flex shrink-0 items-center gap-0.5 text-xs font-normal text-muted-foreground">

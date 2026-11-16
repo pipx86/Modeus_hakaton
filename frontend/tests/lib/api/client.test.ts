@@ -1,6 +1,10 @@
+/**
+ * Проверка сгенерированного клиента: префикс /api/v1, сериализация тела запроса
+ * и разбор не-2xx ответа в типизированную ошибку контракта.
+ */
 import { describe, expect, test } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
-import { apiClient } from "./client"
+import { apiClient } from "@/lib/api/client"
 
 describe("apiClient (контракт openapi.yaml)", () => {
   test("GET /runs уходит на baseUrl с префиксом /api/v1", async () => {

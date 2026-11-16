@@ -1,3 +1,4 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -20,8 +21,8 @@ import {
 
 const STEPS = [
   { icon: MessageSquareTextIcon, title: "Интервью", description: "Собирается информация о реальной деятельности специалиста." },
-  { icon: FileSearchIcon, title: "Анализ документов", description: "Анализируются вакансии, профстандарты и методички." },
-  { icon: NetworkIcon, title: "Синтез дерева", description: "Строится дерево «функции → задачи → действия» по собранным данным." },
+  { icon: FileSearchIcon, title: "Анализ данных", description: "Анализируются вакансии, профстандарты и методички." },
+  { icon: NetworkIcon, title: "Синтез дерева", description: "Строится дерево «функции -> задачи -> действия» по собранным данным." },
 ]
 
 const ROLE_SUGGESTIONS = [
@@ -41,9 +42,6 @@ const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   standard: "Профстандарт",
   document: "Документ",
 }
-
-const SELECT_CLASS =
-  "h-9 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring md:text-sm dark:bg-input/30"
 
 const PROFESSION_MAX = 120
 const TITLE_MAX = 200
@@ -152,7 +150,7 @@ export function NewResearch() {
         <CardHeader>
           <CardTitle>Новое исследование</CardTitle>
           <CardDescription>
-            Выберите роль и при необходимости добавьте источники — агенты запустят анализ по ним.
+            Выберите роль и при необходимости добавьте источники. Агенты запустят анализ по ним.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -187,7 +185,7 @@ export function NewResearch() {
                 <span className="text-xs text-muted-foreground">
                   {existingCount === null
                     ? "Сервер недоступен"
-                    : `На сервере уже ${existingCount} — агенты учтут их вместе с новыми`}
+                    : `На сервере уже ${existingCount}. Агенты учтут их вместе с новыми`}
                 </span>
               </div>
 
@@ -217,18 +215,18 @@ export function NewResearch() {
               <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
                 <div className="space-y-1.5">
                   <Label htmlFor="quick-type">Тип</Label>
-                  <select
-                    id="quick-type"
-                    value={qType}
-                    onChange={(event) => setQType(event.target.value as SourceType)}
-                    className={SELECT_CLASS}
-                  >
-                    {(Object.keys(SOURCE_TYPE_LABELS) as SourceType[]).map((key) => (
-                      <option key={key} value={key}>
-                        {SOURCE_TYPE_LABELS[key]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={qType} onValueChange={(value) => setQType(value as SourceType)}>
+                    <SelectTrigger id="quick-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(SOURCE_TYPE_LABELS) as SourceType[]).map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {SOURCE_TYPE_LABELS[key]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="quick-title">Название</Label>
@@ -236,7 +234,7 @@ export function NewResearch() {
                     id="quick-title"
                     value={qTitle}
                     onChange={(event) => setQTitle(event.target.value)}
-                    placeholder="Вакансия Data Scientist, HH"
+                    placeholder="Вакансия"
                     maxLength={TITLE_MAX}
                   />
                   {qTitle.length > 0 && qTitleError && (

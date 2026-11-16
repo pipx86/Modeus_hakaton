@@ -1,3 +1,8 @@
+/**
+ * Проверка дизайн-токенов: index.css объявляет переменные для светлой и тёмной темы,
+ * а tailwind.config ссылается на них, а не на захардкоженные цвета.
+ * Читает файлы с диска, поэтому пути считаются от корня проекта (frontend).
+ */
 import { existsSync, readFileSync } from "node:fs"
 import { expect, test } from "vitest"
 
@@ -7,7 +12,7 @@ const configPath = existsSync("tailwind.config.js")
   : "tailwind.config.ts"
 const tailwindConfig = readFileSync(configPath, "utf8")
 
-test("index.css объявляет дизайн-токены для светлой и тёмной тем", () => {
+test("index.css объявляет дизайн-токены для светлой и тёмной темы", () => {
   expect(css).toContain(":root")
   expect(css).toContain(".dark")
   expect(css).toContain("--background:")

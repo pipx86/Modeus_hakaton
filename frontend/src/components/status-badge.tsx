@@ -23,10 +23,11 @@ const STATUS_CONFIG: Record<RunStatus, { label: string; className: string }> = {
 
 export function StatusBadge({ status }: { status?: RunStatus }) {
   const config = STATUS_CONFIG[status ?? "pending"]
-
   return (
-    <Badge variant="outline" className={cn("gap-1.5 rounded-full font-medium", config.className)}>
-      <span className="size-1.5 rounded-full bg-current" />
+    <Badge
+      variant="outline"
+      className={cn("h-6 rounded-full px-2.5 font-medium", config.className)}
+    >
       {config.label}
     </Badge>
   )

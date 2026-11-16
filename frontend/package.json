@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "generate-api": "openapi-typescript openapi.yaml -o src/lib/api/schema.d.ts",
     "mock": "node mocks/server.mjs"
@@ -40,6 +41,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "^5.1.0",
     "autoprefixer": "^10.6.2",
     "class-variance-authority": "^0.7.1",
     "cssnano": "^9.9.0",
@@ -52,7 +54,7 @@
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "~6.0.3",
+    "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

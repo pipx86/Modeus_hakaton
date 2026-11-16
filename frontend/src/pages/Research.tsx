@@ -12,6 +12,7 @@
  *
  * Экспорт: {@link Research} - компонент роута `/research/:id`.
  */
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
@@ -59,9 +60,7 @@ const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
 
 const TAB_TRIGGER_CLASS =
   "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-input/30"
-const SELECT_CLASS =
-  "h-9 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring md:text-sm dark:bg-input/30"
-
+const ROOT_PARENT = "__root__"
 /**
  * Форматирует дату ISO в русскую длинную форму («6 ноября 2026»). Возвращает подсказку при
  * отсутствии значения и оригинал строки, если дату не удалось разобрать, - чтобы битые
@@ -215,18 +214,18 @@ function SourcesTab() {
             <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
               <div className="space-y-2">
                 <Label htmlFor="source-type">Тип</Label>
-                <select
-                  id="source-type"
-                  value={type}
-                  onChange={(event) => setType(event.target.value as SourceType)}
-                  className={SELECT_CLASS}
-                >
-                  {(Object.keys(SOURCE_TYPE_LABELS) as SourceType[]).map((key) => (
-                    <option key={key} value={key}>
-                      {SOURCE_TYPE_LABELS[key]}
-                    </option>
-                  ))}
-                </select>
+                <Select value={type} onValueChange={(value) => setType(value as SourceType)}>
+                  <SelectTrigger id="source-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(SOURCE_TYPE_LABELS) as SourceType[]).map((key) => (
+                      <SelectItem key={key} value={key}>
+                        {SOURCE_TYPE_LABELS[key]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="source-title">Название</Label>
@@ -445,34 +444,37 @@ function NodeEditDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="node-type">Тип</Label>
-              <select
-                id="node-type"
-                value={type}
-                onChange={(event) => setType(event.target.value as NodeType)}
-                className={SELECT_CLASS}
-              >
-                {(Object.keys(NODE_TYPE_LABELS) as NodeType[]).map((key) => (
-                  <option key={key} value={key}>
-                    {NODE_TYPE_LABELS[key]}
-                  </option>
-                ))}
-              </select>
+              <Select value={type} onValueChange={(value) => setType(value as NodeType)}>
+                <SelectTrigger id="node-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(NODE_TYPE_LABELS) as NodeType[]).map((key) => (
+                    <SelectItem key={key} value={key}>
+                      {NODE_TYPE_LABELS[key]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="node-parent">Родительский узел</Label>
-              <select
-                id="node-parent"
-                value={parentId}
-                onChange={(event) => setParentId(event.target.value)}
-                className={SELECT_CLASS}
+              <Select
+                value={parentId === "" ? ROOT_PARENT : parentId}
+                onValueChange={(value) => setParentId(value === ROOT_PARENT ? "" : value)}
               >
-                {parentId === "" && <option value="">- верхний уровень -</option>}
-                {candidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.title}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="node-parent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ROOT_PARENT}>- верхний уровень -</SelectItem>
+                  {candidates.map((candidate) => (
+                    <SelectItem key={candidate.id} value={candidate.id}>
+                      {candidate.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="space-y-2">
@@ -584,19 +586,18 @@ function EvidenceAttachDialog({
                 Сначала добавьте источник на вкладке «Источники».
               </p>
             ) : (
-              <select
-                id="attach-source"
-                value={sourceId}
-                onChange={(event) => setSourceId(event.target.value)}
-                className={SELECT_CLASS}
-              >
-                <option value="">- выберите источник -</option>
-                {sources.map((source) => (
-                  <option key={source.id} value={source.id}>
-                    {source.title}
-                  </option>
-                ))}
-              </select>
+              <Select value={sourceId || undefined} onValueChange={setSourceId}>
+                <SelectTrigger id="attach-source">
+                  <SelectValue placeholder="- выберите источник -" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sources.map((source) => (
+                    <SelectItem key={source.id} value={source.id}>
+                      {source.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
           <div className="space-y-2">
@@ -815,8 +816,8 @@ export function Research() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2.5">
           {loading ? (
             <Skeleton className="h-8 w-64" />
           ) : (
@@ -824,11 +825,15 @@ export function Research() {
               {run?.profession ?? "Исследование"}
             </h1>
           )}
-          <p className="text-sm text-muted-foreground">
-            {run?.started_at ? `Запущено ${formatDate(run.started_at)}` : `ID: ${id}`}
-          </p>
+          <span className="inline-flex translate-y-[6px]">
+            <StatusBadge status={run?.status} />
+          </span>
         </div>
-        <StatusBadge status={run?.status} />
+        {run?.started_at && (
+          <p className="text-sm text-muted-foreground">
+            Запущено {formatDate(run.started_at).replace(/\.$/, "")}
+          </p>
+        )}
       </div>
       {error && !run && (
         <div className="space-y-3 rounded-xl border border-destructive/50 p-8 text-center">

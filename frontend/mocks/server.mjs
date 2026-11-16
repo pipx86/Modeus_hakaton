@@ -107,7 +107,7 @@ db.runs.set("run-demo", {
 db.messages.set("run-demo", [
   { id: "msg-1", role: "agent", content: "Расскажите, какие задачи вы решаете чаще всего?", created_at: now() },
   { id: "msg-2", role: "user", content: "Анализ метрик и подготовка отчётов для продуктовой команды.", created_at: now() },
-  { id: "msg-3", role: "agent", content: "Спасибо! Этого достаточно — дерево деятельности собрано.", created_at: now() },
+  { id: "msg-3", role: "agent", content: "Спасибо! Этого достаточно - дерево деятельности собрано.", created_at: now() },
 ])
 
 // ---------------- жизненный цикл прогона и интервью ----------------
@@ -161,7 +161,7 @@ function finalizeRun(runId) {
   const a1 = { id: nextId("node"), type: "action", title: "Выполняет типовую операцию", parent_id: t1.id, evidence: [makeEvidence(1)] }
   db.trees.set(runId, [role, f1, f2, t1, a1])
   run.root_node_id = role.id
-  agentSay(runId, "Интервью завершено. Дерево деятельности собрано — спасибо!")
+  agentSay(runId, "Интервью завершено. Дерево деятельности собрано - спасибо!")
   setRunStatus(runId, "done")
 }
 

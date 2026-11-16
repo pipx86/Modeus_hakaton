@@ -49,7 +49,7 @@ export function Dashboard() {
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
           <p className="text-sm text-muted-foreground">
-            {loading ? "Загрузка…" : `${runs.length} исследований · ${active} в работе`}
+            {loading ? "Загрузка…" : `${runs.length} исследований,  ${active} в работе`}
           </p>
         </div>
         <Button asChild>
