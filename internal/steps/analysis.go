@@ -151,6 +151,8 @@ func defaultITCatalog() *analysis.Catalog {
 		"Unit Testing",
 		"unit tests",
 		"модульное тестирование",
+		"Git",
+		"git version control",
 		"Linux",
 		"ubuntu",
 		"unix",

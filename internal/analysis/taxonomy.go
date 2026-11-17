@@ -42,7 +42,9 @@ func NewTaxonomy(definitions []SkillDefinition) *Taxonomy {
 
 func DefaultTaxonomy() *Taxonomy {
 	return NewTaxonomy([]SkillDefinition{
+
 		{Name: "go", Aliases: []string{"golang", "язык go"}, Categories: []string{"BackEnd"}, Related: []string{"gin", "echo", "grpc", "postgresql", "docker"}},
+		{Name: "git", Aliases: []string{"git version control"}, Categories: []string{"Development", "DevOps"}, Related: []string{"github", "gitlab", "ci/cd"}},
 		{Name: "python", Aliases: []string{"python programming", "python разработка"}, Categories: []string{"BackEnd", "Data Analyst", "Machine Learning"}, Related: []string{"django", "fastapi", "flask", "pandas", "numpy", "pytorch"}},
 		{Name: "java", Aliases: []string{"enterprise java"}, Categories: []string{"BackEnd"}, Related: []string{"spring", "spring boot", "hibernate", "maven", "gradle"}},
 		{Name: "c#", Aliases: []string{"csharp", "c sharp"}, Categories: []string{"BackEnd"}, Related: []string{".net", "asp.net core"}},
@@ -146,4 +148,13 @@ func containsWholeWord(text, phrase string) bool {
 	}, text) + " "
 	phrase = " " + normalizeSkill(phrase) + " "
 	return strings.Contains(text, phrase)
+}
+func (t *Taxonomy) Definitions() []SkillDefinition {
+	definitions := make([]SkillDefinition, 0, len(t.byName))
+
+	for _, definition := range t.byName {
+		definitions = append(definitions, definition)
+	}
+
+	return definitions
 }

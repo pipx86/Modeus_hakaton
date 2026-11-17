@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -57,15 +58,6 @@ func TestExtractSkillsAvoidsSubstringFalsePositive(t *testing.T) {
 	}
 }
 
-func TestExtractSkillsCaseInsensitive(t *testing.T) {
-	cat := NewCatalog([]string{"PYTHON"}) // каталог хранит lowercase после NewCatalog
-	texts := []string{"Python Developer"}
-	res := ExtractSkills(texts, cat)
-	if res.Freq["python"] != 1 {
-		t.Fatalf("case-insensitive match сломан: %v", res.Freq)
-	}
-}
-
 func TestExtractSkillsWeightsAreNormalizedTF(t *testing.T) {
 	cat := NewCatalog([]string{"python", "java"})
 	texts := []string{
@@ -105,4 +97,82 @@ func absDiff(a, b float64) float64 {
 		return -d
 	}
 	return d
+}
+
+func TestExtractSkillsTaxonomyAliases(t *testing.T) {
+	catalog := NewTaxonomyCatalog(
+		[]string{
+			"go",
+			"golang",
+			"postgresql",
+			"postgres",
+			"gitlab ci",
+		},
+		DefaultTaxonomy(),
+	)
+
+	result := ExtractSkills([]string{
+		"Мы ищем Golang разработчика со знанием Postgres и GitLab CI",
+	}, catalog)
+
+	expected := map[string]int{
+		"go":         1,
+		"postgresql": 1,
+		"ci/cd":      1,
+	}
+
+	if !reflect.DeepEqual(result.Freq, expected) {
+		t.Errorf("ожидалось %v, получено %v", expected, result.Freq)
+	}
+}
+
+func TestExtractSkillsCaseInsensitive(t *testing.T) {
+	catalog := NewTaxonomyCatalog(
+		[]string{"docker"},
+		DefaultTaxonomy(),
+	)
+
+	result := ExtractSkills([]string{
+		"Docker docker DOCKER",
+	}, catalog)
+
+	if result.Freq["docker"] != 1 {
+		t.Errorf("ожидалась частота Docker = 1, получено %d", result.Freq["docker"])
+	}
+}
+
+func TestExtractSkillsAvoidsDockerSubstringFalsePositive(t *testing.T) {
+	catalog := NewTaxonomyCatalog(
+		[]string{"docker"},
+		DefaultTaxonomy(),
+	)
+
+	result := ExtractSkills([]string{
+		"We use dockerized applications",
+	}, catalog)
+
+	if result.Freq["docker"] != 0 {
+		t.Errorf("docker не должен определяться внутри dockerized, получено %d", result.Freq["docker"])
+	}
+}
+
+func TestExtractSkillsAliasesAndWordBoundaries(t *testing.T) {
+	catalog := NewTaxonomyCatalog(
+		[]string{"go", "golang", "postgresql", "postgres"},
+		DefaultTaxonomy(),
+	)
+
+	result := ExtractSkills([]string{
+		"We use golang and postgres",
+		"Our project uses golang-based architecture",
+	}, catalog)
+
+	expected := map[string]int{
+		"go":         2,
+		"postgresql": 1,
+	}
+
+	if !reflect.DeepEqual(result.Freq, expected) {
+		t.Errorf("ожидалось %v, получено %v", expected, result.Freq)
+	}
 }

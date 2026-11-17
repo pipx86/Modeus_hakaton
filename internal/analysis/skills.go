@@ -22,6 +22,7 @@ func NewTaxonomyCatalog(skills []string, taxonomy *Taxonomy) *Catalog {
 func newCatalog(skills []string, taxonomy *Taxonomy) *Catalog {
 	normalized := make([]string, 0, len(skills))
 	seen := make(map[string]struct{}, len(skills))
+
 	for _, s := range skills {
 		s = normalizeSkill(s)
 		if s == "" {
@@ -33,12 +34,14 @@ func newCatalog(skills []string, taxonomy *Taxonomy) *Catalog {
 		seen[s] = struct{}{}
 		normalized = append(normalized, s)
 	}
+
 	return &Catalog{skills: normalized, taxonomy: taxonomy}
 }
 
 func (c *Catalog) Skills() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
 	out := make([]string, len(c.skills))
 	copy(out, c.skills)
 	return out
@@ -54,8 +57,13 @@ func ExtractSkills(texts []string, catalog *Catalog) ResultTriple {
 	freq := map[string]int{}
 	perVacancy := make([][]string, len(texts))
 	totalTokens := 0
+
 	if catalog == nil {
-		return ResultTriple{Freq: freq, WeightsRaw: map[string]float64{}, PerVacancy: perVacancy}
+		return ResultTriple{
+			Freq:       freq,
+			WeightsRaw: map[string]float64{},
+			PerVacancy: perVacancy,
+		}
 	}
 
 	catalog.mu.RLock()
@@ -63,25 +71,61 @@ func ExtractSkills(texts []string, catalog *Catalog) ResultTriple {
 	taxonomy := catalog.taxonomy
 	catalog.mu.RUnlock()
 
+	seen := make(map[string]struct{}, len(skills))
+	for _, skill := range skills {
+		seen[skill] = struct{}{}
+	}
+
+	if taxonomy != nil {
+		for _, definition := range taxonomy.Definitions() {
+			name := normalizeSkill(definition.Name)
+			if name != "" {
+				if _, ok := seen[name]; !ok {
+					seen[name] = struct{}{}
+					skills = append(skills, name)
+				}
+			}
+
+			for _, alias := range definition.Aliases {
+				alias = normalizeSkill(alias)
+				if alias == "" {
+					continue
+				}
+
+				if _, ok := seen[alias]; ok {
+					continue
+				}
+
+				seen[alias] = struct{}{}
+				skills = append(skills, alias)
+			}
+		}
+	}
+
 	for idx, text := range texts {
 		tokens := tokenize(text)
 		totalTokens += len(tokens)
+
 		tokenSet := make(map[string]struct{}, len(tokens))
 		for _, token := range tokens {
 			tokenSet[token] = struct{}{}
 		}
 
 		found := make(map[string]struct{})
+
 		for _, term := range skills {
 			if !containsSkill(term, tokenSet, text) {
 				continue
 			}
+
 			canonical := term
 			if taxonomy != nil {
 				canonical = taxonomy.Canonical(term)
 			}
+
 			found[canonical] = struct{}{}
 		}
+
 		for skill := range found {
 			freq[skill]++
 			perVacancy[idx] = append(perVacancy[idx], skill)
@@ -94,13 +138,19 @@ func ExtractSkills(texts []string, catalog *Catalog) ResultTriple {
 			weights[skill] = float64(count) / float64(totalTokens)
 		}
 	}
-	return ResultTriple{Freq: freq, WeightsRaw: weights, PerVacancy: perVacancy}
+
+	return ResultTriple{
+		Freq:       freq,
+		WeightsRaw: weights,
+		PerVacancy: perVacancy,
+	}
 }
 
 func containsSkill(skill string, tokenSet map[string]struct{}, rawText string) bool {
 	if strings.Contains(skill, " ") {
 		return strings.Contains(strings.ToLower(rawText), skill)
 	}
+
 	_, ok := tokenSet[skill]
 	return ok
 }
