@@ -6,12 +6,15 @@ import (
 )
 
 func TestFromEnvDefaults(t *testing.T) {
-	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv("LLM_API_KEY", "test-key")
+	t.Setenv("LLM_BASE_URL", "")
+	t.Setenv("LLM_MODEL", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENROUTER_MODEL", "")
 	t.Setenv("LLM_MAX_CONCURRENCY", "")
 	t.Setenv("LLM_REQUESTS_PER_MINUTE", "")
 	// Ensure a stray secret file cannot affect this test.
-	t.Setenv("OPENROUTER_API_KEY_FILE", os.DevNull)
+	t.Setenv("LLM_API_KEY_FILE", os.DevNull)
 
 	cfg, err := FromEnv()
 	if err != nil {
@@ -55,6 +58,16 @@ func TestFromEnvGenericProviderVariables(t *testing.T) {
 	}
 	if cfg.Agents[Interviewer].Model != "example-model" {
 		t.Fatalf("model = %q", cfg.Agents[Interviewer].Model)
+	}
+}
+
+func TestFromEnvRejectsLegacyKeyForGenericBase(t *testing.T) {
+	t.Setenv("LLM_API_KEY", "")
+	t.Setenv("LLM_BASE_URL", "https://api.reformboss.com/v1")
+	t.Setenv("OPENROUTER_API_KEY", "old-openrouter-key")
+	t.Setenv("LLM_API_KEY_FILE", os.DevNull)
+	if _, err := FromEnv(); err == nil {
+		t.Fatal("expected an error when OPENROUTER_API_KEY is used with LLM_BASE_URL")
 	}
 }
 
