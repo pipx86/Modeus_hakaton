@@ -16,11 +16,14 @@ func TestRotatingWriterCreatesSecondFileAfterSlice(t *testing.T) {
 
 	w := NewRotatingWriter(path, 1)
 	line := strings.Repeat("x", 1024) + "\n"
+
 	for i := 0; i < 3000; i++ {
 		if _, err := w.Write([]byte(line)); err != nil {
+			_ = w.Close()
 			t.Fatalf("write: %v", err)
 		}
 	}
+
 	if err := w.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -29,16 +32,18 @@ func TestRotatingWriterCreatesSecondFileAfterSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read dir: %v", err)
 	}
+
 	if len(entries) < 2 {
-		t.Fatalf("ожидали минимум 2 файла после среза (основной + резервный), получили %d", len(entries))
+		t.Fatalf("ожидали минимум 2 файла после ротации, получили %d", len(entries))
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
+
 	if info.Size() > 1<<20 {
-		t.Fatalf("основной файл %d байт превышает лимит среза 1 МБ", info.Size())
+		t.Fatalf("основной файл %d байт превышает лимит 1 МБ", info.Size())
 	}
 }
 
