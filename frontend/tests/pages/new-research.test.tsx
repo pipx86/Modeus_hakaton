@@ -59,9 +59,9 @@ describe("NewResearch", () => {
 
     const input = screen.getByLabelText("Профессия / роль")
     fireEvent.focus(input)
-    fireEvent.click(screen.getByRole("button", { name: "Data Analyst" }))
+    fireEvent.click(screen.getByRole("button", { name: "Аналитик данных" }))
 
-    expect(input).toHaveValue("Data Analyst")
+    expect(input).toHaveValue("Аналитик данных")
   })
 
   it("фильтрует подсказки по введённому тексту", async () => {
@@ -69,10 +69,41 @@ describe("NewResearch", () => {
     renderPage()
     await act(async () => {})
 
-    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data" } })
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "DevOps" } })
 
-    expect(screen.getByRole("button", { name: "Data Analyst" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "DevOps-инженер" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "DevOps-инженер" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Аналитик данных" })).not.toBeInTheDocument()
+  })
+
+  it("подсвечивает уровень по клику и подставляет его при выборе строки", async () => {
+    setFetchHandler(async () => ({ status: 200, body: [] }))
+    renderPage()
+    await act(async () => {})
+
+    const input = screen.getByLabelText("Профессия / роль")
+    fireEvent.focus(input)
+
+    const middle = screen.getByRole("button", { name: "middle" })
+    fireEvent.click(middle)
+
+    expect(middle).toHaveAttribute("aria-pressed", "true")
+    expect(input).toHaveValue("")
+    expect(screen.getByRole("button", { name: "junior" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Backend разработчик" }))
+
+    expect(input).toHaveValue("Backend разработчик (middle)")
+  })
+
+  it("находит Backend по уровню в фильтре", async () => {
+    setFetchHandler(async () => ({ status: 200, body: [] }))
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "senior" } })
+
+    expect(screen.getByRole("button", { name: "Backend разработчик" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Аналитик данных" })).not.toBeInTheDocument()
   })
 
   it("показывает ошибку после пустого сабмита и следит за лимитом длины", async () => {

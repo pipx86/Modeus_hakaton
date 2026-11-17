@@ -10,7 +10,7 @@
  * иерархии из плоского списка контракта), {@link NODE_TYPE_LABELS} (подписи типов узлов),
  * тип {@link TreeNode}.
  */
-import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -31,11 +31,20 @@ import {
   SearchXIcon,
   XIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 import type { ActivityNode, Evidence, NodeType } from "@/lib/api/client"
 import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "./activity-tree-model"
 
 /** Порядок типов для чипов-фильтров: от общего к частному, как в самой методологии дерева. */
 const TYPE_ORDER: NodeType[] = ["role", "function", "task", "action"]
+
+/** Визуальный код типа узла: цветная точка и мягкий бейдж. */
+const TYPE_STYLE: Record<NodeType, { dot: string; badge: string }> = {
+  role: { dot: "bg-violet-400", badge: "bg-violet-500/10 text-violet-300" },
+  function: { dot: "bg-sky-400", badge: "bg-sky-500/10 text-sky-300" },
+  task: { dot: "bg-amber-400", badge: "bg-amber-500/10 text-amber-300" },
+  action: { dot: "bg-emerald-400", badge: "bg-emerald-500/10 text-emerald-300" },
+}
 
 /**
  * Заголовок узла с подсветкой совпадения поиска. Если запрос пуст или не найден -
@@ -164,14 +173,18 @@ function EvidenceList({
 /** Пропсы одной строки дерева. Вынесены в интерфейс, чтобы `memo` сравнивал их стабильно. */
 interface RowProps {
   node: TreeNode
+  depth: number
+  position: number
+  total: number
+  hasChildren: boolean
+  isOpen: boolean
   query: string
   selected: boolean
-  visibleIds: Set<string>
-  expandedIds: Set<string>
   onToggle: (id: string) => void
   onSelect: (node: TreeNode) => void
   onEdit: (node: TreeNode) => void
   onAttach: (node: TreeNode) => void
+  onShowZun: (node: TreeNode) => void
 }
 
 /**
@@ -185,70 +198,102 @@ interface RowProps {
  */
 const Row = memo(function Row({
   node,
+  depth,
+  position,
+  total,
+  hasChildren,
+  isOpen,
   query,
   selected,
-  visibleIds,
-  expandedIds,
   onToggle,
   onSelect,
   onEdit,
   onAttach,
+  onShowZun,
 }: RowProps) {
-  const hasChildren = node.children.length > 0
-  const isOpen = expandedIds.has(node.id)
-  // Фильтруем детей по видимости: скрытые фильтром узлы не попадаю в рекурсию Row.
-  const children = hasChildren ? node.children.filter((child) => visibleIds.has(child.id)) : []
   const evidenceCount = (node.evidence ?? []).length
+  const zun = node.zun
+  const hasZun = !!zun && zun.knowledge.length + zun.skills.length + zun.abilities.length > 0
+
+  const typeStyle = TYPE_STYLE[node.type]
 
   return (
-    <div>
-      <div
-        className={`flex items-center gap-1 rounded-lg py-0.5 pr-1 transition-colors hover:bg-muted/60 ${
-          selected ? "bg-muted" : ""
-        }`}
-      >
-        {hasChildren ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
-            aria-label={isOpen ? `Свернуть узел ${node.title}` : `Развернуть узел ${node.title}`}
-            aria-expanded={isOpen}
-            onClick={() => onToggle(node.id)}
-          >
-            <ChevronRightIcon
-              className={`size-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
-            />
-          </Button>
-        ) : (
-          <span className="flex size-6 shrink-0 items-center justify-center">
-            <span className="size-1.5 rounded-full bg-muted-foreground" />
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => onSelect(node)}
-          aria-label={`Узел ${node.title}: показать обоснования`}
-          className="flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium transition-colors hover:text-primary"
-        >
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate">
-              <HighlightedTitle title={node.title} query={query} />
-            </span>
-            <span className="shrink-0 text-xs font-normal text-muted-foreground">
-              {NODE_TYPE_LABELS[node.type]}
-            </span>
-          </span>
-          {evidenceCount > 0 && (
-            <span className="shrink-0 text-xs font-normal text-muted-foreground">
-              {evidenceCount}
-            </span>
-          )}
-        </button>
+    <div
+      data-row
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-posinset={position}
+      aria-setsize={total}
+      aria-expanded={hasChildren ? isOpen : undefined}
+      className={`group relative flex h-11 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-muted/50 ${
+        selected ? "bg-muted/70 ring-1 ring-border" : ""
+      }`}
+      style={{ paddingLeft: Math.min(depth * 24, 96) }}
+    >
+      {Array.from({ length: depth }).map((_, index) => (
+        <span
+          key={index}
+          aria-hidden
+          className="absolute top-0 h-full w-px bg-border/60"
+          style={{ left: index * 24 + 12 }}
+        />
+      ))}
+
+      {hasChildren ? (
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0"
+          className="size-6 shrink-0 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label={isOpen ? `Свернуть узел ${node.title}` : `Развернуть узел ${node.title}`}
+          aria-expanded={isOpen}
+          onClick={() => onToggle(node.id)}
+        >
+          <ChevronRightIcon
+            className={`size-4 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+          />
+        </Button>
+      ) : (
+        <span className="flex size-6 shrink-0 items-center justify-center">
+          <span className={`size-1.5 rounded-full ${typeStyle.dot}`} />
+        </span>
+      )}
+
+      <button
+        type="button"
+        onClick={() => onSelect(node)}
+        aria-label={`Узел ${node.title}: показать обоснования`}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 py-1 text-left text-sm transition-colors hover:text-primary"
+      >
+        <span className={`truncate ${node.type === "role" ? "font-semibold" : "font-medium"}`}>
+          <HighlightedTitle title={node.title} query={query} />
+        </span>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${typeStyle.badge}`}
+        >
+          {NODE_TYPE_LABELS[node.type]}
+        </span>
+        {evidenceCount > 0 && (
+          <span className="shrink-0 text-[11px] text-muted-foreground">{evidenceCount}</span>
+        )}
+      </button>
+
+      {hasZun && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 shrink-0 rounded-full bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
+          aria-label={`ЗУН узла ${node.title}`}
+          onClick={() => onShowZun(node)}
+        >
+          ЗУН
+        </Button>
+      )}
+
+      <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
           onClick={() => onAttach(node)}
           aria-label={`Добавить обоснование к узлу ${node.title}`}
         >
@@ -257,31 +302,13 @@ const Row = memo(function Row({
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0"
+          className="size-7"
           onClick={() => onEdit(node)}
           aria-label={`Редактировать узел ${node.title}`}
         >
           <PencilIcon className="size-3.5" />
         </Button>
       </div>
-      {isOpen && children.length > 0 && (
-        <div className="ml-6 space-y-0.5 border-l pl-3">
-          {children.map((child) => (
-            <Row
-              key={child.id}
-              node={child}
-              query={query}
-              selected={false}
-              visibleIds={visibleIds}
-              expandedIds={expandedIds}
-              onToggle={onToggle}
-              onSelect={onSelect}
-              onEdit={onEdit}
-              onAttach={onAttach}
-            />
-          ))}
-        </div>
-      )}
     </div>
   )
 })
@@ -302,6 +329,8 @@ export interface ActivityTreeProps {
   onEdit: (node: TreeNode) => void
   /** Открыть диалог прикрепления обоснования (страница владеет `EvidenceAttachDialog`). */
   onAttach: (node: TreeNode) => void
+  /** Узел из ссылки `?node=`: раскрыть ветку и подсветить строку. */
+  focusNodeId?: string | null
 }
 
 /**
@@ -322,16 +351,23 @@ export function ActivityTree({
   onReject,
   onEdit,
   onAttach,
+  focusNodeId,
 }: ActivityTreeProps) {
   const [query, setQuery] = useState("")
   const [activeTypes, setActiveTypes] = useState<Set<NodeType>>(() => new Set(TYPE_ORDER))
   const [onlyWithEvidence, setOnlyWithEvidence] = useState(false)
+  const [onlyWithZun, setOnlyWithZun] = useState(false)
+  const [zunNode, setZunNode] = useState<TreeNode | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<TreeNode | null>(null)
 
   const roots = useMemo(() => buildTree(nodes), [nodes])
   const filtersActive =
-    query.trim().length > 0 || onlyWithEvidence || activeTypes.size !== TYPE_ORDER.length
+    query.trim().length > 0 ||
+    onlyWithEvidence ||
+    onlyWithZun ||
+    activeTypes.size !== TYPE_ORDER.length
 
   /**
    * Единый проход фильтрации с разделением структурного и контентных фильтров.
@@ -357,6 +393,7 @@ export function ActivityTree({
       q.length === 0 || node.title.toLowerCase().includes(q)
     const passEvidence = (node: TreeNode) =>
       !onlyWithEvidence || (node.evidence ?? []).length > 0
+    const passZun = (node: TreeNode) => !onlyWithZun || !!node.zun
     const includeVisibleDescendants = (node: TreeNode) => {
       if (!typePass(node)) return
       visible.add(node.id)
@@ -368,7 +405,7 @@ export function ActivityTree({
       for (const child of node.children) {
         if (walk(child)) childVisible = true
       }
-      const selfPass = passSearch(node) && passEvidence(node)
+      const selfPass = passSearch(node) && passEvidence(node) && passZun(node)
       if (selfPass) matched.add(node.id)
       const show = selfPass || childVisible
       if (show) {
@@ -379,7 +416,7 @@ export function ActivityTree({
     }
     const shownRoots = roots.filter((root) => walk(root))
     return { visibleIds: visible, matchIds: matched, visibleRoots: shownRoots }
-  }, [roots, query, activeTypes, onlyWithEvidence, filtersActive])
+  }, [roots, query, activeTypes, onlyWithEvidence, onlyWithZun, filtersActive])
 
   /**
    * Автораскрытие. Без активных фильтров раскрываем только корни (глубина свёрнута).
@@ -438,6 +475,81 @@ export function ActivityTree({
     })
   }, [])
 
+  /**
+   * Плоский список видимых строк. Глубина и раскрытие считаются здесь, чтобы рендер
+   * оставался одномерным: это и позволяет виртуализировать дерево по индексам.
+   */
+  const rows = useMemo(() => {
+    const out: { node: TreeNode; depth: number; hasChildren: boolean; isOpen: boolean }[] = []
+    const walk = (node: TreeNode, depth: number) => {
+      if (!visibleIds.has(node.id)) return
+      const isOpen = expanded.has(node.id)
+      out.push({ node, depth, hasChildren: node.children.length > 0, isOpen })
+      if (isOpen) {
+        node.children
+          .filter((child) => visibleIds.has(child.id))
+          .forEach((child) => walk(child, depth + 1))
+      }
+    }
+    visibleRoots.forEach((root) => walk(root, 0))
+    return out
+  }, [visibleRoots, visibleIds, expanded])
+
+  const VIRTUAL_THRESHOLD = 60
+  const ROW_HEIGHT = 44
+  const VIEWPORT = 560
+  const virtualized = rows.length > VIRTUAL_THRESHOLD
+  const start = virtualized ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 4) : 0
+  const end = virtualized
+    ? Math.min(rows.length, start + Math.ceil(VIEWPORT / ROW_HEIGHT) + 8)
+    : rows.length
+
+  useEffect(() => {
+    if (!focusNodeId) return
+    const byId = new Map(nodes.map((node) => [node.id, node]))
+    const chain = new Set<string>()
+    let current = byId.get(focusNodeId)
+    while (current?.parent_id) {
+      chain.add(current.parent_id)
+      current = byId.get(current.parent_id)
+    }
+    if (chain.size > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setExpanded((prev) => new Set([...prev, ...chain]))
+    }
+  }, [focusNodeId, nodes])
+
+  useEffect(() => {
+    if (!focusNodeId) return
+    const index = rows.findIndex((row) => row.node.id === focusNodeId)
+    if (index >= 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setScrollTop(Math.max(0, index * ROW_HEIGHT - VIEWPORT / 2))
+    }
+  }, [focusNodeId, rows])
+
+  const handleTreeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
+    event.preventDefault()
+    const rowEls = Array.from(document.querySelectorAll<HTMLElement>("[data-row]"))
+    if (rowEls.length === 0) return
+    const focusRow = (row?: HTMLElement) => row?.querySelector<HTMLElement>("button")?.focus()
+
+    if (event.key === "Home") {
+      setScrollTop(0)
+      focusRow(rowEls[0])
+      return
+    }
+    if (event.key === "End") {
+      setScrollTop(rows.length * ROW_HEIGHT)
+      focusRow(rowEls[rowEls.length - 1])
+      return
+    }
+    const activeRow = document.activeElement?.closest<HTMLElement>("[data-row]") ?? null
+    const index = activeRow ? rowEls.indexOf(activeRow) : -1
+    focusRow(rowEls[index + (event.key === "ArrowDown" ? 1 : -1)])
+  }
+
   const resetFilters = useCallback(() => {
     setQuery("")
     setActiveTypes(new Set(TYPE_ORDER))
@@ -493,6 +605,15 @@ export function ActivityTree({
         >
           С обоснованиями
         </Button>
+        <Button
+          variant={onlyWithZun ? "secondary" : "outline"}
+          size="sm"
+          aria-pressed={onlyWithZun}
+          onClick={() => setOnlyWithZun((value) => !value)}
+          className="h-7 px-2.5 text-xs"
+        >
+          С ЗУН
+        </Button>
         <span className="ml-auto text-xs text-muted-foreground">
           {filtersActive
             ? `Показано ${visibleIds.size} из ${nodes.length}`
@@ -523,21 +644,37 @@ export function ActivityTree({
   return (
     <div className="space-y-3">
       {toolbar}
-      <div className="space-y-0.5 rounded-xl border p-3">
-        {visibleRoots.map((root) => (
+      <div
+        className="max-h-[560px] space-y-0.5 overflow-y-auto rounded-xl border p-3"
+        role="tree"
+        aria-label="Дерево деятельности"
+        tabIndex={0}
+        onKeyDown={handleTreeKeyDown}
+        data-virtualized={virtualized ? "true" : "false"}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      >
+        {start > 0 && <div style={{ height: start * ROW_HEIGHT }} aria-hidden />}
+        {rows.slice(start, end).map((row, index) => (
           <Row
-            key={root.id}
-            node={root}
+            key={row.node.id}
+            node={row.node}
+            depth={row.depth}
+            position={start + index + 1}
+            total={rows.length}
+            hasChildren={row.hasChildren}
+            isOpen={row.isOpen}
             query={query}
-            selected={selected?.id === root.id}
-            visibleIds={visibleIds}
-            expandedIds={expanded}
+            selected={selected?.id === row.node.id || row.node.id === focusNodeId}
             onToggle={toggle}
             onSelect={select}
             onEdit={onEdit}
             onAttach={onAttach}
+            onShowZun={setZunNode}
           />
         ))}
+        {end < rows.length && (
+          <div style={{ height: (rows.length - end) * ROW_HEIGHT }} aria-hidden />
+        )}
       </div>
       <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
         <DialogContent className="sm:max-w-lg">
@@ -563,7 +700,18 @@ export function ActivityTree({
                 onReject={onReject}
               />
             ))}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (!selected) return
+                const url = `${window.location.origin}${window.location.pathname}?node=${selected.id}`
+                void navigator.clipboard?.writeText(url)
+                toast.success("Ссылка на узел скопирована")
+              }}
+            >
+              Скопировать ссылку
+            </Button>
             <Button
               variant="outline"
               onClick={() => {
@@ -576,6 +724,39 @@ export function ActivityTree({
               Добавить обоснование
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={zunNode !== null} onOpenChange={(open) => { if (!open) setZunNode(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{zunNode?.title ?? ""}</DialogTitle>
+            <DialogDescription>Знания, умения и навыки для этого действия</DialogDescription>
+          </DialogHeader>
+          {zunNode && (
+            <div className="space-y-3 text-sm">
+              {(
+                [
+                  ["Знания", zunNode.zun?.knowledge ?? []],
+                  ["Умения", zunNode.zun?.skills ?? []],
+                  ["Навыки", zunNode.zun?.abilities ?? []],
+                ] as const
+              ).map(([label, items]) => (
+                <div key={label}>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+                  {items.length === 0 ? (
+                    <p className="text-muted-foreground">Нет</p>
+                  ) : (
+                    <ul className="list-disc space-y-0.5 pl-5">
+                      {items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

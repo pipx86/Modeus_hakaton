@@ -62,7 +62,7 @@ describe("connectRunEvents", () => {
 
     expect(FakeEventSource.instances).toHaveLength(1)
     expect(FakeEventSource.instances[0].url).toMatch(/\/api\/v1\/runs\/run-7\/events$/)
-    expect(FakeEventSource.instances[0].url).toMatch(/^https?:\/\//)
+    expect(FakeEventSource.instances[0].url).toMatch(/^(\/|https?:\/\/)/)
   })
 
   it("открытие потока переводит состояние в open", () => {

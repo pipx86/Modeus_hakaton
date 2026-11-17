@@ -258,7 +258,7 @@ export interface components {
         /** @enum {string} */
         SourceType: "vacancy" | "interview" | "standard" | "document";
         /** @enum {string} */
-        RunStatus: "pending" | "running" | "done" | "failed";
+        RunStatus: "pending" | "running" | "done" | "failed" | "degraded";
         Evidence: {
             id: string;
             node_id?: string;
@@ -274,6 +274,11 @@ export interface components {
             type: components["schemas"]["NodeType"];
             title: string;
             description?: string;
+            zun?: {
+                knowledge: string[];
+                skills: string[];
+                abilities: string[];
+            };
             parent_id?: string;
             evidence: components["schemas"]["Evidence"][];
         };
@@ -294,6 +299,12 @@ export interface components {
             started_at?: string;
             /** Format: date-time */
             finished_at?: string;
+            /** @enum {string} */
+            type?: "batch" | "chat";
+            /** @enum {string} */
+            stage?: "created" | "interview" | "analysis" | "synthesis" | "review" | "done" | "failed";
+            degraded_reason?: string;
+            error_message?: string;
         };
         ChatMessage: {
             id: string;
@@ -302,6 +313,10 @@ export interface components {
             content: string;
             /** Format: date-time */
             created_at: string;
+            citations?: {
+                title: string;
+                quote: string;
+            }[];
         };
         RunEvent: {
             /** @enum {string} */

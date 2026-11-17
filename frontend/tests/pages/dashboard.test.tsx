@@ -65,14 +65,27 @@ describe("Dashboard", () => {
     ).toBeInTheDocument()
   })
 
-  it("при ошибке API показывает демонстрационные данные", async () => {
-    setFetchHandler(async () => {
-      throw new Error("offline")
+  it("при ошибке API показывает состояние ошибки и повторяет загрузку", async () => {
+    let attempt = 0
+    setFetchHandler(async (url) => {
+      if (!url.endsWith("/api/v1/runs")) {
+        return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+      }
+      attempt += 1
+      if (attempt === 1) throw new Error("offline")
+      return {
+        status: 200,
+        body: [{ id: "1", profession: "Data Scientist", status: "done" }],
+      }
     })
 
     renderPage()
 
-    expect(await screen.findByText("Frontend Developer")).toBeInTheDocument()
+    expect(await screen.findByText("Сервер недоступен")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Повторить" }))
+    expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
   })
 
   it("переходит на страницу исследования по клику", async () => {

@@ -180,7 +180,30 @@ describe("ActivityTree", () => {
     expect(screen.getByText("Data Scientist")).toBeInTheDocument()
   })
 
-  it("свёрнутое дерево из 60+ узлов рендерит только раскрытый frontier", () => {
+  it("раскрывает ветку к узлу из ссылки", () => {
+    renderTree({
+      nodes: [
+        { id: "root", type: "role", title: "Роль", evidence: [] },
+        { id: "fn", type: "function", title: "Функция", parent_id: "root", evidence: [] },
+        { id: "act", type: "action", title: "Глубокое действие", parent_id: "fn", evidence: [] },
+      ],
+      focusNodeId: "act",
+    })
+
+    expect(screen.getByText("Глубокое действие")).toBeInTheDocument()
+  })
+
+  it("перемещает фокус стрелкой вниз", () => {
+    renderTree()
+    const first = screen.getByRole("button", { name: /Узел Data Scientist/ })
+    first.focus()
+
+    fireEvent.keyDown(first, { key: "ArrowDown" })
+
+    expect(document.activeElement?.getAttribute("aria-label")).toContain("Анализ метрик")
+  })
+
+  it("большое дерево рендерится окнами, а не целиком", () => {
     const big: ActivityNode[] = [
       { id: "root", type: "role", title: "Роль", evidence: [] },
       { id: "fn", type: "function", title: "Функция", parent_id: "root", evidence: [] },
@@ -193,7 +216,65 @@ describe("ActivityTree", () => {
     expect(screen.getAllByRole("button", { name: /показать обоснования/ })).toHaveLength(2)
 
     fireEvent.click(screen.getByRole("button", { name: "Развернуть всё" }))
-    expect(screen.getAllByRole("button", { name: /показать обоснования/ })).toHaveLength(62)
+
+    expect(document.querySelector('[data-virtualized="true"]')).not.toBeNull()
+    const rendered = document.querySelectorAll("[data-row]")
+    expect(rendered.length).toBeGreaterThan(0)
+    expect(rendered.length).toBeLessThan(62)
+    expect(screen.getByText("Операция 1")).toBeInTheDocument()
+    expect(screen.queryByText("Операция 60")).not.toBeInTheDocument()
+  })
+
+  it("показывает ЗУН действия и раскрывает списки", () => {
+    renderTree({
+      nodes: [
+        { id: "root", type: "role", title: "Роль", evidence: [] },
+        { id: "fn", type: "function", title: "Функция", parent_id: "root", evidence: [] },
+        {
+          id: "act",
+          type: "action",
+          title: "Действие с ЗУН",
+          parent_id: "fn",
+          evidence: [],
+          zun: {
+            knowledge: ["Устройство когортного анализа"],
+            skills: ["Написание SQL-запросов"],
+            abilities: ["Точность формулировок"],
+          },
+        },
+      ],
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Развернуть всё" }))
+
+    fireEvent.click(screen.getByRole("button", { name: "ЗУН узла Действие с ЗУН" }))
+
+    expect(screen.getByText("Знания")).toBeInTheDocument()
+    expect(screen.getByText("Устройство когортного анализа")).toBeInTheDocument()
+    expect(screen.getByText("Написание SQL-запросов")).toBeInTheDocument()
+    expect(screen.getByText("Точность формулировок")).toBeInTheDocument()
+  })
+
+  it("фильтр «С ЗУН» оставляет только действия с ЗУН", () => {
+    renderTree({
+      nodes: [
+        { id: "root", type: "role", title: "Роль", evidence: [] },
+        { id: "fn", type: "function", title: "Функция", parent_id: "root", evidence: [] },
+        {
+          id: "a1",
+          type: "action",
+          title: "Действие с ЗУН",
+          parent_id: "fn",
+          evidence: [],
+          zun: { knowledge: ["К"], skills: [], abilities: [] },
+        },
+        { id: "a2", type: "action", title: "Действие без ЗУН", parent_id: "fn", evidence: [] },
+      ],
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "С ЗУН" }))
+
+    expect(screen.getByText("Действие с ЗУН")).toBeInTheDocument()
+    expect(screen.queryByText("Действие без ЗУН")).not.toBeInTheDocument()
   })
 
   it("уже подтверждённая цитата показывает статус вместо кнопки", () => {

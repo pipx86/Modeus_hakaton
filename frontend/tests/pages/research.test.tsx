@@ -377,6 +377,27 @@ describe("Research", () => {
     expect(await screen.findByText("Новая цитата")).toBeInTheDocument()
   })
 
+  it("показывает содержимое источника в предпросмотре", async () => {
+    stubRun({
+      sources: [
+        {
+          id: "s-1",
+          type: "vacancy",
+          title: "Вакансия DS",
+          content: "Требуется SQL и pandas",
+          created_at: "2026-11-06T09:00:00Z",
+        },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+
+    fireEvent.click(screen.getByRole("button", { name: "Просмотреть источник" }))
+
+    expect(await screen.findByText("Требуется SQL и pandas")).toBeInTheDocument()
+  })
+
   it("удаляет источник и очищает его цитаты", async () => {
     stubRun({
       sources: [
@@ -391,6 +412,7 @@ describe("Research", () => {
     await screen.findByText("Цитата")
 
     fireEvent.click(screen.getByRole("button", { name: "Удалить источник" }))
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }))
 
     await waitFor(() => expect(screen.queryByText("Вакансия DS")).not.toBeInTheDocument())
     expect(
@@ -412,6 +434,7 @@ describe("Research", () => {
     await screen.findByText("Вакансия DS")
 
     fireEvent.click(screen.getByRole("button", { name: "Удалить источник" }))
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }))
 
     await waitFor(() =>
       expect(fetchCalls().some((call) => call.init.method === "DELETE")).toBe(true),

@@ -13,6 +13,7 @@ describe("справочник статусов исследования", () =>
       running: "Выполняется",
       done: "Завершён",
       failed: "Ошибка",
+      degraded: "С ограничениями",
     })
   })
 
@@ -22,6 +23,7 @@ describe("справочник статусов исследования", () =>
       running: "default",
       done: "secondary",
       failed: "destructive",
+      degraded: "outline",
     })
   })
 })
