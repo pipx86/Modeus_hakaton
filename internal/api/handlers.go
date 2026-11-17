@@ -19,10 +19,18 @@ import (
 	"time"
 )
 
+// chatStarter is the surface we need from chat.Service (allows mocking in tests).
+type chatStarter interface {
+	Start(runID, profession string) error
+	Messages(runID string) ([]chat.Message, error)
+	Post(runID, content string) (chat.Message, error)
+	Subscribe(runID string) (<-chan chat.Event, func(), error)
+}
+
 type Server struct {
 	store        Store
 	autoStart    bool
-	chat         *chat.Service
+	chat         chatStarter
 	idemStore    idempotency.Store
 	eventStore   sse.EventStore
 	ssePoll      time.Duration
@@ -33,7 +41,7 @@ func NewServer(store Store) *Server {
 	return NewServerWithChat(store, nil)
 }
 
-func NewServerWithChat(store Store, chatService *chat.Service) *Server {
+func NewServerWithChat(store Store, chatService chatStarter) *Server {
 	hb := 15 * time.Second
 	if v := os.Getenv("SSE_HEARTBEAT_S"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -63,7 +71,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
-	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handleSaveTree)
+	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handlePutTree)
 	mux.HandleFunc("GET /api/v1/runs/{id}/tree", s.handleGetTree)
 	mux.HandleFunc("POST /api/v1/runs/{id}/snapshots", s.handleCreateSnapshot)
 	mux.HandleFunc("GET /api/v1/runs/{id}/snapshots", s.handleListSnapshots)
@@ -106,6 +114,39 @@ type errorBody struct {
 	Message string `json:"message"`
 }
 
+// mapStoreError writes the appropriate HTTP status for known store/sentinel errors.
+// Returns true if the error was handled.
+func mapStoreError(w http.ResponseWriter, err error) bool {
+	if err == nil {
+		return false
+	}
+	switch {
+	case errors.Is(err, ErrNotFound):
+		writeErr(w, http.StatusNotFound, "NOT_FOUND", "not found")
+		return true
+	case errors.Is(err, ErrAlreadyApproved):
+		writeErr(w, http.StatusConflict, "ALREADY_APPROVED", "evidence already approved")
+		return true
+	case errors.Is(err, ErrConflict):
+		writeErr(w, http.StatusConflict, "ALREADY_EXISTS", "conflict")
+		return true
+	case errors.Is(err, ErrServiceUnavailable):
+		writeErr(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "service temporarily unavailable")
+		return true
+	case errors.Is(err, ErrGatewayTimeout):
+		writeErr(w, http.StatusGatewayTimeout, "GATEWAY_TIMEOUT", "upstream timeout")
+		return true
+	case errors.Is(err, context.DeadlineExceeded):
+		writeErr(w, http.StatusGatewayTimeout, "GATEWAY_TIMEOUT", "operation timed out")
+		return true
+	case errors.Is(err, ErrTooManyRequests):
+		writeErr(w, http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "too many requests")
+		return true
+	default:
+		return false
+	}
+}
+
 // handleCreateRun godoc
 // @Summary      Create a new research run
 // @Description  Starts an asynchronous analysis pipeline for the given profession. Returns immediately with run ID; progress streamed via SSE.
@@ -141,6 +182,9 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	run, err := s.store.CreateRun(req.Profession)
 	if err != nil {
 		logging.Logger.Error("create_run_store_error", "error", err)
+		if mapStoreError(w, err) {
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}
@@ -173,7 +217,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		if err := s.chat.Start(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)
-			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			writeErr(w, http.StatusBadGateway, "BAD_GATEWAY", err.Error())
 			return
 		}
 		stageEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
@@ -235,8 +279,7 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 
 	run, err := s.store.GetRun(id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+		if mapStoreError(w, err) {
 			return
 		}
 		logging.Logger.Error("get_run_internal_error", "run_id", id, "error", err)
@@ -288,17 +331,12 @@ func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 	pgStore, ok := s.store.(*PGStore)
 	if !ok {
 		logging.Logger.Error("save_tree_requires_pgstore", "run_id", id)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", "tree write requires PGStore")
+		writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "tree write requires PGStore")
 		return
 	}
 
 	if err := pgStore.SaveTree(r.Context(), id, nodes); err != nil {
-		if errors.Is(err, ErrAlreadyApproved) || errors.Is(err, ErrConflict) {
-			writeErr(w, http.StatusConflict, "ALREADY_EXISTS", "tree already exists for this run")
-			return
-		}
-		if errors.Is(err, ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+		if mapStoreError(w, err) {
 			return
 		}
 		logging.Logger.Error("save_tree_db_error", "run_id", id, "error", err)
@@ -327,8 +365,7 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 
 	nodes, err := s.store.GetTree(id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+		if mapStoreError(w, err) {
 			return
 		}
 		logging.Logger.Error("get_tree_internal_error", "run_id", id, "error", err)
@@ -360,8 +397,7 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 
 	answers, err := s.store.GetAnswers(id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+		if mapStoreError(w, err) {
 			return
 		}
 		logging.Logger.Error("get_answers_internal_error", "run_id", id, "error", err)
@@ -428,8 +464,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 
 	run, err := s.store.GetRun(id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+		if mapStoreError(w, err) {
 			return
 		}
 		logging.Logger.Error("export_get_run_error", "run_id", id, "error", err)
@@ -444,8 +479,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 
 	nodes, err := s.store.GetTree(run.ID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+		if mapStoreError(w, err) {
 			return
 		}
 		logging.Logger.Error("export_get_tree_error", "run_id", id, "error", err)
@@ -624,6 +658,9 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 
 	runs, err := s.store.ListRuns()
 	if err != nil {
+		if mapStoreError(w, err) {
+			return
+		}
 		logging.Logger.Error("list_runs_internal_error", "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return

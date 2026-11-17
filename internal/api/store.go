@@ -12,6 +12,9 @@ import (
 var ErrNotFound = errors.New("NOT_FOUND")
 var ErrAlreadyApproved = errors.New("EVIDENCE_ALREADY_APPROVED")
 var ErrConflict = errors.New("conflict")
+var ErrServiceUnavailable = errors.New("SERVICE_UNAVAILABLE")
+var ErrGatewayTimeout = errors.New("GATEWAY_TIMEOUT")
+var ErrTooManyRequests = errors.New("TOO_MANY_REQUESTS")
 
 type Resumer interface {
 	ListIncompleteRuns() ([]*domain.Run, error)

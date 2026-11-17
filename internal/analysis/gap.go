@@ -31,60 +31,62 @@ type GapReport struct {
 }
 
 func ComputeGap(profiles []CandidateProfile, market MarketData, topK int) []GapReport {
+	return ComputeGapWithTaxonomy(profiles, market, topK, DefaultTaxonomy())
+}
+
+func ComputeGapWithTaxonomy(profiles []CandidateProfile, market MarketData, topK int, taxonomy *Taxonomy) []GapReport {
 	if topK <= 0 {
 		topK = 10
 	}
-
+	canonicalFreq := make(map[string]int, len(market.SkillFreq))
+	canonicalWeight := make(map[string]float64, len(market.HybridWeights))
+	for skill, freq := range market.SkillFreq {
+		key := taxonomy.Canonical(skill)
+		canonicalFreq[key] += freq
+		canonicalWeight[key] += market.HybridWeights[skill]
+	}
 	reports := make([]GapReport, 0, len(profiles))
-
-	for _, prof := range profiles {
-		candidateSet := make(map[string]struct{}, len(prof.Skills))
-		for _, s := range prof.Skills {
-			candidateSet[strings.ToLower(strings.TrimSpace(s))] = struct{}{}
+	for _, profile := range profiles {
+		candidateSet := make(map[string]struct{}, len(profile.Skills))
+		for _, skill := range profile.Skills {
+			candidateSet[taxonomy.Canonical(skill)] = struct{}{}
 		}
-
-		var matched, missing []string
-		for skill := range market.SkillFreq {
+		matched := 0
+		missing := make([]string, 0)
+		for skill := range canonicalFreq {
 			if _, ok := candidateSet[skill]; ok {
-				matched = append(matched, skill)
+				matched++
 			} else {
 				missing = append(missing, skill)
 			}
 		}
-
-		totalMarket := len(market.SkillFreq)
 		coverage := 0.0
-		if totalMarket > 0 {
-			coverage = float64(len(matched)) / float64(totalMarket)
+		if len(canonicalFreq) > 0 {
+			coverage = float64(matched) / float64(len(canonicalFreq))
 		}
-
 		recs := make([]Recommendation, 0, len(missing))
-		for _, sk := range missing {
-			freq := market.SkillFreq[sk]
-			weight := market.HybridWeights[sk]
-			priority := weight * math.Log(float64(freq)+1.0)
+		for _, skill := range missing {
+			freq := canonicalFreq[skill]
+			weight := canonicalWeight[skill]
 			recs = append(recs, Recommendation{
-				Skill:    sk,
-				Priority: priority,
-				Reason:   "missing in profile, high demand in market",
+				Skill: skill, Priority: weight * math.Log(float64(freq)+1),
+				Reason: "missing in profile, high demand in market",
 			})
 		}
-
 		sort.Slice(recs, func(i, j int) bool {
+			if recs[i].Priority == recs[j].Priority {
+				return strings.Compare(recs[i].Skill, recs[j].Skill) < 0
+			}
 			return recs[i].Priority > recs[j].Priority
 		})
-
 		if len(recs) > topK {
 			recs = recs[:topK]
 		}
-
+		sort.Strings(missing)
 		reports = append(reports, GapReport{
-			ProfileName:     prof.Name,
-			Coverage:        coverage,
-			MissingSkills:   missing,
-			Recommendations: recs,
+			ProfileName: profile.Name, Coverage: coverage,
+			MissingSkills: missing, Recommendations: recs,
 		})
 	}
-
 	return reports
 }

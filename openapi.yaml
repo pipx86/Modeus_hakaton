@@ -276,9 +276,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [runs]
       summary: Start a run (triggers agents)
+        "503":
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Upstream/gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
       operationId: createRun
       requestBody:
         required: true
@@ -311,7 +330,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: Insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Upstream service (LLM/chat) failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/runs/{id}":
+        "503":
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Upstream/gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
     get:
       tags: [runs]
       summary: Get run status
@@ -341,7 +391,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/runs/{id}/tree":
+        "503":
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Upstream/gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
     get:
       tags: [runs]
       summary: Get activity tree produced by a run
@@ -370,6 +439,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -409,6 +484,30 @@ paths:
                   code: {type: string}
                   details: {type: string}
                   node_id: {type: string}
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          description: Not implemented (requires PostgreSQL store)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"        "503":
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Upstream/gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   "/runs/{id}/answers":
     get:
       tags: [runs]
@@ -442,6 +541,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"        "503":
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Upstream/gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   "/runs/{id}/export":
     get:
       tags: [runs]
@@ -480,6 +597,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"        "503":
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Upstream/gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   "/runs/{id}/events":
     get:
       tags: [runs]
