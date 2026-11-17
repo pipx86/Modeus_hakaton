@@ -1,11 +1,27 @@
 import createClient from "openapi-fetch"
 import type { paths, components } from "./schema"
 
-// Префикс контракта живёт в servers.url, поэтому добавляем его к baseUrl
+// В dev запросы идут на тот же origin через Vite-прокси (он добавляет Authorization).
+// В тестах jsdom требует абсолютный URL, поэтому там подставляется localhost.
+const configuredBase = import.meta.env.VITE_API_URL
 export const apiBaseUrl =
-  (import.meta.env.VITE_API_URL || "http://localhost:8080") + "/api/v1"
+  configuredBase
+    ? `${configuredBase}/api/v1`
+    : import.meta.env.MODE === "test"
+      ? "http://localhost:8080/api/v1"
+      : "/api/v1"
+
+export const apiToken = import.meta.env.VITE_API_TOKEN ?? ""
 
 export const apiClient = createClient<paths>({ baseUrl: apiBaseUrl })
+
+// Токен нужен, если фронтенд обращается к API напрямую (без прокси).
+apiClient.use({
+  onRequest({ request }) {
+    if (apiToken) request.headers.set("Authorization", `Bearer ${apiToken}`)
+    return request
+  },
+})
 
 export type HealthResponse = components["schemas"]["HealthResponse"]
 export type ApiError = components["schemas"]["Error"]

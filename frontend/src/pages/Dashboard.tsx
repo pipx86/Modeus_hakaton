@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
+import { AlertCircleIcon, ChevronRightIcon, FlaskConicalIcon, PlusIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { apiClient, type Run } from "@/lib/api/client"
-import { ChevronRightIcon, FlaskConicalIcon, PlusIcon } from "lucide-react"
 
 function formatDate(value?: string) {
   if (!value) return "Дата не указана"
@@ -17,29 +18,48 @@ function formatDate(value?: string) {
   }).format(date)
 }
 
-const DEMO_RUNS: Run[] = [
-  { id: "1", profession: "Data Scientist", status: "done", started_at: "2026-11-06" },
-  { id: "2", profession: "Frontend Developer", status: "running", started_at: "2026-11-07" },
-]
-
+/**
+ * Список исследований.
+ *
+ * Три состояния экрана: загрузка (скелетон), ошибка (баннер с повтором и тост),
+ * пустой список (подсказка с переходом к созданию). Демо-данные при ошибке больше
+ * не подставляются: пользователь должен видеть, что связь с бэкендом потеряна.
+ */
 export function Dashboard() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { data, error: apiError } = await apiClient.GET("/runs")
+      if (apiError) {
+        setError("Не удалось загрузить исследования")
+        setRuns([])
+        toast.error("Не удалось загрузить исследования", {
+          description: "Сервер вернул ошибку. Попробуйте ещё раз.",
+        })
+        return
+      }
+      setRuns(data ?? [])
+    } catch {
+      setError("Сервер недоступен")
+      setRuns([])
+      toast.error("Сервер недоступен", {
+        description: "Проверьте, что бэкенд запущен по адресу из VITE_API_URL.",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const { data, error } = await apiClient.GET("/runs")
-        setRuns(data ?? (error ? DEMO_RUNS : []))
-      } catch {
-        setRuns(DEMO_RUNS)
-      } finally {
-        setLoading(false)
-      }
-    }
-
+    // Данные загружаются асинхронно; состояние обновляется после ответа API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
-  }, [])
+  }, [load])
 
   const active = runs.filter((run) => run.status === "running").length
 
@@ -49,7 +69,7 @@ export function Dashboard() {
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
           <p className="text-sm text-muted-foreground">
-            {loading ? "Загрузка…" : `${runs.length} исследований,  ${active} в работе`}
+            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} в работе`}
           </p>
         </div>
         <Button asChild>
@@ -69,6 +89,19 @@ export function Dashboard() {
               <Skeleton className="size-4" />
             </div>
           ))}
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/50 p-10 text-center">
+          <AlertCircleIcon className="size-6 text-destructive" />
+          <div className="space-y-1">
+            <p className="font-medium">{error}</p>
+            <p className="text-sm text-muted-foreground">
+              Проверьте, что бэкенд или мок-сервер запущен, и повторите запрос.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => void load()}>
+            Повторить
+          </Button>
         </div>
       ) : runs.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed py-16 text-center">

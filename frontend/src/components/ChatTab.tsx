@@ -24,6 +24,8 @@ export function ChatTab({ runId, active }: ChatTabProps) {
   const knownIds = useRef<Set<string>>(new Set())
 
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
+    // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
+    if (!Array.isArray(incoming)) return
     setMessages((prev) => {
       const fresh = incoming.filter((message) => !knownIds.current.has(message.id))
       if (fresh.length === 0) return prev
@@ -34,11 +36,19 @@ export function ChatTab({ runId, active }: ChatTabProps) {
 
   const loadHistory = useCallback(async () => {
     try {
-      const { data } = await apiClient.GET("/runs/{id}/messages", {
+      const { data, error } = await apiClient.GET("/runs/{id}/messages", {
         params: { path: { id: runId } },
       })
-      if (data) appendMessages(data)
-      setLoadError(null)
+      if (Array.isArray(data)) {
+        appendMessages(data)
+        setLoadError(null)
+      } else {
+        setLoadError(
+          error?.code === "NOT_FOUND"
+            ? "Чат ещё не открыт: агент не задавал вопросов по этому исследованию."
+            : (error?.message ?? "История чата недоступна."),
+        )
+      }
     } catch {
       setLoadError("История чата недоступна: сервер не отвечает.")
     } finally {
@@ -188,6 +198,21 @@ export function ChatTab({ runId, active }: ChatTabProps) {
               }
             >
               <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+              {message.citations && message.citations.length > 0 && (
+                <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    На чём основан ответ
+                  </p>
+                  <ul className="space-y-1">
+                    {message.citations.map((citation, index) => (
+                      <li key={`${citation.quote}-${index}`} className="text-xs">
+                        <span className="text-muted-foreground">{citation.title}: </span>
+                        <span className="italic">«{citation.quote}»</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         ))}

@@ -302,6 +302,45 @@ describe("ChatTab", () => {
     expect(document.querySelector("script")).toBeNull()
   })
 
+  it("показывает цитаты, на которых основан ответ агента", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "m1",
+              role: "agent",
+              content: "Ответ основан на источнике",
+              created_at: "2026-11-10T10:00:00Z",
+              citations: [{ title: "Анализ продуктовых метрик", quote: "Опыт с pandas" }],
+            },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+
+    expect(await screen.findByText("На чём основан ответ")).toBeInTheDocument()
+    expect(screen.getByText(/Анализ продуктовых метрик/)).toBeInTheDocument()
+    expect(screen.getByText(/Опыт с pandas/)).toBeInTheDocument()
+  })
+
+  it("не падает, если вместо истории пришёл объект ошибки", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return { status: 404, body: { code: "NOT_FOUND", message: "chat session not found" } }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+
+    expect(await screen.findByText(/Чат ещё не открыт/)).toBeInTheDocument()
+  })
+
   it("ошибка загрузки истории показывает баннер с кнопкой повтора", async () => {
     setFetchHandler(async () => {
       throw new Error("offline")

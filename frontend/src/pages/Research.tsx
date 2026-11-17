@@ -15,7 +15,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
+import { RunStageStepper } from "@/components/run-stage"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
   apiClient,
@@ -44,8 +45,11 @@ import {
   type Source,
   type SourceType,
 } from "@/lib/api/client"
+import { downloadText, treeToJson, treeToMarkdown } from "@/lib/export-tree"
 import {
   CheckIcon,
+  DownloadIcon,
+  EyeIcon,
   FileTextIcon,
   Loader2Icon,
   NetworkIcon,
@@ -80,7 +84,7 @@ function confidenceClass(value: number) {
 }
 
 const TAB_TRIGGER_CLASS =
-  "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-input/30"
+  "h-full items-center justify-center py-0 leading-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-input/30"
 const ROOT_PARENT = "__root__"
 /**
  * Форматирует дату ISO в русскую длинную форму («6 ноября 2026»). Возвращает подсказку при
@@ -149,6 +153,21 @@ function SourcesTab() {
   const [editingQuote, setEditingQuote] = useState<Evidence | null>(null)
   const [quoteDraft, setQuoteDraft] = useState("")
   const [quoteSaving, setQuoteSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Source | null>(null)
+  const [preview, setPreview] = useState<Source | null>(null)
+  const quoteDirty = editingQuote !== null && quoteDraft !== editingQuote.quote
+  const [quoteFilter, setQuoteFilter] = useState<"all" | "pending" | "approved" | "rejected">("all")
+
+  const visibleQuotes =
+    quoteFilter === "all"
+      ? quotes
+      : quotes.filter((quote) => (quote.status ?? "pending") === quoteFilter)
+  const pendingQuotes = quotes.filter((quote) => (quote.status ?? "pending") === "pending")
+  const bulkSetStatus = async (action: "approve" | "reject") => {
+    for (const quote of pendingQuotes) {
+      await setQuoteStatus(quote.id, action)
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -392,7 +411,15 @@ function SourcesTab() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => void remove(source.id)}
+                    onClick={() => setPreview(source)}
+                    aria-label="Просмотреть источник"
+                  >
+                    <EyeIcon className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteTarget(source)}
                     aria-label="Удалить источник"
                   >
                     <Trash2Icon className="size-4" />
@@ -400,14 +427,58 @@ function SourcesTab() {
                 </div>
                 {expanded && (
                   <div className="space-y-1.5 bg-muted/30 px-4 pb-4 pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 pb-1">
+                      {(
+                        [
+                          ["all", "Все"],
+                          ["pending", "На проверке"],
+                          ["approved", "Подтверждены"],
+                          ["rejected", "Отклонены"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <Button
+                          key={value}
+                          size="sm"
+                          variant={quoteFilter === value ? "secondary" : "ghost"}
+                          className="h-6 px-2 text-xs"
+                          aria-pressed={quoteFilter === value}
+                          onClick={() => setQuoteFilter(value)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                      <span className="mx-auto" />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        disabled={pendingQuotes.length === 0}
+                        onClick={() => void bulkSetStatus("approve")}
+                      >
+                        Подтвердить все
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        disabled={pendingQuotes.length === 0}
+                        onClick={() => void bulkSetStatus("reject")}
+                      >
+                        Отклонить все
+                      </Button>
+                    </div>
                     {quotesLoading ? (
                       <p className="text-xs text-muted-foreground">Загрузка цитат…</p>
                     ) : quotes.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         Из этого источника пока не взято ни одной цитаты.
                       </p>
+                    ) : visibleQuotes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Нет цитат с выбранным статусом.
+                      </p>
                     ) : (
-                      quotes.map((quote) => (
+                      visibleQuotes.map((quote) => (
                         <div
                           key={quote.id}
                           className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-sm"
@@ -469,7 +540,15 @@ function SourcesTab() {
           if (!open) setEditingQuote(null)
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onEscapeKeyDown={(event) => {
+            if (quoteDirty) event.preventDefault()
+          }}
+          onPointerDownOutside={(event) => {
+            if (quoteDirty) event.preventDefault()
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Редактировать цитату</DialogTitle>
             <DialogDescription>
@@ -492,6 +571,57 @@ function SourcesTab() {
             <Button onClick={() => void saveQuote()} disabled={!quoteDraft.trim() || quoteSaving}>
               {quoteSaving && <Loader2Icon className="size-4 animate-spin" />}
               Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={preview !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{preview?.title ?? ""}</DialogTitle>
+            <DialogDescription>
+              {preview
+                ? `${SOURCE_TYPE_LABELS[preview.type]} · ${formatDate(preview.created_at)}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-sm">
+            {preview?.content?.trim() ? preview.content : "Содержимое не сохранено."}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить источник?</DialogTitle>
+            <DialogDescription>
+              «{deleteTarget?.title ?? ""}» и связанные с ним цитаты исчезнут из исследования.
+              Это действие нельзя отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                const target = deleteTarget
+                setDeleteTarget(null)
+                if (target) void remove(target.id)
+              }}
+            >
+              Удалить
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -550,6 +680,13 @@ function NodeEditDialog({
   const [parentId, setParentId] = useState(node?.parent_id ?? "")
   const [saving, setSaving] = useState(false)
 
+  const dirty =
+    node !== null &&
+    (title !== node.title ||
+      description !== (node.description ?? "") ||
+      type !== node.type ||
+      parentId !== (node.parent_id ?? ""))
+
   const candidates = useMemo(() => {
     if (!node) return []
     return nodes.filter((candidate) => !isSelfOrDescendant(candidate.id, node.id, nodes))
@@ -579,7 +716,15 @@ function NodeEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onEscapeKeyDown={(event) => {
+          if (dirty) event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          if (dirty) event.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Редактировать узел</DialogTitle>
           <DialogDescription>
@@ -679,6 +824,7 @@ function EvidenceAttachDialog({
   const [sourceId, setSourceId] = useState("")
   const [quote, setQuote] = useState("")
   const [saving, setSaving] = useState(false)
+  const attachDirty = Boolean(sourceId || quote.trim())
 
   useEffect(() => {
     if (!open) return
@@ -723,7 +869,15 @@ function EvidenceAttachDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        onEscapeKeyDown={(event) => {
+          if (attachDirty) event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          if (attachDirty) event.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Добавить обоснование</DialogTitle>
           <DialogDescription>
@@ -796,7 +950,15 @@ function EvidenceAttachDialog({
  * @param active Флаг «прогон ещё выполняется»: включает поллинг; на завершённом прогоне
  * дерево грузится один раз.
  */
-function TreeTab({ id, active }: { id: string; active: boolean }) {
+function TreeTab({
+  id,
+  active,
+  focusNodeId,
+}: {
+  id: string
+  active: boolean
+  focusNodeId?: string | null
+}) {
   const [nodes, setNodes] = useState<ActivityNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -914,6 +1076,26 @@ function TreeTab({ id, active }: { id: string; active: boolean }) {
 
   return (
     <>
+      <div className="mb-3 flex justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          onClick={() => downloadText("tree.md", treeToMarkdown(nodes), "text/markdown;charset=utf-8")}
+        >
+          <DownloadIcon className="size-3.5" />
+          Markdown
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          onClick={() => downloadText("tree.json", treeToJson(nodes), "application/json;charset=utf-8")}
+        >
+          <DownloadIcon className="size-3.5" />
+          JSON
+        </Button>
+      </div>
       <ActivityTree
         nodes={nodes}
         approvedIds={approvedIds}
@@ -922,6 +1104,7 @@ function TreeTab({ id, active }: { id: string; active: boolean }) {
         onReject={reject}
         onEdit={setEditing}
         onAttach={setAttaching}
+        focusNodeId={focusNodeId}
       />
       <NodeEditDialog
         key={editing?.id ?? "closed"}
@@ -953,6 +1136,9 @@ function TreeTab({ id, active }: { id: string; active: boolean }) {
  */
 export function Research() {
   const { id = "" } = useParams()
+  const [searchParams] = useSearchParams()
+  const focusNodeId = searchParams.get("node")
+  const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1001,7 +1187,7 @@ export function Research() {
 
   return (
     <div className="space-y-6">
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
           {loading ? (
             <Skeleton className="h-8 w-64" />
@@ -1015,8 +1201,23 @@ export function Research() {
           </span>
         </div>
         {run?.started_at && (
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-6 text-sm text-muted-foreground">
             Запущено {formatDate(run.started_at).replace(/\.$/, "")}
+          </p>
+        )}
+        {run?.stage && run.status !== "done" && (
+          <div className="mt-3">
+            <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
+          </div>
+        )}
+        {run?.status === "degraded" && (
+          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Результат неполный: {run.degraded_reason || "агенты работали с ограничениями"}
+          </p>
+        )}
+        {run?.status === "failed" && run.error_message && (
+          <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {run.error_message}
           </p>
         )}
       </div>
@@ -1024,7 +1225,7 @@ export function Research() {
         <div className="space-y-3 rounded-xl border border-destructive/50 p-8 text-center">
           <p className="text-sm text-destructive">{error}</p>
           <p className="text-sm text-muted-foreground">
-            Запустите бэкенд или мок‑сервер: node mocks/server.mjs
+            Запустите бэкенд или мок‑сервер: node tests/mock-server.mjs
           </p>
           <Button variant="outline" onClick={() => void loadRun()}>
             Повторить
@@ -1037,8 +1238,8 @@ export function Research() {
           Агенты работают - страница обновляется автоматически
         </p>
       )}
-      <Tabs defaultValue="sources">
-        <TabsList className="h-9">
+      <Tabs value={tab} onValueChange={setTab} className="flex-col">
+        <TabsList className="h-9 items-center">
           <TabsTrigger value="sources" className={TAB_TRIGGER_CLASS}>
             Источники
           </TabsTrigger>
@@ -1053,7 +1254,7 @@ export function Research() {
           <SourcesTab />
         </TabsContent>
         <TabsContent value="tree">
-          <TreeTab id={id} active={isActive} />
+          <TreeTab id={id} active={isActive} focusNodeId={focusNodeId} />
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab runId={id} active={!loading && !error} />

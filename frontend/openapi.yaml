@@ -546,7 +546,7 @@ components:
       enum: [vacancy, interview, standard, document]
     RunStatus:
       type: string
-      enum: [pending, running, done, failed]
+      enum: [pending, running, done, failed, degraded]
     Evidence:
       type: object
       required: [id, source_id, quote]
@@ -588,6 +588,23 @@ components:
           minLength: 1
         description:
           type: string
+        zun:
+          type: object
+          additionalProperties: false
+          required: [knowledge, skills, abilities]
+          properties:
+            knowledge:
+              type: array
+              items:
+                type: string
+            skills:
+              type: array
+              items:
+                type: string
+            abilities:
+              type: array
+              items:
+                type: string
         parent_id:
           type: string
         evidence:
@@ -634,6 +651,16 @@ components:
         finished_at:
           type: string
           format: date-time
+        type:
+          type: string
+          enum: [batch, chat]
+        stage:
+          type: string
+          enum: [created, interview, analysis, synthesis, review, done, failed]
+        degraded_reason:
+          type: string
+        error_message:
+          type: string
     ChatMessage:
       type: object
       required: [id, role, content, created_at]
@@ -651,6 +678,17 @@ components:
         created_at:
           type: string
           format: date-time
+        citations:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [title, quote]
+            properties:
+              title:
+                type: string
+              quote:
+                type: string
     RunEvent:
       type: object
       required: [type]
