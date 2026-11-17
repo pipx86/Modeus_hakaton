@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it } from "vitest"
@@ -15,9 +15,22 @@ function renderPage(runId = "7") {
   )
 }
 
-function stubRun(overrides: { tree?: unknown[]; sources?: unknown[] } = {}) {
+function stubRun(
+  overrides: {
+    tree?: unknown[]
+    sources?: unknown[]
+    evidences?: unknown[]
+    deleteError?: boolean
+    nodePatchError?: boolean
+  } = {},
+) {
   return setFetchHandler(async (url, init) => {
     const method = init?.method ?? "GET"
+    if (url.includes("/api/v1/sources/") && method === "DELETE") {
+      return overrides.deleteError
+        ? { status: 409, body: { code: "CONFLICT", message: "источник используется" } }
+        : { status: 204, body: undefined }
+    }
     if (url.endsWith("/api/v1/evidences") && method === "POST") {
       const body = JSON.parse(String(init.body)) as { source_id: string; quote: string }
       return {
@@ -26,10 +39,22 @@ function stubRun(overrides: { tree?: unknown[]; sources?: unknown[] } = {}) {
       }
     }
     if (url.includes("/api/v1/nodes/") && method === "PATCH") {
-      return { status: 200, body: {} }
+      return overrides.nodePatchError
+        ? { status: 422, body: { code: "VALIDATION", message: "плохое название" } }
+        : { status: 200, body: {} }
     }
     if (url.includes("/api/v1/evidences/") && method === "POST") {
       return { status: 200, body: {} }
+    }
+    if (url.includes("/api/v1/evidences/") && method === "PATCH") {
+      const body = JSON.parse(String(init.body)) as { quote?: string }
+      return {
+        status: 200,
+        body: { id: "e1", source_id: "s-1", quote: body.quote, status: "pending" },
+      }
+    }
+    if (url.includes("/api/v1/evidences") && method === "GET") {
+      return { status: 200, body: overrides.evidences ?? [] }
     }
     if (url.includes("/api/v1/runs/7/tree")) {
       return { status: 200, body: overrides.tree ?? [] }
@@ -132,7 +157,9 @@ describe("Research", () => {
 
     // Radix Tabs (activationMode="automatic") выбирает вкладку по фокусу,
     // а jsdom не перемещает фокус при клике — поэтому focus(), не click().
-    screen.getByRole("tab", { name: "Дерево" }).focus()
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
 
     expect(await screen.findByText("Дерево ещё не построено")).toBeInTheDocument()
   })
@@ -156,7 +183,9 @@ describe("Research", () => {
       expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
     )
 
-    screen.getByRole("tab", { name: "Дерево" }).focus()
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
 
     expect(await screen.findByText("Анализ метрик")).toBeInTheDocument()
   })
@@ -179,7 +208,9 @@ describe("Research", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
     )
-    screen.getByRole("tab", { name: "Дерево" }).focus()
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
@@ -205,7 +236,9 @@ describe("Research", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
     )
-    screen.getByRole("tab", { name: "Дерево" }).focus()
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
     await screen.findByText("Анализ метрик")
 
     fireEvent.click(screen.getByRole("button", { name: "Редактировать узел Анализ метрик" }))
@@ -241,7 +274,9 @@ describe("Research", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
     )
-    screen.getByRole("tab", { name: "Дерево" }).focus()
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
     await screen.findByText("Анализ метрик")
 
     fireEvent.click(
@@ -268,6 +303,192 @@ describe("Research", () => {
         quote: "Цитата из вакансии",
       })
     })
+  })
+
+  it("показывает статус и confidence цитаты и умеет её отклонить", async () => {
+    stubRun({
+      sources: [
+        { id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" },
+      ],
+      evidences: [
+        {
+          id: "e1",
+          source_id: "s-1",
+          quote: "Цитата из вакансии",
+          status: "pending",
+          confidence: 0.82,
+        },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+
+    expect(await screen.findByText("На проверке")).toBeInTheDocument()
+    expect(screen.getByText("82%")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Отклонить цитату из источника" }))
+
+    expect(await screen.findByText("Отклонено")).toBeInTheDocument()
+    const post = fetchCalls().find(
+      (call) => call.url.includes("/api/v1/evidences/e1/reject") && call.init.method === "POST",
+    )
+    expect(post).toBeDefined()
+  })
+
+  it("правит текст цитаты через PATCH и обновляет её в панели", async () => {
+    stubRun({
+      sources: [
+        { id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" },
+      ],
+      evidences: [
+        { id: "e1", source_id: "s-1", quote: "Старая цитата", status: "pending", confidence: 0.7 },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Старая цитата")
+
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать цитату" }))
+
+    const dialog = await screen.findByRole("dialog")
+    const quoteField = within(dialog).getByLabelText("Цитата")
+    fireEvent.change(quoteField, { target: { value: "Новая цитата" } })
+    expect(quoteField).toHaveValue("Новая цитата")
+    expect(within(dialog).getByRole("button", { name: "Сохранить" })).toBeEnabled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Сохранить" }))
+
+    await waitFor(() => {
+      expect(
+        fetchCalls().some(
+          (call) => call.url.includes("/api/v1/evidences/e1") && call.init.method === "PATCH",
+        ),
+      ).toBe(true)
+    })
+    const patch = fetchCalls().find(
+      (call) => call.url.includes("/api/v1/evidences/e1") && call.init.method === "PATCH",
+    )
+    expect(JSON.parse(String(patch!.init.body))).toEqual({ quote: "Новая цитата" })
+
+    expect(await screen.findByText("Новая цитата")).toBeInTheDocument()
+  })
+
+  it("удаляет источник и очищает его цитаты", async () => {
+    stubRun({
+      sources: [
+        { id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" },
+      ],
+      evidences: [{ id: "e1", source_id: "s-1", quote: "Цитата", status: "pending" }],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Цитата")
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить источник" }))
+
+    await waitFor(() => expect(screen.queryByText("Вакансия DS")).not.toBeInTheDocument())
+    expect(
+      fetchCalls().some(
+        (call) => call.url.includes("/api/v1/sources/s-1") && call.init.method === "DELETE",
+      ),
+    ).toBe(true)
+  })
+
+  it("не удаляет источник при ошибке и оставляет его в списке", async () => {
+    stubRun({
+      deleteError: true,
+      sources: [
+        { id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить источник" }))
+
+    await waitFor(() =>
+      expect(fetchCalls().some((call) => call.init.method === "DELETE")).toBe(true),
+    )
+    expect(screen.getByText("Вакансия DS")).toBeInTheDocument()
+  })
+
+  it("показывает пустое состояние панели цитат", async () => {
+    stubRun({
+      sources: [
+        { id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+
+    expect(
+      await screen.findByText("Из этого источника пока не взято ни одной цитаты."),
+    ).toBeInTheDocument()
+  })
+
+  it("отменяет правку цитаты без запроса", async () => {
+    stubRun({
+      sources: [
+        { id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" },
+      ],
+      evidences: [{ id: "e1", source_id: "s-1", quote: "Старая цитата", status: "pending" }],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Старая цитата")
+
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать цитату" }))
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Отмена" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(fetchCalls().some((call) => call.init.method === "PATCH")).toBe(false)
+    expect(screen.getByText("Старая цитата")).toBeInTheDocument()
+  })
+
+  it("показывает ошибку сохранения узла и не закрывает диалог", async () => {
+    stubRun({
+      nodePatchError: true,
+      tree: [
+        { id: "r1", type: "role", title: "Data Scientist", evidence: [] },
+        { id: "f1", type: "function", title: "Анализ метрик", parent_id: "r1", evidence: [] },
+      ],
+    })
+
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
+    )
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
+    await screen.findByText("Анализ метрик")
+
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать узел Анализ метрик" }))
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByLabelText("Название"), { target: { value: "Новое имя" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Сохранить" }))
+
+    await waitFor(() =>
+      expect(
+        fetchCalls().some(
+          (call) => call.url.includes("/api/v1/nodes/f1") && call.init.method === "PATCH",
+        ),
+      ).toBe(true),
+    )
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
   it("показывает вкладку чата", async () => {

@@ -198,6 +198,80 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /evidences/{id}/reject:
+    post:
+      tags: [evidences]
+      summary: Reject an evidence
+      operationId: rejectEvidence
+      description: Rejection is stored server-side; no body returned.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Rejected, no content
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Already rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /evidences/{id}:
+    patch:
+      tags: [evidences]
+      summary: Edit an evidence quote or confidence
+      operationId: patchEvidence
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                quote:
+                  type: string
+                  minLength: 1
+                ref_id:
+                  type: string
+                confidence:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+      responses:
+        "200":
+          description: Updated evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evidence"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /runs:
     get:
       tags: [runs]
@@ -481,11 +555,24 @@ components:
         id:
           type: string
           minLength: 1
+        node_id:
+          type: string
+          minLength: 1
         source_id:
+          type: string
+          minLength: 1
+        ref_id:
           type: string
           minLength: 1
         quote:
           type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
     Node:
       type: object
       required: [id, type, title, evidence]

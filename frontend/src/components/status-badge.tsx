@@ -28,7 +28,7 @@ export function StatusBadge({ status }: { status?: RunStatus }) {
       variant="outline"
       className={cn("h-6 rounded-full px-2.5 font-medium", config.className)}
     >
-      {config.label}
+      <span className="-translate-y-[1px]">{config.label}</span>
     </Badge>
   )
 }
