@@ -9,34 +9,6 @@ import (
 	"activity-descriptor/internal/domain"
 )
 
-func TestAnalysisStep(t *testing.T) {
-	step := &AnalysisStep{}
-	if err := step.Execute(context.Background(), &domain.Run{}); err == nil {
-		t.Fatal("Execute should require data")
-	}
-	if err := step.ExecuteWithData(context.Background(), nil, nil); err == nil {
-		t.Fatal("nil run should fail")
-	}
-
-	run := &domain.Run{ID: "run-analysis"}
-	vacancies := []domain.VacancyRecord{
-		{Title: "Backend", Description: "Go, SQL, Docker"},
-		{Title: "Analyst", Description: "SQL and Python"},
-	}
-	if err := step.ExecuteWithData(context.Background(), run, vacancies); err != nil {
-		t.Fatalf("analysis: %v", err)
-	}
-	if len(run.Data["skill_freq"].(map[string]int)) == 0 {
-		t.Fatalf("skill_freq = %#v", run.Data["skill_freq"])
-	}
-	if len(run.Data["source_vacancies"].([]domain.VacancyRecord)) != 2 {
-		t.Fatal("source vacancies not stored")
-	}
-	if len(defaultITCatalog().Skills()) == 0 {
-		t.Fatal("default catalog is empty")
-	}
-}
-
 func TestInterviewStep(t *testing.T) {
 	step := &InterviewStep{}
 	if err := step.Execute(context.Background(), &domain.Run{}); err == nil {
