@@ -42,11 +42,25 @@ func AssignLevels(vacancies []VacancyInput, descriptions []string) LevelResult {
 			continue
 		}
 
-		exp := classifyExperience(v.Experience + " " + v.Name)
 		category := categorizeSkills(v.Name, v.Skills)
+
+		var exp ExperienceLevel
+		confidence := 0.0
+
+		if category == "BackEnd" {
+			exp = classifyExperience(v.Experience + " " + v.Name)
+
+			confidence = 0.6
+			levelText := strings.ToLower(v.Experience + " " + v.Name)
+
+			if containsAny(levelText, "junior", "no experience", "intern", "senior", "lead", "architect") {
+				confidence = 0.9
+			}
+		}
 
 		for _, sk := range v.Skills {
 			skLower := strings.ToLower(sk)
+
 			if cat := getCategoryForSkill(skLower); cat != "" {
 				clusters[cat] = append(clusters[cat], sk)
 			}
@@ -55,13 +69,6 @@ func AssignLevels(vacancies []VacancyInput, descriptions []string) LevelResult {
 		desc := ""
 		if i < len(descriptions) {
 			desc = descriptions[i]
-		}
-
-		confidence := 0.6
-		levelText := strings.ToLower(v.Experience + " " + v.Name)
-
-		if containsAny(levelText, "junior", "no experience", "intern", "senior", "lead", "architect") {
-			confidence = 0.9
 		}
 
 		levels = append(levels, LevelEntry{
@@ -102,6 +109,7 @@ func categorizeSkills(name string, skills []string) string {
 
 	for _, skill := range skills {
 		category := getCategoryForSkill(strings.ToLower(skill))
+
 		if category != "" {
 			counts[category]++
 		}
@@ -160,6 +168,7 @@ func getCategoryForSkill(skill string) string {
 
 func classifyExperience(expStr string) ExperienceLevel {
 	lower := strings.ToLower(strings.TrimSpace(expStr))
+
 	if lower == "" {
 		return LevelMiddle
 	}
@@ -191,6 +200,7 @@ func normalizeExp(s string) string {
 	s = strings.ReplaceAll(s, "-", "")
 	s = strings.ReplaceAll(s, " ", "")
 	s = strings.ReplaceAll(s, "ё", "е")
+
 	return s
 }
 
@@ -200,5 +210,6 @@ func containsAny(s string, needles ...string) bool {
 			return true
 		}
 	}
+
 	return false
 }
