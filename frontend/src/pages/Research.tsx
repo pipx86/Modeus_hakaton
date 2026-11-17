@@ -1257,7 +1257,7 @@ export function Research() {
           <TreeTab id={id} active={isActive} focusNodeId={focusNodeId} />
         </TabsContent>
         <TabsContent value="chat">
-          <ChatTab runId={id} active={!loading && !error} />
+          <ChatTab runId={id} active={!loading && !error} runStatus={run?.status} />
         </TabsContent>
       </Tabs>
     </div>

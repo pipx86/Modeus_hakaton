@@ -144,8 +144,11 @@ func buildMessages(doc prompts.Document, in agent.AnalystInput) ([]llm.Message, 
 	if err != nil {
 		return nil, fmt.Errorf("marshal input: %w", err)
 	}
-	system := doc.System + "\n\n---\n\n# Примеры\n\n" + doc.Examples
-	user := "Вход аналитика (JSON):\n" + string(payload) +
+	// Примеры держим в пользовательском сообщении: guard вывода считает утечкой
+	// любую длинную строку из системного промпта, а модель часто цитирует примеры.
+	system := doc.System
+	user := "Примеры:\n\n" + doc.Examples +
+		"\n\n---\n\nВход аналитика (JSON):\n" + string(payload) +
 		"\n\nВерни JSON по схеме analyst.output.schema.json. " +
 		"Каждая цитата должна дословно присутствовать в transcript."
 	return []llm.Message{

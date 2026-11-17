@@ -10,9 +10,10 @@ import { Loader2Icon, RefreshCwIcon, SendIcon, WifiOffIcon } from "lucide-react"
 interface ChatTabProps {
   runId: string
   active: boolean
+  runStatus?: RunStatus
 }
 
-export function ChatTab({ runId, active }: ChatTabProps) {
+export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -159,12 +160,14 @@ export function ChatTab({ runId, active }: ChatTabProps) {
 
   return (
     <div className="space-y-3">
-      {streamState !== "open" && (
+      {(streamState !== "open" || runStatus === "failed" || runStatus === "degraded") && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive">
           <WifiOffIcon className="size-3.5 shrink-0" />
-          {streamState === "reconnecting"
-            ? "Соединение потеряно - переподключаюсь…"
-            : "SSE-поток недоступен: новые сообщения приходят опросом раз в 5 секунд."}
+          {runStatus === "failed" || runStatus === "degraded"
+            ? "Прогон завершился ошибкой - чат закрыт."
+            : streamState === "reconnecting"
+              ? "Соединение потеряно - переподключаюсь…"
+              : "SSE-поток недоступен: новые сообщения приходят опросом раз в 5 секунд."}
           {streamState === "failed" && (
             <Button
               variant="outline"
