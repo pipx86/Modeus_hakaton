@@ -1,3 +1,6 @@
+import { afterEach } from "vitest"
+import { act } from "@testing-library/react"
+
 /**
  * Дополнительные полифилы для jsdom.
  *
@@ -21,3 +24,9 @@ if (!Element.prototype.releasePointerCapture) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined
 }
+
+// После каждого теста даём отработать уже запущенным промисам (загрузка данных в useEffect),
+// чтобы их setState не приходился на момент, когда тест уже закончился.
+afterEach(async () => {
+  await act(async () => {})
+})

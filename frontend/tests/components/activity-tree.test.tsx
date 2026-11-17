@@ -132,6 +132,35 @@ describe("ActivityTree", () => {
     expect(onApprove).toHaveBeenCalledWith("e1")
   })
 
+  it("диалог обоснований показывает статус и confidence и умеет отклонить", () => {
+    const onReject = vi.fn()
+    renderTree({
+      nodes: [
+        { id: "r1", type: "role", title: "Data Scientist", evidence: [] },
+        {
+          id: "f1",
+          type: "function",
+          title: "Анализ метрик",
+          parent_id: "r1",
+          evidence: [
+            { id: "e1", source_id: "s-1", quote: "Цитата e1", status: "pending", confidence: 0.82 },
+          ],
+        },
+      ],
+      onReject,
+    })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
+    )
+
+    expect(screen.getByText("На проверке")).toBeInTheDocument()
+    expect(screen.getByText("82%")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Отклонить цитату" }))
+    expect(onReject).toHaveBeenCalledWith("e1")
+  })
+
   it("пустой результат поиска показывает сброс фильтров", () => {
     renderTree()
 
