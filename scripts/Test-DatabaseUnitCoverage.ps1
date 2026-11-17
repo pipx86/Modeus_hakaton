@@ -1,10 +1,11 @@
+param([string]$ProfilePath = 'coverage-db-unit.out')
+
 $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path -LiteralPath 'go.mod') -or -not (Test-Path -LiteralPath 'tests/unit/store')) {
     throw 'Запусти скрипт из корневой папки репозитория.'
 }
 
-$profilePath = 'coverage-db-unit.out'
 $coveragePackage = 'activity-descriptor/internal/store'
 $testPackages = @('./internal/store', './tests/unit/store')
 $testArgs = @('-count=1', "-coverpkg=$coveragePackage", "-coverprofile=$profilePath") + $testPackages
@@ -27,7 +28,7 @@ if (-not $match.Success) {
     throw 'Не удалось прочитать общий процент unit-покрытия.'
 }
 $coverage = [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-if ($coverage -lt 70) {
-    throw "Unit-покрытие логики хранения составляет $coverage%; требуется не менее 70%."
+if ($coverage -lt 80) {
+    throw "Unit-покрытие логики хранения составляет $coverage%; требуется не менее 80%."
 }
 Write-Output "Unit-покрытие логики хранения: $coverage%."

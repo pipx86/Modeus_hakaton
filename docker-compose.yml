@@ -7,7 +7,7 @@ name: activity-descriptor
 #
 # The api service runs cmd/api: the in-memory store + deterministic chat
 # fallback, so the demo works without goose migrations or an LLM provider.
-# Production keeps cmd/server + PostgreSQL (migrations live in the DB branch).
+# Рабочий сервер cmd/server использует PostgreSQL; перед запуском примените Goose-миграции из migrations.
 #
 # Credentials come from the environment / .env (see .env.example). The
 # fallbacks are local-development placeholders only; never use them in prod.

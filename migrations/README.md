@@ -1,5 +1,15 @@
 # Миграции базы данных
 
+Отдельного SQL-файла инициализации нет: `20261107122603_initial_schema.sql` создаёт основу, а последующие миграции добавляют изменения схемы. Источник схемы — вся последовательность Goose-файлов; для новой базы применяйте их командой `up`, а не запускайте первый файл вручную.
+
+В PowerShell задайте адрес отдельной тестовой базы и примените все основные миграции:
+
+```powershell
+$env:DATABASE_URL = 'postgres://USER:PASSWORD@localhost:5432/DBNAME?sslmode=disable'
+goose -dir migrations postgres $env:DATABASE_URL up
+goose -dir migrations postgres $env:DATABASE_URL status
+```
+
 Миграции рассчитаны на PostgreSQL и выполняются инструментом Goose. Команды ниже запускаются из корня репозитория. `DATABASE_URL` должен указывать на отдельную тестовую базу PostgreSQL; не сохраняйте реальные пароли в репозитории.
 
 В Git Bash:
