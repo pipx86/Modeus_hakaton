@@ -10,7 +10,9 @@ import (
 
 type SynthesisStep struct{}
 
-func (s *SynthesisStep) Name() domain.Stage { return domain.StageSynthesis }
+func (s *SynthesisStep) Name() domain.Stage {
+	return domain.StageSynthesis
+}
 
 func (s *SynthesisStep) Execute(_ context.Context, _ *domain.Run) error {
 	return fmt.Errorf("synthesis step requires accumulated state; use ExecuteWithData")
@@ -20,6 +22,7 @@ func (s *SynthesisStep) ExecuteWithData(ctx context.Context, run *domain.Run, va
 	if run == nil {
 		return fmt.Errorf("run is nil")
 	}
+
 	if run.Data == nil {
 		run.Data = make(map[string]any)
 	}
@@ -29,24 +32,35 @@ func (s *SynthesisStep) ExecuteWithData(ctx context.Context, run *domain.Run, va
 
 	for i, v := range vacancies {
 		skills := pickSkillsFromData(run, i)
+
 		inputs = append(inputs, analysis.VacancyInput{
 			Name:       v.Title,
 			Skills:     skills,
 			Experience: extractExperienceHint(v.Description),
 		})
+
 		descs = append(descs, v.Description)
 	}
 
 	result := analysis.AssignLevels(inputs, descs)
 
 	levelMaps := make([]map[string]any, 0, len(result.Levels))
+
 	for _, le := range result.Levels {
-		levelMaps = append(levelMaps, map[string]any{
+		entry := map[string]any{
 			"skills":      le.Skills,
 			"description": le.Description,
-			"experience":  string(le.Experience),
-		})
+			"category":    le.Category,
+		}
+
+		if le.Category == "BackEnd" {
+			entry["experience"] = string(le.Experience)
+			entry["confidence"] = le.Confidence
+		}
+
+		levelMaps = append(levelMaps, entry)
 	}
+
 	run.Data["level_data"] = levelMaps
 	run.Data["level_skills"] = result.Skills
 
@@ -58,15 +72,18 @@ func pickSkillsFromData(run *domain.Run, index int) []string {
 	if !ok {
 		return nil
 	}
+
 	perVac, typedOk := raw.([][]string)
 	if !typedOk || index >= len(perVac) {
 		return nil
 	}
+
 	return perVac[index]
 }
 
 func extractExperienceHint(description string) string {
 	d := toLowerASCII(description)
+
 	switch {
 	case contains(d, "less than 1 year", "no experience", "entry level", "стажёр", "без опыта"):
 		return "junior"
@@ -75,16 +92,19 @@ func extractExperienceHint(description string) string {
 	case contains(d, "6+ years", "10+ years", "lead", "principal", "архитектур"):
 		return "senior"
 	}
+
 	return ""
 }
 
 func toLowerASCII(s string) string {
 	b := []byte(s)
+
 	for i := range b {
 		if 'A' <= b[i] && b[i] <= 'Z' {
 			b[i] += 'a' - 'A'
 		}
 	}
+
 	return string(b)
 }
 
@@ -94,25 +114,31 @@ func contains(s string, subs ...string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
 func indexOf(haystack, needle string) int {
 	n := len(needle)
+
 	if n == 0 || len(haystack) < n {
 		return -1
 	}
+
 	for i := 0; i+n <= len(haystack); i++ {
 		match := true
+
 		for j := 0; j < n; j++ {
 			if haystack[i+j] != needle[j] {
 				match = false
 				break
 			}
 		}
+
 		if match {
 			return i
 		}
 	}
+
 	return -1
 }

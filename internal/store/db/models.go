@@ -19,6 +19,7 @@ type AgentMessage struct {
 	AvailableAt   pgtype.Timestamptz `json:"available_at"`
 	SentAt        pgtype.Timestamptz `json:"sent_at"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	DedupKey      pgtype.Text        `json:"dedup_key"`
 }
 
 type CompetencyKsa struct {
@@ -73,6 +74,57 @@ type KsaTaxonomyLink struct {
 	TaxonomyItemID pgtype.UUID `json:"taxonomy_item_id"`
 }
 
+type LlmEvaluation struct {
+	ID        pgtype.UUID        `json:"id"`
+	RequestID pgtype.UUID        `json:"request_id"`
+	Evaluator string             `json:"evaluator"`
+	Criterion string             `json:"criterion"`
+	Score     pgtype.Numeric     `json:"score"`
+	Details   []byte             `json:"details"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type LlmRequest struct {
+	ID              pgtype.UUID        `json:"id"`
+	TraceID         string             `json:"trace_id"`
+	RunID           pgtype.UUID        `json:"run_id"`
+	Agent           string             `json:"agent"`
+	Provider        string             `json:"provider"`
+	Model           string             `json:"model"`
+	PromptVersionID pgtype.Text        `json:"prompt_version_id"`
+	RequestHash     pgtype.Text        `json:"request_hash"`
+	Messages        []byte             `json:"messages"`
+	Params          []byte             `json:"params"`
+	Status          string             `json:"status"`
+	ErrorCode       pgtype.Text        `json:"error_code"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
+	LatencyMs       pgtype.Int4        `json:"latency_ms"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Attempt         int32              `json:"attempt"`
+	MaxAttempts     int32              `json:"max_attempts"`
+}
+
+type LlmResponse struct {
+	RequestID        pgtype.UUID        `json:"request_id"`
+	RawText          pgtype.Text        `json:"raw_text"`
+	ParsedJson       []byte             `json:"parsed_json"`
+	ValidationStatus pgtype.Text        `json:"validation_status"`
+	RepairAttempt    int32              `json:"repair_attempt"`
+	FinishReason     pgtype.Text        `json:"finish_reason"`
+	ReceivedAt       pgtype.Timestamptz `json:"received_at"`
+}
+
+type LlmUsage struct {
+	RequestID        pgtype.UUID    `json:"request_id"`
+	PromptTokens     int32          `json:"prompt_tokens"`
+	CompletionTokens int32          `json:"completion_tokens"`
+	TotalTokens      int32          `json:"total_tokens"`
+	CostUsd          pgtype.Numeric `json:"cost_usd"`
+	ReasoningEffort  pgtype.Text    `json:"reasoning_effort"`
+	LatencyMs        pgtype.Int4    `json:"latency_ms"`
+}
+
 type Node struct {
 	ID          pgtype.UUID        `json:"id"`
 	RunID       pgtype.UUID        `json:"run_id"`
@@ -83,6 +135,18 @@ type Node struct {
 	Description pgtype.Text        `json:"description"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type PiiFinding struct {
+	ID          pgtype.UUID        `json:"id"`
+	RequestID   pgtype.UUID        `json:"request_id"`
+	ResponseID  pgtype.UUID        `json:"response_id"`
+	PiiType     string             `json:"pii_type"`
+	Hash        string             `json:"hash"`
+	StartOffset pgtype.Int4        `json:"start_offset"`
+	EndOffset   pgtype.Int4        `json:"end_offset"`
+	Action      string             `json:"action"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type ProgramCompetency struct {
@@ -100,6 +164,27 @@ type ProgramSource struct {
 	SourceID  pgtype.UUID `json:"source_id"`
 }
 
+type PromptActivation struct {
+	ID              pgtype.UUID        `json:"id"`
+	Agent           string             `json:"agent"`
+	PromptVersionID string             `json:"prompt_version_id"`
+	ActivatedBy     pgtype.Text        `json:"activated_by"`
+	Reason          pgtype.Text        `json:"reason"`
+	ActivatedAt     pgtype.Timestamptz `json:"activated_at"`
+}
+
+type PromptVersion struct {
+	ID           string             `json:"id"`
+	Agent        string             `json:"agent"`
+	Version      string             `json:"version"`
+	PromptHash   string             `json:"prompt_hash"`
+	SystemText   string             `json:"system_text"`
+	ExamplesText pgtype.Text        `json:"examples_text"`
+	Status       string             `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
+}
+
 type Role struct {
 	ID          pgtype.UUID        `json:"id"`
 	Code        string             `json:"code"`
@@ -109,18 +194,19 @@ type Role struct {
 }
 
 type Run struct {
-	ID           pgtype.UUID        `json:"id"`
-	CreatedBy    pgtype.UUID        `json:"created_by"`
-	Status       string             `json:"status"`
-	Profession   string             `json:"profession"`
-	RootNodeID   pgtype.UUID        `json:"root_node_id"`
-	StartedAt    pgtype.Timestamptz `json:"started_at"`
-	FinishedAt   pgtype.Timestamptz `json:"finished_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
-	Stage        string             `json:"stage"`
-	Type         string             `json:"type"`
+	ID             pgtype.UUID        `json:"id"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	Status         string             `json:"status"`
+	Profession     string             `json:"profession"`
+	RootNodeID     pgtype.UUID        `json:"root_node_id"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ErrorMessage   pgtype.Text        `json:"error_message"`
+	Stage          string             `json:"stage"`
+	Type           string             `json:"type"`
+	DegradedReason pgtype.Text        `json:"degraded_reason"`
 }
 
 type RunSource struct {

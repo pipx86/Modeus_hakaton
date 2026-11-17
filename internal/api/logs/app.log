@@ -1,0 +1,25 @@
+{"time":"2026-11-17T19:08:21.0730527+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.0900857+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.090636+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.090636+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.090636+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.090636+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.0911461+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-17T19:08:21.1009363+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-17T19:08:21.1009363+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-17T19:08:21.1009363+03:00","level":"WARN","msg":"create_run_bad_request","error":"unexpected EOF"}
+{"time":"2026-11-17T19:08:21.1029753+03:00","level":"INFO","msg":"resume_found_incomplete_runs","count":1}
+{"time":"2026-11-17T19:08:21.1034816+03:00","level":"INFO","msg":"resume_continuing_run","run_id":"run-1","stage":"analysis"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"INFO","msg":"resume_run_completed_successfully","run_id":"run-1"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-17T19:08:21.103549+03:00","level":"ERROR","msg":"get_run_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-17T19:08:21.1040584+03:00","level":"ERROR","msg":"get_tree_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-17T19:08:21.1040584+03:00","level":"ERROR","msg":"get_answers_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-17T19:08:21.1040584+03:00","level":"ERROR","msg":"export_get_run_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-17T19:08:21.1040584+03:00","level":"ERROR","msg":"export_get_tree_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-17T19:08:21.1040584+03:00","level":"ERROR","msg":"list_runs_internal_error","error":"database unavailable"}
