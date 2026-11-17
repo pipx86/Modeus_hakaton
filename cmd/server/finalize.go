@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,28 +14,48 @@ import (
 	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/embeddings"
 	"activity-descriptor/internal/llm"
+	"activity-descriptor/internal/search"
 	"activity-descriptor/internal/store"
 	"activity-descriptor/internal/store/db"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// sourceRetriever returns only the source fragments relevant to a run query.
+type sourceRetriever func(ctx context.Context, runID, query string) ([]domain.Source, error)
+
 // newTreeFinalizer builds the post-interview pipeline: analyst, synthesizer
-// and persistence of the resulting tree. It is installed on the chat service
-// only when an analyst client is configured.
-func newTreeFinalizer(pgStore *api.PGStore, analystClient llm.ChatClient) chat.Finalizer {
+// and persistence of the resulting tree. An optional retriever injects RAG
+// context instead of sending every source to the model.
+func newTreeFinalizer(pgStore *api.PGStore, analystClient llm.ChatClient, retrievers ...sourceRetriever) chat.Finalizer {
+	return newTreeFinalizerWithVersions(pgStore, analystClient, "", "", retrievers...)
+}
+
+func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
 	return func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
 		transcript := transcriptFromSession(session)
-		analystAgent, err := analyst.New(analystClient)
+		analystOptions := []analyst.Option{}
+		if analystVersion != "" {
+			analystOptions = append(analystOptions, analyst.WithPromptVersion(analystVersion))
+		}
+		analystAgent, err := analyst.New(analystClient, analystOptions...)
 		if err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: analyst: %w", err)
 		}
-		analysis, err := analystAgent.Analyze(ctx, agent.AnalystInput{
+		input := agent.AnalystInput{
 			SessionID:  session.ID,
 			Profession: profession,
 			Transcript: transcript,
-		})
+		}
+		if len(retrievers) > 0 && retrievers[0] != nil {
+			query := profession + " " + truncateRunes(transcript, 2000)
+			if sources, retrieveErr := retrievers[0](ctx, runID, query); retrieveErr == nil {
+				input.Sources = sources
+			}
+		}
+		analysis, err := analystAgent.Analyze(ctx, input)
 		if err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
 		}
@@ -44,7 +65,11 @@ func newTreeFinalizer(pgStore *api.PGStore, analystClient llm.ChatClient) chat.F
 			interviewNodes = append(interviewNodes, entity.Node)
 		}
 
-		synthesizerAgent, err := synthesizer.New()
+		synthesizerOptions := []synthesizer.Option{}
+		if synthesizerVersion != "" {
+			synthesizerOptions = append(synthesizerOptions, synthesizer.WithPromptVersion(synthesizerVersion))
+		}
+		synthesizerAgent, err := synthesizer.New(synthesizerOptions...)
 		if err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: synthesizer: %w", err)
 		}
@@ -60,6 +85,59 @@ func newTreeFinalizer(pgStore *api.PGStore, analystClient llm.ChatClient) chat.F
 			return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
 		}
 		return domain.RunDone, nil
+	}
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit])
+}
+
+// newRAGRetriever builds a lexical/vector retriever. It degrades to BM25 when
+// Ollama is unavailable; an empty index simply returns no sources.
+func newRAGRetriever(pgStore *api.PGStore) sourceRetriever {
+	if pgStore == nil || pgStore.Pool == nil {
+		return nil
+	}
+	address := os.Getenv("OLLAMA_URL")
+	model := os.Getenv("OLLAMA_EMBED_MODEL")
+	if model == "" {
+		model = "nomic-embed-text"
+	}
+	service := search.Service{
+		Pool:  pgStore.Pool,
+		Model: embeddings.Ollama{BaseURL: address, Model: model},
+	}
+	return func(ctx context.Context, runID, query string) ([]domain.Source, error) {
+		var id pgtype.UUID
+		if err := id.Scan(runID); err != nil || !id.Valid {
+			return nil, fmt.Errorf("invalid run id: %w", err)
+		}
+		hits, _, err := service.Search(ctx, id, query, 8)
+		if err != nil {
+			return nil, err
+		}
+		bySource := make(map[string]*domain.Source)
+		for _, hit := range hits {
+			sourceID := hit.SourceID.String()
+			item := bySource[sourceID]
+			if item == nil {
+				item = &domain.Source{ID: sourceID, Type: domain.SourceDocument, Title: "Retrieved source"}
+				bySource[sourceID] = item
+			}
+			if item.Content != "" {
+				item.Content += "\n"
+			}
+			item.Content += hit.Quote
+		}
+		out := make([]domain.Source, 0, len(bySource))
+		for _, item := range bySource {
+			out = append(out, *item)
+		}
+		return out, nil
 	}
 }
 

@@ -19,6 +19,10 @@ const STATUS_CONFIG: Record<RunStatus, { label: string; className: string }> = {
     label: "Ошибка",
     className: "border-transparent bg-destructive/15 text-destructive",
   },
+  degraded: {
+    label: "С ограничениями",
+    className: "border-transparent bg-amber-500/15 text-amber-300",
+  },
 }
 
 export function StatusBadge({ status }: { status?: RunStatus }) {
@@ -28,7 +32,7 @@ export function StatusBadge({ status }: { status?: RunStatus }) {
       variant="outline"
       className={cn("h-6 rounded-full px-2.5 font-medium", config.className)}
     >
-      {config.label}
+      <span className="-translate-y-[1px]">{config.label}</span>
     </Badge>
   )
 }

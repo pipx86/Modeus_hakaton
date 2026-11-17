@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { describe, expect, it } from "vitest"
@@ -39,9 +39,10 @@ function happyHandler() {
 }
 
 describe("NewResearch", () => {
-  it("рендерит форму, блок источников и шаги процесса", () => {
+  it("рендерит форму, блок источников и шаги процесса", async () => {
     setFetchHandler(async () => ({ status: 200, body: [] }))
     renderPage()
+    await act(async () => {})
 
     expect(screen.getByText("Новое исследование")).toBeInTheDocument()
     expect(screen.getByLabelText("Профессия / роль")).toBeInTheDocument()
@@ -51,23 +52,64 @@ describe("NewResearch", () => {
     expect(screen.getByText(/Строится дерево/)).toBeInTheDocument()
   })
 
-  it("поле профессии связано со списком подсказок ролей", () => {
+  it("показывает подсказки профессий и подставляет выбранную", async () => {
     setFetchHandler(async () => ({ status: 200, body: [] }))
-    const { container } = renderPage()
+    renderPage()
+    await act(async () => {})
 
     const input = screen.getByLabelText("Профессия / роль")
-    expect(input).toHaveAttribute("list", "role-options")
+    fireEvent.focus(input)
+    fireEvent.click(screen.getByRole("button", { name: "Аналитик данных" }))
 
-    const options = container.querySelectorAll("#role-options option")
-    expect(options.length).toBeGreaterThan(0)
-    expect(Array.from(options).map((option) => option.getAttribute("value"))).toContain(
-      "Data Scientist",
-    )
+    expect(input).toHaveValue("Аналитик данных")
   })
 
-  it("показывает ошибку после пустого сабмита и следит за лимитом длины", () => {
+  it("фильтрует подсказки по введённому тексту", async () => {
+    setFetchHandler(async () => ({ status: 200, body: [] }))
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "DevOps" } })
+
+    expect(screen.getByRole("button", { name: "DevOps-инженер" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Аналитик данных" })).not.toBeInTheDocument()
+  })
+
+  it("подсвечивает уровень по клику и подставляет его при выборе строки", async () => {
+    setFetchHandler(async () => ({ status: 200, body: [] }))
+    renderPage()
+    await act(async () => {})
+
+    const input = screen.getByLabelText("Профессия / роль")
+    fireEvent.focus(input)
+
+    const middle = screen.getByRole("button", { name: "middle" })
+    fireEvent.click(middle)
+
+    expect(middle).toHaveAttribute("aria-pressed", "true")
+    expect(input).toHaveValue("")
+    expect(screen.getByRole("button", { name: "junior" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Backend разработчик" }))
+
+    expect(input).toHaveValue("Backend разработчик (middle)")
+  })
+
+  it("находит Backend по уровню в фильтре", async () => {
+    setFetchHandler(async () => ({ status: 200, body: [] }))
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "senior" } })
+
+    expect(screen.getByRole("button", { name: "Backend разработчик" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Аналитик данных" })).not.toBeInTheDocument()
+  })
+
+  it("показывает ошибку после пустого сабмита и следит за лимитом длины", async () => {
     setFetchHandler(async () => ({ status: 200, body: [] }))
     const { container } = renderPage()
+    await act(async () => {})
 
     fireEvent.submit(container.querySelector("form")!)
     expect(screen.getByText("Укажите профессию или роль")).toBeInTheDocument()
@@ -78,9 +120,10 @@ describe("NewResearch", () => {
     expect(screen.getByText("Не длиннее 120 символов")).toBeInTheDocument()
   })
 
-  it("черновик источника нельзя добавить без названия, лимит названия работает", () => {
+  it("черновик источника нельзя добавить без названия, лимит названия работает", async () => {
     setFetchHandler(async () => ({ status: 200, body: [] }))
     renderPage()
+    await act(async () => {})
 
     expect(screen.getByRole("button", { name: "Добавить источник" })).toBeDisabled()
 
@@ -91,6 +134,7 @@ describe("NewResearch", () => {
   it("добавляет и удаляет черновик источника с меткой типа", async () => {
     setFetchHandler(async () => ({ status: 200, body: [] }))
     renderPage()
+    await act(async () => {})
     const user = userEvent.setup()
 
     // Radix Select — кнопка с попапом, поэтому не fireEvent.change, а два клика.
@@ -110,6 +154,7 @@ describe("NewResearch", () => {
   it("запускает прогон и переходит на его страницу", async () => {
     happyHandler()
     renderPage()
+    await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
       target: { value: "Data Scientist" },
@@ -130,6 +175,7 @@ describe("NewResearch", () => {
       return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
     })
     renderPage()
+    await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
     fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Черновик" } })
@@ -145,6 +191,7 @@ describe("NewResearch", () => {
       throw new Error("offline")
     })
     renderPage()
+    await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
@@ -156,11 +203,12 @@ describe("NewResearch", () => {
     ).toBeInTheDocument()
   })
 
-  it("при недоступном сервере блок источников показывает короткую пометку", () => {
+  it("при недоступном сервере блок источников показывает короткую пометку", async () => {
     setFetchHandler(async () => {
       throw new Error("offline")
     })
     renderPage()
+    await act(async () => {})
 
     expect(screen.getByText("Сервер недоступен")).toBeInTheDocument()
   })

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { apiClient, type SourceType } from "@/lib/api/client"
+import { stripControlChars } from "@/lib/security"
 import {
   AlertCircleIcon,
   FileSearchIcon,
@@ -19,21 +20,52 @@ import {
   XIcon,
 } from "lucide-react"
 
+/** Тонкая стрелка между уровнями дерева: длинный штрих и маленький наконечник. */
+function FlowArrow() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 8"
+      className="mx-1 inline-block h-2 w-3.5 shrink-0 align-middle text-muted-foreground/70"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.1"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1 4h12" />
+      <path d="M10.5 1.9 13 4l-2.5 2.1" />
+    </svg>
+  )
+}
+
 const STEPS = [
   { icon: MessageSquareTextIcon, title: "Интервью", description: "Собирается информация о реальной деятельности специалиста." },
   { icon: FileSearchIcon, title: "Анализ данных", description: "Анализируются вакансии, профстандарты и методички." },
-  { icon: NetworkIcon, title: "Синтез дерева", description: "Строится дерево «функции -> задачи -> действия» по собранным данным." },
+  {
+    icon: NetworkIcon,
+    title: "Синтез дерева",
+    description: (
+      <>
+        Строится дерево{" "}
+        <span className="whitespace-nowrap font-medium text-foreground/80">
+          функции <FlowArrow /> задачи <FlowArrow /> действия
+        </span>{" "}
+        по собранным данным.
+      </>
+    ),
+  },
 ]
 
-const ROLE_SUGGESTIONS = [
-  "Data Scientist",
-  "Frontend Developer",
-  "Инженер-строитель",
-  "Врач-терапевт",
-  "Методист образовательных программ",
-  "Юрист",
-  "Продуктовый аналитик",
-  "DevOps-инженер",
+interface RoleSuggestion {
+  title: string
+  levels?: string[]
+}
+
+const ROLE_SUGGESTIONS: RoleSuggestion[] = [
+  { title: "Backend разработчик", levels: ["junior", "middle", "senior"] },
+  { title: "Аналитик данных" },
+  { title: "DevOps-инженер" },
 ]
 
 const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
@@ -65,6 +97,8 @@ export function NewResearch() {
   const [qType, setQType] = useState<SourceType>("document")
   const [qTitle, setQTitle] = useState("")
   const [qContent, setQContent] = useState("")
+  const [roleOpen, setRoleOpen] = useState(false)
+  const [selectedLevel, setSelectedLevel] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -84,6 +118,13 @@ export function NewResearch() {
       : profession.trim().length > PROFESSION_MAX
         ? `Не длиннее ${PROFESSION_MAX} символов`
         : null
+
+  const filteredRoles = ROLE_SUGGESTIONS.filter((role) => {
+    const query = profession.trim().toLowerCase()
+    if (!query) return true
+    if (role.title.toLowerCase().includes(query)) return true
+    return (role.levels ?? []).some((level) => level.toLowerCase().includes(query))
+  })
 
   const qTitleTrimmed = qTitle.trim()
   const qTitleError =
@@ -119,26 +160,35 @@ export function NewResearch() {
       const results = await Promise.all(
         drafts.map((draft) =>
           apiClient.POST("/sources", {
-            body: { type: draft.type, title: draft.title, content: draft.content || undefined },
+            body: {
+              type: draft.type,
+              title: stripControlChars(draft.title),
+              content: draft.content ? stripControlChars(draft.content) : undefined,
+            },
           }),
         ),
       )
       const failed = results.find((result) => result.error)
       if (failed?.error) {
         setApiError(failed.error.message)
+        toast.error("Не удалось добавить источник", { description: failed.error.message })
         return
       }
       const { data: run, error: runError } = await apiClient.POST("/runs", {
-        body: { profession: profession.trim() },
+        body: { profession: stripControlChars(profession).trim() },
       })
       if (runError) {
         setApiError(runError.message)
+        toast.error("Не удалось запустить исследование", { description: runError.message })
         return
       }
       toast.success("Исследование запущено")
       navigate(run?.id ? `/research/${run.id}` : "/")
     } catch {
       setNetworkError("Сервер недоступен. Проверьте, что бэкенд или мок запущен (npm run mock).")
+      toast.error("Сервер недоступен", {
+        description: "Проверьте, что бэкенд или мок запущен (npm run mock).",
+      })
     } finally {
       setSubmitting(false)
     }
@@ -157,20 +207,83 @@ export function NewResearch() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="profession">Профессия / роль</Label>
-              <Input
-                id="profession"
-                list="role-options"
-                value={profession}
-                onChange={(event) => setProfession(event.target.value)}
-                placeholder="Например: Data Scientist"
-                autoFocus
-                maxLength={PROFESSION_MAX}
-              />
-              <datalist id="role-options">
-                {ROLE_SUGGESTIONS.map((role) => (
-                  <option key={role} value={role} />
-                ))}
-              </datalist>
+              <div className="relative">
+                <Input
+                  id="profession"
+                  value={profession}
+                  onChange={(event) => {
+                    setProfession(event.target.value)
+                    setSelectedLevel(null)
+                    setRoleOpen(true)
+                  }}
+                  onFocus={() => setRoleOpen(true)}
+                  onBlur={() =>
+                    window.setTimeout(() => {
+                      setRoleOpen(false)
+                      setSelectedLevel(null)
+                    }, 100)
+                  }
+                  placeholder="Например: Data Scientist"
+                  autoFocus
+                  maxLength={PROFESSION_MAX}
+                  autoComplete="off"
+                  role="combobox"
+                  aria-expanded={roleOpen}
+                  aria-controls="role-suggestions"
+                />
+                {roleOpen && filteredRoles.length > 0 && (
+                  <ul
+                    id="role-suggestions"
+                    className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto overflow-x-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+                  >
+                    {filteredRoles.map((role) => (
+                      <li key={role.title} className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            const [selectedRole, level] = (selectedLevel ?? "").split("|")
+                            const picked = selectedRole === role.title ? level : null
+                            setProfession(picked ? `${role.title} (${picked})` : role.title)
+                            setSelectedLevel(null)
+                            setRoleOpen(false)
+                          }}
+                        >
+                          <span className="truncate">{role.title}</span>
+                        </button>
+                        {role.levels && (
+                          <div
+                            className="flex shrink-0 items-center gap-1"
+                            aria-label={`Уровни: ${role.title}`}
+                          >
+                            {role.levels.map((level) => {
+                              const key = `${role.title}|${level}`
+                              const active = selectedLevel === key
+                              return (
+                                <button
+                                  key={level}
+                                  type="button"
+                                  aria-pressed={active}
+                                  className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors ${
+                                    active
+                                      ? "border-primary bg-primary/15 text-primary"
+                                      : "hover:bg-accent hover:text-accent-foreground"
+                                  }`}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => setSelectedLevel(key)}
+                                >
+                                  {level}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               {(submitted || profession.length > PROFESSION_MAX) && professionError && (
                 <p className="flex items-center gap-1.5 text-sm text-destructive">
                   <AlertCircleIcon className="size-3.5 shrink-0" />

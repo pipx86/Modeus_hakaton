@@ -5,6 +5,7 @@ export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   running: "Выполняется",
   done: "Завершён",
   failed: "Ошибка",
+  degraded: "С ограничениями",
 }
 
 export const RUN_STATUS_VARIANT: Record<RunStatus, "outline" | "default" | "secondary" | "destructive"> = {
@@ -12,6 +13,7 @@ export const RUN_STATUS_VARIANT: Record<RunStatus, "outline" | "default" | "seco
   running: "default",
   done: "secondary",
   failed: "destructive",
+  degraded: "outline",
 }
 
 export const NODE_TYPE_LABEL: Record<NodeType, string> = {

@@ -198,6 +198,80 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /evidences/{id}/reject:
+    post:
+      tags: [evidences]
+      summary: Reject an evidence
+      operationId: rejectEvidence
+      description: Rejection is stored server-side; no body returned.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Rejected, no content
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Already rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /evidences/{id}:
+    patch:
+      tags: [evidences]
+      summary: Edit an evidence quote or confidence
+      operationId: patchEvidence
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                quote:
+                  type: string
+                  minLength: 1
+                ref_id:
+                  type: string
+                confidence:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+      responses:
+        "200":
+          description: Updated evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evidence"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /runs:
     get:
       tags: [runs]
@@ -472,7 +546,7 @@ components:
       enum: [vacancy, interview, standard, document]
     RunStatus:
       type: string
-      enum: [pending, running, done, failed]
+      enum: [pending, running, done, failed, degraded]
     Evidence:
       type: object
       required: [id, source_id, quote]
@@ -481,11 +555,24 @@ components:
         id:
           type: string
           minLength: 1
+        node_id:
+          type: string
+          minLength: 1
         source_id:
+          type: string
+          minLength: 1
+        ref_id:
           type: string
           minLength: 1
         quote:
           type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
     Node:
       type: object
       required: [id, type, title, evidence]
@@ -501,6 +588,23 @@ components:
           minLength: 1
         description:
           type: string
+        zun:
+          type: object
+          additionalProperties: false
+          required: [knowledge, skills, abilities]
+          properties:
+            knowledge:
+              type: array
+              items:
+                type: string
+            skills:
+              type: array
+              items:
+                type: string
+            abilities:
+              type: array
+              items:
+                type: string
         parent_id:
           type: string
         evidence:
@@ -547,6 +651,16 @@ components:
         finished_at:
           type: string
           format: date-time
+        type:
+          type: string
+          enum: [batch, chat]
+        stage:
+          type: string
+          enum: [created, interview, analysis, synthesis, review, done, failed]
+        degraded_reason:
+          type: string
+        error_message:
+          type: string
     ChatMessage:
       type: object
       required: [id, role, content, created_at]
@@ -564,6 +678,17 @@ components:
         created_at:
           type: string
           format: date-time
+        citations:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [title, quote]
+            properties:
+              title:
+                type: string
+              quote:
+                type: string
     RunEvent:
       type: object
       required: [type]

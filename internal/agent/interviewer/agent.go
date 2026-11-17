@@ -102,11 +102,13 @@ func buildMessages(doc prompts.Document, in agent.InterviewerInput) ([]llm.Messa
 	if err != nil {
 		return nil, fmt.Errorf("marshal input: %w", err)
 	}
-	system := doc.System + "\n\n---\n\n# Примеры\n\n" + doc.Examples
+	system := doc.System
+	examples := "# Examples\n\n" + doc.Examples
 	user := "Текущее состояние интервью (JSON):\n" + string(payload) +
 		"\n\nВерни следующий вопрос по схеме interviewer.output.schema.json."
 	return []llm.Message{
 		{Role: llm.RoleSystem, Content: system},
+		{Role: llm.RoleUser, Content: examples},
 		{Role: llm.RoleUser, Content: user},
 	}, nil
 }

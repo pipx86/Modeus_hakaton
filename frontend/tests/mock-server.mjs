@@ -84,7 +84,12 @@ const seedEvidence = [
   { id: "ev-1", source_id: "src-1", quote: "Опыт с pandas, SQL и A/B-тестами обязателен" },
   { id: "ev-2", source_id: "src-2", quote: "Трудовая функция: обработка и первичный анализ данных" },
 ]
-for (const evidence of seedEvidence) db.evidences.set(evidence.id, evidence)
+const seedStatus = ["pending", "approved"]
+seedEvidence.forEach((evidence, index) => {
+  evidence.status = seedStatus[index] ?? "pending"
+  evidence.confidence = index === 0 ? 0.82 : 0.94
+  db.evidences.set(evidence.id, evidence)
+})
 
 db.trees.set("run-demo", [
   { id: "n-1", type: "role", title: "Data Scientist", description: "Специалист по данным продуктовой команды", evidence: [] },
@@ -92,8 +97,18 @@ db.trees.set("run-demo", [
   { id: "n-3", type: "function", title: "Подготовка данных", parent_id: "n-1", evidence: [seedEvidence[1]] },
   { id: "n-4", type: "task", title: "Построение когортных отчётов", parent_id: "n-2", evidence: [seedEvidence[0]] },
   { id: "n-5", type: "task", title: "Чистка и нормализация датасетов", parent_id: "n-3", evidence: [seedEvidence[1]] },
-  { id: "n-6", type: "action", title: "Сводит когортный отчёт в SQL", parent_id: "n-4", evidence: [seedEvidence[0]] },
-  { id: "n-7", type: "action", title: "Удаляет дубликаты и выбросы", parent_id: "n-5", evidence: [seedEvidence[1]] },
+  { id: "n-6", type: "action", title: "Сводит когортный отчёт в SQL", parent_id: "n-4", evidence: [seedEvidence[0]],
+    zun: {
+      knowledge: ["Устройство когортного анализа", "Диалект SQL и оконные функции"],
+      skills: ["Написание аналитических запросов", "Проверка отчёта на выбросы"],
+      abilities: ["Точно формулировать метрики"],
+    } },
+  { id: "n-7", type: "action", title: "Удаляет дубликаты и выбросы", parent_id: "n-5", evidence: [seedEvidence[1]],
+    zun: {
+      knowledge: ["Методы очистки данных", "Критерии выбросов"],
+      skills: ["Работа с pandas", "Профилирование датасета"],
+      abilities: ["Внимательность к деталям"],
+    } },
 ])
 
 db.runs.set("run-demo", {
@@ -107,7 +122,7 @@ db.runs.set("run-demo", {
 db.messages.set("run-demo", [
   { id: "msg-1", role: "agent", content: "Расскажите, какие задачи вы решаете чаще всего?", created_at: now() },
   { id: "msg-2", role: "user", content: "Анализ метрик и подготовка отчётов для продуктовой команды.", created_at: now() },
-  { id: "msg-3", role: "agent", content: "Спасибо! Этого достаточно - дерево деятельности собрано.", created_at: now() },
+  { id: "msg-3", role: "agent", content: "Спасибо! Этого достаточно - дерево деятельности собрано.", created_at: now(), citations: [{ title: "Анализ продуктовых метрик", quote: "Опыт с pandas, SQL и A/B-тестами обязателен" }] },
 ])
 
 // ---------------- жизненный цикл прогона и интервью ----------------
@@ -149,6 +164,8 @@ function finalizeRun(runId) {
     const evidence = {
       id: nextId("ev"),
       source_id: sourceId,
+      status: "pending",
+      confidence: 0.75,
       quote: source ? `Фрагмент «${source.title}»: типичная задача специалиста` : "Уточнение из интервью",
     }
     db.evidences.set(evidence.id, evidence)
@@ -156,7 +173,12 @@ function finalizeRun(runId) {
   }
   const role = { id: nextId("node"), type: "role", title: run.profession, evidence: [] }
   const f1 = { id: nextId("node"), type: "function", title: "Основная деятельность", parent_id: role.id, evidence: [makeEvidence(0)] }
-  const f2 = { id: nextId("node"), type: "function", title: "Коммуникация и согласования", parent_id: role.id, evidence: [makeEvidence(1)] }
+  const f2 = { id: nextId("node"), type: "function", title: "Коммуникация и согласования", parent_id: role.id, evidence: [makeEvidence(1)],
+      zun: {
+        knowledge: ["Регламент операции"],
+        skills: ["Работа по инструкции"],
+        abilities: ["Аккуратность"],
+      } }
   const t1 = { id: nextId("node"), type: "task", title: "Ежедневные операции", parent_id: f1.id, evidence: [makeEvidence(0)] }
   const a1 = { id: nextId("node"), type: "action", title: "Выполняет типовую операцию", parent_id: t1.id, evidence: [makeEvidence(1)] }
   db.trees.set(runId, [role, f1, f2, t1, a1])
@@ -333,15 +355,53 @@ const server = createServer(async (req, res) => {
       if (typeof body.quote !== "string" || body.quote.trim().length === 0) {
         return validation(res, "quote: обязательное поле")
       }
-      const evidence = { id: nextId("ev"), source_id: body.source_id, quote: body.quote.trim() }
+      const evidence = {
+        id: nextId("ev"),
+        source_id: body.source_id,
+        quote: body.quote.trim(),
+        status: "pending",
+        confidence: 0.8,
+      }
       db.evidences.set(evidence.id, evidence)
       return send(res, 201, evidence)
     }
     match = route.match(/^\/evidences\/([^/]+)\/approve$/)
     if (match && method === "POST") {
       if (!db.evidences.has(match[1])) return notFound(res, "цитата не найдена")
+      const approved = db.evidences.get(match[1])
+      if (approved) {
+        approved.status = "approved"
+        approved.confidence ??= 0.9
+      }
       db.approved.add(match[1])
       return noContent(res)
+    }
+
+    match = route.match(/^\/evidences\/([^/]+)\/reject$/)
+    if (match && method === "POST") {
+      const evidence = db.evidences.get(match[1])
+      if (!evidence) return notFound(res, "цитата не найдена")
+      if (evidence.status === "rejected") {
+        return send(res, 409, { code: "ALREADY_REJECTED", message: "цитата уже отклонена" })
+      }
+      evidence.status = "rejected"
+      db.approved.delete(match[1])
+      return noContent(res)
+    }
+
+    match = route.match(/^\/evidences\/([^/]+)$/)
+    if (match && method === "PATCH") {
+      const evidence = db.evidences.get(match[1])
+      if (!evidence) return notFound(res, "цитата не найдена")
+      const body = await readJson(req)
+      if (typeof body.quote === "string" && body.quote.trim()) {
+        evidence.quote = body.quote.trim()
+        evidence.status = "pending"
+        db.approved.delete(match[1])
+      }
+      if (typeof body.confidence === "number") evidence.confidence = body.confidence
+      if (typeof body.ref_id === "string") evidence.ref_id = body.ref_id
+      return send(res, 200, evidence)
     }
 
     match = route.match(/^\/nodes\/([^/]+)$/)

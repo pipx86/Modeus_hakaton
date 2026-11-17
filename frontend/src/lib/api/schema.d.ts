@@ -95,6 +95,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evidences/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject an evidence
+         * @description Rejection is stored server-side; no body returned.
+         */
+        post: operations["rejectEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit an evidence quote or confidence */
+        patch: operations["patchEvidence"];
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -221,17 +258,27 @@ export interface components {
         /** @enum {string} */
         SourceType: "vacancy" | "interview" | "standard" | "document";
         /** @enum {string} */
-        RunStatus: "pending" | "running" | "done" | "failed";
+        RunStatus: "pending" | "running" | "done" | "failed" | "degraded";
         Evidence: {
             id: string;
+            node_id?: string;
             source_id: string;
+            ref_id?: string;
             quote: string;
+            /** @enum {string} */
+            status?: "pending" | "approved" | "rejected";
+            confidence?: number;
         };
         Node: {
             id: string;
             type: components["schemas"]["NodeType"];
             title: string;
             description?: string;
+            zun?: {
+                knowledge: string[];
+                skills: string[];
+                abilities: string[];
+            };
             parent_id?: string;
             evidence: components["schemas"]["Evidence"][];
         };
@@ -252,6 +299,12 @@ export interface components {
             started_at?: string;
             /** Format: date-time */
             finished_at?: string;
+            /** @enum {string} */
+            type?: "batch" | "chat";
+            /** @enum {string} */
+            stage?: "created" | "interview" | "analysis" | "synthesis" | "review" | "done" | "failed";
+            degraded_reason?: string;
+            error_message?: string;
         };
         ChatMessage: {
             id: string;
@@ -260,6 +313,10 @@ export interface components {
             content: string;
             /** Format: date-time */
             created_at: string;
+            citations?: {
+                title: string;
+                quote: string;
+            }[];
         };
         RunEvent: {
             /** @enum {string} */
@@ -501,6 +558,92 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rejectEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected, no content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Already rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    quote?: string;
+                    ref_id?: string;
+                    confidence?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated evidence */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Evidence"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

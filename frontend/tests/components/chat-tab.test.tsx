@@ -2,7 +2,7 @@
  * Тесты вкладки чата: история, отправка, индикатор «агент думает», обрыв SSE
  * и переход на поллинг. Сеть подменяется fetch-стабом, EventSource — фейком.
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { ChatTab } from "@/components/ChatTab"
@@ -45,6 +45,12 @@ vi.stubGlobal("EventSource", FakeEventSource)
 afterEach(() => {
   FakeEventSource.instances = []
 })
+
+function emitAgentMessage(data: unknown) {
+  act(() => {
+    FakeEventSource.instances[0].emit("agent_message", data)
+  })
+}
 
 function stubChat() {
   return setFetchHandler(async (url, init) => {
@@ -135,7 +141,7 @@ describe("ChatTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Отправить" }))
     expect(await screen.findByText("агент думает…")).toBeInTheDocument()
 
-    FakeEventSource.instances[0].emit("agent_message", {
+    emitAgentMessage({
       type: "agent_message",
       message: {
         id: "m3",
@@ -155,11 +161,15 @@ describe("ChatTab", () => {
     await screen.findByText("Какие задачи вы решаете чаще всего?")
     const source = FakeEventSource.instances[0]
 
-    source.onerror?.()
+    act(() => {
+      source.onerror?.()
+    })
     expect(await screen.findByText(/Соединение потеряно/)).toBeInTheDocument()
 
     const getsBefore = fetchCalls().filter((call) => call.url.endsWith("/runs/7/messages")).length
-    source.onopen?.()
+    act(() => {
+      source.onopen?.()
+    })
     await waitFor(() => {
       const getsAfter = fetchCalls().filter((call) => call.url.endsWith("/runs/7/messages")).length
       expect(getsAfter).toBeGreaterThan(getsBefore)
@@ -173,12 +183,162 @@ describe("ChatTab", () => {
     await screen.findByText("Какие задачи вы решаете чаще всего?")
     const source = FakeEventSource.instances[0]
 
-    source.onerror?.()
-    source.onerror?.()
-    source.onerror?.()
+    act(() => {
+      source.onerror?.()
+    })
+    act(() => {
+      source.onerror?.()
+    })
+    act(() => {
+      source.onerror?.()
+    })
 
     expect(await screen.findByText(/SSE-поток недоступен/)).toBeInTheDocument()
     expect(source.closed).toBe(true)
+  })
+
+  it("показывает ошибку отправки и не добавляет сообщение в ленту", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return { status: 200, body: [] }
+      }
+      return { status: 422, body: { code: "VALIDATION", message: "пустой ответ" } }
+    })
+
+    renderTab()
+    const box = await screen.findByRole("textbox")
+    fireEvent.change(box, { target: { value: "Ответ" } })
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }))
+
+    await waitFor(() =>
+      expect(fetchCalls().some((call) => call.init.method === "POST")).toBe(true),
+    )
+    expect(screen.queryByText("агент думает…")).not.toBeInTheDocument()
+  })
+
+  it("переживает сетевой сбой при отправке ответа", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return { status: 200, body: [] }
+      }
+      throw new Error("offline")
+    })
+
+    renderTab()
+    const box = await screen.findByRole("textbox")
+    fireEvent.change(box, { target: { value: "Ответ" } })
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }))
+
+    await waitFor(() =>
+      expect(fetchCalls().some((call) => call.init.method === "POST")).toBe(true),
+    )
+    expect(screen.getByRole("button", { name: "Отправить" })).toBeEnabled()
+  })
+
+  it("run_status done гасит индикатор «агент думает»", async () => {
+    stubChat()
+    renderTab()
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Ответ" } })
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }))
+    expect(await screen.findByText("агент думает…")).toBeInTheDocument()
+
+    act(() => {
+      FakeEventSource.instances[0].emit("run_status", { type: "run_status", status: "done" })
+    })
+
+    await waitFor(() => expect(screen.queryByText("агент думает…")).not.toBeInTheDocument())
+  })
+
+  it("после обрыва показывает кнопку «Обновить» и повторяет загрузку истории", async () => {
+    stubChat()
+    renderTab()
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+    const source = FakeEventSource.instances[0]
+
+    const getsBefore = fetchCalls().filter((call) => call.url.endsWith("/runs/7/messages")).length
+
+    act(() => {
+      source.onerror?.()
+    })
+    act(() => {
+      source.onerror?.()
+    })
+    act(() => {
+      source.onerror?.()
+    })
+
+    const refresh = await screen.findByRole("button", { name: /Обновить/ })
+    fireEvent.click(refresh)
+
+    await waitFor(() => {
+      const getsAfter = fetchCalls().filter((call) => call.url.endsWith("/runs/7/messages")).length
+      expect(getsAfter).toBeGreaterThan(getsBefore)
+    })
+  })
+
+  it("XSS-payload в сообщении рендерится текстом, а не скриптом", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "m1",
+              role: "agent",
+              content: "<script>alert(1)</script>",
+              created_at: "2026-11-10T10:00:00Z",
+            },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+
+    expect(await screen.findByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(document.querySelector("script")).toBeNull()
+  })
+
+  it("показывает цитаты, на которых основан ответ агента", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "m1",
+              role: "agent",
+              content: "Ответ основан на источнике",
+              created_at: "2026-11-10T10:00:00Z",
+              citations: [{ title: "Анализ продуктовых метрик", quote: "Опыт с pandas" }],
+            },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+
+    expect(await screen.findByText("На чём основан ответ")).toBeInTheDocument()
+    expect(screen.getByText(/Анализ продуктовых метрик/)).toBeInTheDocument()
+    expect(screen.getByText(/Опыт с pandas/)).toBeInTheDocument()
+  })
+
+  it("не падает, если вместо истории пришёл объект ошибки", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return { status: 404, body: { code: "NOT_FOUND", message: "chat session not found" } }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+
+    expect(await screen.findByText(/Чат ещё не открыт/)).toBeInTheDocument()
   })
 
   it("ошибка загрузки истории показывает баннер с кнопкой повтора", async () => {

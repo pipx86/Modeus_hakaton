@@ -30,27 +30,5 @@
 
 ## Формат
 
-Верни JSON по схеме `analyst.output.schema.json` (контракт `agent.io/v1`):
-
-```json
-{
-  "entities": [
-    {
-      "id": "tax-task-sql",
-      "type": "task",
-      "title": "Писать SQL-запросы",
-      "description": "Ежедневные запросы для отчётов",
-      "parent_id": "tax-fn-reporting",
-      "confidence": 0.9,
-      "evidence": [
-        {
-          "id": "ev-1",
-          "source_id": "src-interview-1",
-          "ref_id": "msg-4",
-          "quote": "каждый день пишу SQL-запросы для отчётов"
-        }
-      ]
-    }
-  ]
-}
-```
+Верни JSON по схеме `analyst.output.schema.json` (контракт `agent.io/v1`).
+Пример ответа приведён в пользовательском сообщении.
