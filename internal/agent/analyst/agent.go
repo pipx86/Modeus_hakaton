@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"activity-descriptor/internal/agent"
+	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/llm/repair"
 	"activity-descriptor/internal/prompts"
@@ -139,20 +140,51 @@ func (a *Agent) Analyze(ctx context.Context, in agent.AnalystInput) (agent.Analy
 	return agent.AnalystOutput{Entities: NodesToEntities(nodes)}, nil
 }
 
+const (
+	maxAnalystTranscriptRunes = 12000
+	maxAnalystSources         = 8
+	maxAnalystSourceRunes     = 2000
+)
+
+// fitAnalystInput keeps the analyst prompt inside a predictable token budget.
+// Retrieval already limits the number of fragments; this is a final guard for
+// direct callers that pass full documents or very long transcripts.
+func fitAnalystInput(in agent.AnalystInput) agent.AnalystInput {
+	in.Transcript = truncateRunes(in.Transcript, maxAnalystTranscriptRunes)
+	if len(in.Sources) > maxAnalystSources {
+		in.Sources = in.Sources[:maxAnalystSources]
+	}
+	sources := make([]domain.Source, len(in.Sources))
+	copy(sources, in.Sources)
+	for i := range sources {
+		sources[i].Content = truncateRunes(sources[i].Content, maxAnalystSourceRunes)
+	}
+	in.Sources = sources
+	return in
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "\n...[truncated]"
+}
+
 func buildMessages(doc prompts.Document, in agent.AnalystInput) ([]llm.Message, error) {
-	payload, err := json.MarshalIndent(in, "", "  ")
+	in = fitAnalystInput(in)
+	payload, err := json.Marshal(in)
 	if err != nil {
 		return nil, fmt.Errorf("marshal input: %w", err)
 	}
-	// Примеры держим в пользовательском сообщении: guard вывода считает утечкой
-	// любую длинную строку из системного промпта, а модель часто цитирует примеры.
 	system := doc.System
-	user := "Примеры:\n\n" + doc.Examples +
-		"\n\n---\n\nВход аналитика (JSON):\n" + string(payload) +
+	examples := "# Examples\n\n" + doc.Examples
+	user := "Вход аналитика (JSON):\n" + string(payload) +
 		"\n\nВерни JSON по схеме analyst.output.schema.json. " +
 		"Каждая цитата должна дословно присутствовать в transcript."
 	return []llm.Message{
 		{Role: llm.RoleSystem, Content: system},
+		{Role: llm.RoleUser, Content: examples},
 		{Role: llm.RoleUser, Content: user},
 	}, nil
 }

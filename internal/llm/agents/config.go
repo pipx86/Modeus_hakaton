@@ -36,6 +36,13 @@ const DefaultModel = "deepseek-v4.1-flash-1017"
 // DefaultBaseURL is the default OpenAI-compatible provider endpoint.
 const DefaultBaseURL = "https://api.reformboss.com/v1"
 
+// Legacy OpenRouter defaults are used only when the legacy OPENROUTER_API_KEY
+// is supplied without any generic LLM_* provider variable.
+const (
+	legacyDefaultModel   = "nvidia/nemotron-3-ultra-550b-a55b:free"
+	legacyDefaultBaseURL = "https://openrouter.ai/api/v1"
+)
+
 // Spec is the per-agent model configuration.
 type Spec struct {
 	Model           string
@@ -61,20 +68,54 @@ type Config struct {
 // variables. LLM_API_KEY is preferred; OPENROUTER_* names remain supported for
 // backwards compatibility.
 func FromEnv() (Config, error) {
-	apiKey := firstEnv("LLM_API_KEY", "OPENROUTER_API_KEY")
-	if apiKey == "" {
-		apiKey = readSecretFile()
+	llmKey := firstEnv("LLM_API_KEY")
+	llmBase := firstEnv("LLM_BASE_URL")
+	llmModel := firstEnv("LLM_MODEL")
+	legacyKey := firstEnv("OPENROUTER_API_KEY")
+	legacyBase := firstEnv("OPENROUTER_BASE_URL")
+	legacyModel := firstEnv("OPENROUTER_MODEL")
+
+	var apiKey, baseURL, model string
+	if llmKey != "" || llmBase != "" || llmModel != "" {
+		// Generic provider mode. A legacy key must never be paired with a
+		// custom base URL: that produces a misleading 401 at the provider.
+		if llmKey == "" {
+			return Config{}, fmt.Errorf("LLM_API_KEY is required when LLM_BASE_URL or LLM_MODEL is set; refusing to reuse OPENROUTER_API_KEY for another provider")
+		}
+		apiKey = llmKey
+		baseURL = llmBase
+		model = llmModel
+		if baseURL == "" {
+			baseURL = DefaultBaseURL
+		}
+		if model == "" {
+			model = DefaultModel
+		}
+	} else {
+		// Backwards-compatible OpenRouter mode.
+		apiKey = legacyKey
+		if apiKey == "" {
+			apiKey = readSecretFile()
+		}
+		baseURL = legacyBase
+		model = legacyModel
+		if apiKey != "" && legacyKey != "" {
+			if baseURL == "" {
+				baseURL = legacyDefaultBaseURL
+			}
+			if model == "" {
+				model = legacyDefaultModel
+			}
+		}
+		if baseURL == "" {
+			baseURL = DefaultBaseURL
+		}
+		if model == "" {
+			model = DefaultModel
+		}
 	}
 	if apiKey == "" {
-		return Config{}, fmt.Errorf("LLM_API_KEY is required (set LLM_API_KEY or OPENROUTER_API_KEY, or put it in .secrets/reformboss.key)")
-	}
-	baseURL := firstEnv("LLM_BASE_URL", "OPENROUTER_BASE_URL")
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
-	model := firstEnv("LLM_MODEL", "OPENROUTER_MODEL")
-	if model == "" {
-		model = DefaultModel
+		return Config{}, fmt.Errorf("LLM_API_KEY is required (set LLM_API_KEY, or put it in .secrets/reformboss.key)")
 	}
 
 	timeout, err := durationEnv("LLM_TIMEOUT_S", 300*time.Second)

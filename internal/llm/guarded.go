@@ -165,6 +165,16 @@ func WithCanary(canary string) GuardOption {
 
 // WithGuardAuditLimit caps the in-memory audit ring. A non-positive value keeps
 // the default.
+// WithOutputLeakRetry allows up to retries additional provider calls when an
+// answer leaks the system prompt, before returning a guard error.
+func WithOutputLeakRetry(retries int) GuardOption {
+	return func(c *GuardedClient) {
+		if retries > 0 {
+			c.outputLeakRetries = retries
+		}
+	}
+}
+
 func WithGuardAuditLimit(limit int) GuardOption {
 	return func(c *GuardedClient) {
 		if limit > 0 {
@@ -178,10 +188,11 @@ func WithGuardAuditLimit(limit int) GuardOption {
 // redacts PII before the provider call, guards the model answer and records
 // audit metadata. System messages are trusted.
 type GuardedClient struct {
-	next       ChatClient
-	policy     GuardPolicy
-	canary     string
-	auditLimit int
+	next              ChatClient
+	policy            GuardPolicy
+	canary            string
+	auditLimit        int
+	outputLeakRetries int
 
 	mu     sync.Mutex
 	audits []GuardAudit
@@ -260,14 +271,21 @@ func (c *GuardedClient) Chat(ctx context.Context, messages []Message) (string, e
 		}
 	}
 
-	answer, err := c.next.Chat(ctx, prepared)
-	if err != nil {
-		record.Outcome = GuardOutcomeProviderError
-		c.recordAudit(record)
-		return "", err
-	}
-
-	if c.leaks(answer, systemContents) {
+	var answer string
+	var err error
+	for attempt := 0; ; attempt++ {
+		answer, err = c.next.Chat(ctx, prepared)
+		if err != nil {
+			record.Outcome = GuardOutcomeProviderError
+			c.recordAudit(record)
+			return "", err
+		}
+		if !c.leaks(answer, systemContents) {
+			break
+		}
+		if attempt < c.outputLeakRetries {
+			continue
+		}
 		record.OutputLeak = true
 		record.Outcome = GuardOutcomeBlockedOutput
 		c.recordAudit(record)

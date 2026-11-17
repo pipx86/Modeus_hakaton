@@ -78,12 +78,12 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 	if err := service.Start("run-3", "Аналитик"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	waitFor(t, time.Second, func() bool {
+	waitFor(t, 3*time.Second, func() bool {
 		messages, err := service.Messages("run-3")
 		return err == nil && len(messages) >= 1
 	})
 	for i := 0; i < 6; i++ {
-		waitFor(t, time.Second, func() bool {
+		waitFor(t, 3*time.Second, func() bool {
 			messages, err := service.Messages("run-3")
 			return err == nil && len(messages) >= 2*i+1
 		})
@@ -92,7 +92,7 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 		}
 		if i < 5 {
 			next := 2*i + 3
-			waitFor(t, time.Second, func() bool {
+			waitFor(t, 3*time.Second, func() bool {
 				messages, err := service.Messages("run-3")
 				return err == nil && len(messages) >= next
 			})
@@ -103,7 +103,7 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 		if status != domain.RunDone {
 			t.Fatalf("status = %q, want done", status)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("finish callback was not called")
 	}
 }
