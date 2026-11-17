@@ -30,11 +30,11 @@ func Names() []AgentName {
 	return []AgentName{Interviewer, Analyst, Synthesizer}
 }
 
-// DefaultModel is the free OpenRouter Nemotron model used by the project.
-const DefaultModel = "nvidia/nemotron-3-ultra-550b-a55b:free"
+// DefaultModel is the default OpenAI-compatible model used by the project.
+const DefaultModel = "deepseek-v4.1-flash-1017"
 
-// DefaultBaseURL is the OpenRouter OpenAI-compatible endpoint.
-const DefaultBaseURL = "https://openrouter.ai/api/v1"
+// DefaultBaseURL is the default OpenAI-compatible provider endpoint.
+const DefaultBaseURL = "https://api.reformboss.com/v1"
 
 // Spec is the per-agent model configuration.
 type Spec struct {
@@ -58,19 +58,26 @@ type Config struct {
 }
 
 // FromEnv loads the provider and per-agent configuration from environment
-// variables. OPENROUTER_API_KEY is required.
+// variables. LLM_API_KEY is preferred; OPENROUTER_* names remain supported for
+// backwards compatibility.
 func FromEnv() (Config, error) {
-	apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
+	apiKey := firstEnv("LLM_API_KEY", "OPENROUTER_API_KEY")
 	if apiKey == "" {
 		apiKey = readSecretFile()
 	}
 	if apiKey == "" {
-		return Config{}, fmt.Errorf("OPENROUTER_API_KEY is required (put it in .secrets/openrouter.key or the environment)")
+		return Config{}, fmt.Errorf("LLM_API_KEY is required (set LLM_API_KEY or OPENROUTER_API_KEY, or put it in .secrets/reformboss.key)")
 	}
-	baseURL := getenv("OPENROUTER_BASE_URL", DefaultBaseURL)
-	model := getenv("OPENROUTER_MODEL", DefaultModel)
+	baseURL := firstEnv("LLM_BASE_URL", "OPENROUTER_BASE_URL")
+	if baseURL == "" {
+		baseURL = DefaultBaseURL
+	}
+	model := firstEnv("LLM_MODEL", "OPENROUTER_MODEL")
+	if model == "" {
+		model = DefaultModel
+	}
 
-	timeout, err := durationEnv("LLM_TIMEOUT_S", 240*time.Second)
+	timeout, err := durationEnv("LLM_TIMEOUT_S", 300*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -177,6 +184,15 @@ func specFromEnv(name AgentName, defaultModel string, defaultTimeout time.Durati
 	return spec, nil
 }
 
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func getenv(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
@@ -187,9 +203,9 @@ func getenv(key, fallback string) string {
 // readSecretFile reads an API key from OPENROUTER_API_KEY_FILE or from the
 // conventional .secrets/openrouter.key path. The file never appears in logs.
 func readSecretFile() string {
-	path := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY_FILE"))
+	path := firstEnv("LLM_API_KEY_FILE", "OPENROUTER_API_KEY_FILE")
 	if path == "" {
-		path = ".secrets/openrouter.key"
+		path = ".secrets/reformboss.key"
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

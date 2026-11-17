@@ -37,6 +37,27 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 }
 
+func TestFromEnvGenericProviderVariables(t *testing.T) {
+	t.Setenv("LLM_API_KEY", "generic-key")
+	t.Setenv("LLM_BASE_URL", "https://api.example.test/v1")
+	t.Setenv("LLM_MODEL", "example-model")
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENROUTER_BASE_URL", "")
+	t.Setenv("OPENROUTER_MODEL", "")
+	t.Setenv("LLM_API_KEY_FILE", os.DevNull)
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if cfg.APIKey != "generic-key" || cfg.BaseURL != "https://api.example.test/v1" {
+		t.Fatalf("config = %#v", cfg)
+	}
+	if cfg.Agents[Interviewer].Model != "example-model" {
+		t.Fatalf("model = %q", cfg.Agents[Interviewer].Model)
+	}
+}
+
 func TestFromEnvPerAgentOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Setenv("OPENROUTER_MODEL", "default-model")
