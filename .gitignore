@@ -1,1 +1,2 @@
 bin/\n*.exe\n*.test\ncoverage.out\ncoverage-db.out\ncoverage-db-unit.out\ne2e-output.json\n.env\n.env.*\n!.env.example\ngo.work\ngo.work.sum\nnode_modules/\ndata/acceptance/\ndata/reports/\nlogs/\n
+.secrets/
