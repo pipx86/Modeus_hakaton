@@ -161,6 +161,15 @@ describe("ActivityTree", () => {
     expect(onReject).toHaveBeenCalledWith("e1")
   })
 
+  it("XSS-payload в названии узла рендерится текстом, а не разметкой", () => {
+    renderTree({
+      nodes: [{ id: "r1", type: "role", title: '<img src=x onerror="alert(1)">', evidence: [] }],
+    })
+
+    expect(screen.getByText(/onerror="alert\(1\)"/)).toBeInTheDocument()
+    expect(document.querySelector("img")).toBeNull()
+  })
+
   it("пустой результат поиска показывает сброс фильтров", () => {
     renderTree()
 

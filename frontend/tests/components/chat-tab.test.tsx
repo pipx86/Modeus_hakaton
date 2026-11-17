@@ -278,6 +278,30 @@ describe("ChatTab", () => {
     })
   })
 
+  it("XSS-payload в сообщении рендерится текстом, а не скриптом", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/messages") && (init?.method ?? "GET") === "GET") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "m1",
+              role: "agent",
+              content: "<script>alert(1)</script>",
+              created_at: "2026-11-10T10:00:00Z",
+            },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+
+    expect(await screen.findByText("<script>alert(1)</script>")).toBeInTheDocument()
+    expect(document.querySelector("script")).toBeNull()
+  })
+
   it("ошибка загрузки истории показывает баннер с кнопкой повтора", async () => {
     setFetchHandler(async () => {
       throw new Error("offline")
