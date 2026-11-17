@@ -26,10 +26,13 @@ const STEPS = [
 ]
 
 const ROLE_SUGGESTIONS = [
-  "Backend разработчик (junior)",
-  "Backend разработчик (middle)",
-  "Backend разработчик (senior)",
-  "Data Analyst",
+  "Data Scientist",
+  "Frontend Developer",
+  "Инженер-строитель",
+  "Врач-терапевт",
+  "Методист образовательных программ",
+  "Юрист",
+  "Продуктовый аналитик",
   "DevOps-инженер",
 ]
 
@@ -62,7 +65,6 @@ export function NewResearch() {
   const [qType, setQType] = useState<SourceType>("document")
   const [qTitle, setQTitle] = useState("")
   const [qContent, setQContent] = useState("")
-  const [roleOpen, setRoleOpen] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -82,10 +84,6 @@ export function NewResearch() {
       : profession.trim().length > PROFESSION_MAX
         ? `Не длиннее ${PROFESSION_MAX} символов`
         : null
-
-  const filteredRoles = ROLE_SUGGESTIONS.filter((role) =>
-    role.toLowerCase().includes(profession.trim().toLowerCase()),
-  )
 
   const qTitleTrimmed = qTitle.trim()
   const qTitleError =
@@ -159,47 +157,20 @@ export function NewResearch() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="profession">Профессия / роль</Label>
-              <div className="relative">
-                <Input
-                  id="profession"
-                  value={profession}
-                  onChange={(event) => {
-                    setProfession(event.target.value)
-                    setRoleOpen(true)
-                  }}
-                  onFocus={() => setRoleOpen(true)}
-                  onBlur={() => window.setTimeout(() => setRoleOpen(false), 100)}
-                  placeholder="Например: Data Scientist"
-                  autoFocus
-                  maxLength={PROFESSION_MAX}
-                  autoComplete="off"
-                  role="combobox"
-                  aria-expanded={roleOpen}
-                  aria-controls="role-suggestions"
-                />
-                {roleOpen && filteredRoles.length > 0 && (
-                  <ul
-                    id="role-suggestions"
-                    className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
-                  >
-                    {filteredRoles.map((role) => (
-                      <li key={role}>
-                        <button
-                          type="button"
-                          className="w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => {
-                            setProfession(role)
-                            setRoleOpen(false)
-                          }}
-                        >
-                          {role}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <Input
+                id="profession"
+                list="role-options"
+                value={profession}
+                onChange={(event) => setProfession(event.target.value)}
+                placeholder="Например: Data Scientist"
+                autoFocus
+                maxLength={PROFESSION_MAX}
+              />
+              <datalist id="role-options">
+                {ROLE_SUGGESTIONS.map((role) => (
+                  <option key={role} value={role} />
+                ))}
+              </datalist>
               {(submitted || profession.length > PROFESSION_MAX) && professionError && (
                 <p className="flex items-center gap-1.5 text-sm text-destructive">
                   <AlertCircleIcon className="size-3.5 shrink-0" />

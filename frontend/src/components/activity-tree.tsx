@@ -27,9 +27,9 @@ import {
   ChevronsUpDownIcon,
   PencilIcon,
   PlusIcon,
+  QuoteIcon,
   SearchIcon,
   SearchXIcon,
-  XIcon,
 } from "lucide-react"
 import type { ActivityNode, Evidence, NodeType } from "@/lib/api/client"
 import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "./activity-tree-model"
@@ -60,77 +60,42 @@ function HighlightedTitle({ title, query }: { title: string; query: string }) {
   )
 }
 
-type EvidenceStatus = NonNullable<Evidence["status"]>
-
-const STATUS_LABEL: Record<EvidenceStatus, string> = {
-  pending: "На проверке",
-  approved: "Подтверждено",
-  rejected: "Отклонено",
-}
-
-const STATUS_TONE: Record<EvidenceStatus, string> = {
-  pending: "bg-muted text-muted-foreground",
-  approved: "bg-success/15 text-success",
-  rejected: "bg-destructive/15 text-destructive",
-}
-
-function confidenceTone(value: number) {
-  if (value >= 0.8) return "bg-success/15 text-success"
-  if (value >= 0.5) return "bg-warning/15 text-warning"
-  return "bg-destructive/15 text-destructive"
-}
-
 /**
- * Список обоснований узла: цитата, бейдж confidence, статус проверки и кнопки
- * «Подтвердить»/«Отклонить». Пустой список рендерит `null` - диалог сам показывает
- * подсказку, поэтому empty-state здесь не нужен.
+ * Список обоснований узла с кнопкой подтверждения для ещё не одобренных цитат.
+ * Пустой список рендерит `null` - диалог сам показывает отдельную подсказку,
+ * поэтому здесь не нужен empty-state.
  *
  * @param evidence Цитаты узла из контракта.
- * @param statuses Оптимистичные статусы со страницы (приоритетнее полей цитаты).
- * @param approvedIds Устаревший набор подтверждённых id (совместимость со старым API).
- * @param onApprove Колбэк подтверждения цитаты.
- * @param onReject Колбэк отклонения цитаты.
+ * @param approvedIds Множество id уже подтверждённых цитат (оптимистичное состояние страницы).
+ * @param onApprove Колбэк подтверждения одной цитаты (реализован на странице с rollback).
  */
 function EvidenceList({
   evidence,
-  statuses,
   approvedIds,
   onApprove,
-  onReject,
 }: {
   evidence: Evidence[]
-  statuses?: Map<string, EvidenceStatus>
   approvedIds: Set<string>
   onApprove: (evidenceId: string) => void
-  onReject?: (evidenceId: string) => void
 }) {
   if (evidence.length === 0) return null
   return (
     <ul className="space-y-1.5">
       {evidence.map((item) => {
-        const status: EvidenceStatus =
-          statuses?.get(item.id) ??
-          item.status ??
-          (approvedIds.has(item.id) ? "approved" : "pending")
+        const approved = approvedIds.has(item.id)
         return (
           <li
             key={item.id}
-            className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+            className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
           >
-            <span className="min-w-0 flex-1 text-muted-foreground">{item.quote}</span>
-            {typeof item.confidence === "number" && (
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceTone(item.confidence)}`}
-              >
-                {Math.round(item.confidence * 100)}%
+            <QuoteIcon className="mt-0.5 inline size-3.5 shrink-0" />
+            <span className="min-w-0 flex-1">{item.quote}</span>
+            {approved ? (
+              <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                <CheckIcon className="size-3" />
+                Подтверждено
               </span>
-            )}
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[status]}`}
-            >
-              {STATUS_LABEL[status]}
-            </span>
-            {status !== "approved" && (
+            ) : (
               <Button
                 variant="ghost"
                 size="sm"
@@ -140,18 +105,6 @@ function EvidenceList({
               >
                 <CheckIcon className="size-3" />
                 Подтвердить
-              </Button>
-            )}
-            {status !== "rejected" && onReject && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 gap-1 px-2 text-xs"
-                onClick={() => onReject(item.id)}
-                aria-label="Отклонить цитату"
-              >
-                <XIcon className="size-3" />
-                Отклонить
               </Button>
             )}
           </li>
@@ -229,7 +182,7 @@ const Row = memo(function Row({
           type="button"
           onClick={() => onSelect(node)}
           aria-label={`Узел ${node.title}: показать обоснования`}
-          className="flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium transition-colors hover:text-primary"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium transition-colors hover:text-primary"
         >
           <span className="flex min-w-0 items-baseline gap-2">
             <span className="truncate">
@@ -240,7 +193,8 @@ const Row = memo(function Row({
             </span>
           </span>
           {evidenceCount > 0 && (
-            <span className="shrink-0 text-xs font-normal text-muted-foreground">
+            <span className="flex shrink-0 items-center gap-0.5 text-xs font-normal text-muted-foreground">
+              <QuoteIcon className="size-3" />
               {evidenceCount}
             </span>
           )}
@@ -292,12 +246,8 @@ export interface ActivityTreeProps {
   nodes: ActivityNode[]
   /** Id уже подтверждённых цитат (оптимистичное состояние страницы Research). */
   approvedIds: Set<string>
-  /** Оптимистичные статусы цитат (pending/approved/rejected) со страницы. */
-  statuses?: Map<string, EvidenceStatus>
   /** Подтвердить одну цитату (страница делает запрос с rollback при ошибке). */
   onApprove: (evidenceId: string) => void
-  /** Отклонить одну цитату (необязательный колбэк: без него кнопки нет). */
-  onReject?: (evidenceId: string) => void
   /** Открыть диалог редактирования узла (страница владеет `NodeEditDialog`). */
   onEdit: (node: TreeNode) => void
   /** Открыть диалог прикрепления обоснования (страница владеет `EvidenceAttachDialog`). */
@@ -317,9 +267,7 @@ export interface ActivityTreeProps {
 export function ActivityTree({
   nodes,
   approvedIds,
-  statuses,
   onApprove,
-  onReject,
   onEdit,
   onAttach,
 }: ActivityTreeProps) {
@@ -489,8 +437,9 @@ export function ActivityTree({
           size="sm"
           aria-pressed={onlyWithEvidence}
           onClick={() => setOnlyWithEvidence((value) => !value)}
-          className="h-7 px-2.5 text-xs"
+          className="h-7 gap-1 px-2.5 text-xs"
         >
+          <QuoteIcon className="size-3" />
           С обоснованиями
         </Button>
         <span className="ml-auto text-xs text-muted-foreground">
@@ -545,7 +494,7 @@ export function ActivityTree({
             <DialogTitle>{selected?.title ?? ""}</DialogTitle>
             <DialogDescription>
               {selected
-                ? `${NODE_TYPE_LABELS[selected.type]}, обоснований: ${selected.evidence.length}`
+                ? `${NODE_TYPE_LABELS[selected.type]} · обоснований: ${selected.evidence.length}`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -558,9 +507,7 @@ export function ActivityTree({
               <EvidenceList
                 evidence={selected.evidence}
                 approvedIds={approvedIds}
-                statuses={statuses}
                 onApprove={onApprove}
-                onReject={onReject}
               />
             ))}
           <div className="flex justify-end">
