@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"activity-descriptor/internal/llm"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"activity-descriptor/internal/llm"
 )
 
 type tracingFakeClient struct{}

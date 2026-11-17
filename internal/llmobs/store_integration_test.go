@@ -31,6 +31,10 @@ func TestStoreIntegration(t *testing.T) {
 	if err := pool.Ping(ctx); err != nil {
 		t.Fatalf("ping: %v", err)
 	}
+	var llmTables bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('public.llm_requests') IS NOT NULL AND to_regclass('public.prompt_versions') IS NOT NULL`).Scan(&llmTables); err != nil || !llmTables {
+		t.Skip("LLM observability tables are not migrated in this database")
+	}
 
 	suffix := time.Now().UnixNano()
 	agent := "analyst"

@@ -25,6 +25,13 @@ func TestActivePromptVersionIntegration(t *testing.T) {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(pool.Close)
+	if err := pool.Ping(ctx); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	var llmTables bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('public.prompt_versions') IS NOT NULL`).Scan(&llmTables); err != nil || !llmTables {
+		t.Skip("LLM prompt tables are not migrated in this database")
+	}
 
 	id := fmt.Sprintf("integration-prompt-%d", time.Now().UnixNano())
 	if _, err := pool.Exec(ctx, `
