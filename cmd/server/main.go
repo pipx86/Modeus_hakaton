@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log" // Оставляем для совместимости, но будем использовать logging.Logger
 	"net"
 	"net/http"
@@ -14,11 +15,16 @@ import (
 	"time"
 
 	"activity-descriptor/internal/api"
+	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/llm/agents"
+	agentmetrics "activity-descriptor/internal/llm/metrics"
+	"activity-descriptor/internal/llmobs"
 	"activity-descriptor/internal/logging"
+	"activity-descriptor/internal/metrics"
+	"activity-descriptor/internal/observability"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,7 +44,13 @@ func loadConfig() (config, error) {
 }
 
 func run(ctx context.Context, c config) error {
-	logging.Init() // === NEW: Инициализация логгера ===
+	logging.Init()
+	shutdownTracing, err := observability.Setup()
+	if err != nil {
+		logging.Logger.Warn("tracing_setup_failed", "error", err)
+	} else {
+		defer func() { _ = shutdownTracing(context.Background()) }()
+	} // === NEW: Инициализация логгера ===
 
 	connectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -60,12 +72,27 @@ func run(ctx context.Context, c config) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 
+	metricsRegistry := metrics.New()
+	llmStore := llmobs.NewStore(pool)
 	pgStore := api.NewPGStore(pool)
+	var vacancyCount int
+	if err := pool.QueryRow(connectCtx, "SELECT count(*) FROM sources WHERE type='vacancy'").Scan(&vacancyCount); err == nil {
+		metricsRegistry.SetVacancies(vacancyCount)
+	}
 	var app *api.Server
+	var agentMetrics *agentmetrics.Registry
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
+	var llmProvider, llmModel string
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
+		llmProvider = "openai-compatible"
+		llmModel = cfg.Agents[agents.Interviewer].Model
+		logging.Logger.Info("LLM provider configured",
+			"base_url", cfg.BaseURL,
+			"interviewer_model", cfg.Agents[agents.Interviewer].Model,
+			"analyst_model", cfg.Agents[agents.Analyst].Model)
 		if agentPool, poolErr := agents.NewPool(cfg); poolErr == nil {
+			agentMetrics = agentPool.Metrics()
 			if interviewerClient, clientErr := agentPool.Client(agents.Interviewer); clientErr == nil {
 				chatClient = interviewerClient
 			}
@@ -74,9 +101,25 @@ func run(ctx context.Context, c config) error {
 			}
 		}
 	} else {
-		logging.Logger.Info("LLM provider is not configured; using fallback interview")
+		logging.Logger.Warn("LLM provider is not configured; using fallback interview", "error", cfgErr)
 	}
+	if agentMetrics != nil {
+		provider := llmProvider
+		model := llmModel
+		chatClient = llmobs.NewRecorder(chatClient, llmStore, "interviewer", provider, model)
+		if analystClient != nil {
+			analystClient = llmobs.NewRecorder(analystClient, llmStore, "analyst", provider, model)
+		}
+		chatClient = llm.NewCachedClient(chatClient, 128)
+		if analystClient != nil {
+			analystClient = llm.NewCachedClient(analystClient, 128)
+		}
+	}
+	interviewerVersion := activePromptVersion(ctx, llmStore, "interviewer")
+	analystVersion := activePromptVersion(ctx, llmStore, "analyst")
+	synthesizerVersion := activePromptVersion(ctx, llmStore, "synthesizer")
 	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
+		metricsRegistry.ObserveRun(string(status), 0)
 		if err := pgStore.SetStatus(runID, status); err != nil {
 			logging.Logger.Error("chat_status_store_failed", "run_id", runID, "error", err)
 			return
@@ -87,12 +130,23 @@ func run(ctx context.Context, c config) error {
 			}
 		}
 	})
+	chatService.SetPromptVersion(interviewerVersion)
 	if analystClient != nil {
-		chatService.SetFinalizer(newTreeFinalizer(pgStore, analystClient))
+		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	rawHandler := app.Routes()
-	handler := logging.RequestLogger(rawHandler) // === NEW: Оборачиваем в логгер ===
+	rootMux := http.NewServeMux()
+	rootMux.Handle("/api/v1/llm/", auth.Middleware(llmobs.NewHandler(llmobs.NewStore(pool))))
+	rootMux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = io.WriteString(w, metricsRegistry.Text())
+		if agentMetrics != nil {
+			_ = agentMetrics.WritePrometheus(w)
+		}
+	})
+	rootMux.Handle("/", rawHandler)
+	handler := logging.RequestLogger(metricsRegistry.Middleware(rootMux)) // === NEW: Оборачиваем в логгер ===
 
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
@@ -143,4 +197,15 @@ func main() {
 	if err := run(ctx, c); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func activePromptVersion(ctx context.Context, store *llmobs.Store, agent string) string {
+	if store == nil {
+		return ""
+	}
+	version, err := store.ActivePromptVersion(ctx, agent)
+	if err != nil {
+		return ""
+	}
+	return version.Version
 }

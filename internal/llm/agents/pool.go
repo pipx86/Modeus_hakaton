@@ -54,7 +54,7 @@ func NewPoolWithGate(cfg Config, gate *Gate) (*Pool, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agents: client for %s: %w", name, err)
 		}
-		guarded, err := llm.NewGuardedClient(raw)
+		guarded, err := llm.NewGuardedClient(raw, llm.WithOutputLeakRetry(1))
 		if err != nil {
 			return nil, fmt.Errorf("agents: guardrails for %s: %w", name, err)
 		}
@@ -66,7 +66,7 @@ func NewPoolWithGate(cfg Config, gate *Gate) (*Pool, error) {
 		if err != nil {
 			return nil, err
 		}
-		pool.clients[name] = runner
+		pool.clients[name] = NewTracedClient(runner, name, spec.Model, spec.ReasoningEffort)
 	}
 	return pool, nil
 }

@@ -51,9 +51,10 @@ type Finalizer func(ctx context.Context, runID, profession string, session domai
 
 // Service owns one interviewer session per run.
 type Service struct {
-	client    llm.ChatClient
-	finalizer Finalizer
-	onFinish  func(runID string, status domain.RunStatus)
+	client        llm.ChatClient
+	finalizer     Finalizer
+	onFinish      func(runID string, status domain.RunStatus)
+	promptVersion string
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -64,6 +65,7 @@ type session struct {
 	session     *interviewer.Session
 	messages    []Message
 	seq         int
+	asking      bool
 	subscribers map[chan Event]struct{}
 }
 
@@ -88,12 +90,23 @@ func (s *Service) SetFinalizer(finalizer Finalizer) {
 	s.finalizer = finalizer
 }
 
+// SetPromptVersion pins the interviewer prompt version for new sessions.
+func (s *Service) SetPromptVersion(version string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.promptVersion = version
+}
+
 // Start creates the interview session and asks the first question.
 func (s *Service) Start(runID, profession string) error {
 	if runID == "" {
 		return fmt.Errorf("chat: run id is required")
 	}
-	agent, err := interviewer.New(s.client)
+	opts := []interviewer.Option{}
+	if s.promptVersion != "" {
+		opts = append(opts, interviewer.WithPromptVersion(s.promptVersion))
+	}
+	agent, err := interviewer.New(s.client, opts...)
 	if err != nil {
 		return fmt.Errorf("chat: interviewer: %w", err)
 	}
@@ -118,6 +131,9 @@ func (s *Service) Start(runID, profession string) error {
 	s.sessions[runID] = sess
 	s.mu.Unlock()
 
+	sess.mu.Lock()
+	sess.asking = true
+	sess.mu.Unlock()
 	s.publish(runID, Event{Type: "agent_thinking"})
 	go s.askNext(runID, sess)
 	return nil
@@ -171,6 +187,13 @@ func (s *Service) Post(runID, content string) (Message, error) {
 		return message, nil
 	}
 
+	sess.mu.Lock()
+	if sess.asking {
+		sess.mu.Unlock()
+		return message, nil
+	}
+	sess.asking = true
+	sess.mu.Unlock()
 	s.publish(runID, Event{Type: "agent_thinking"})
 	go s.askNext(runID, sess)
 	return message, nil
@@ -208,6 +231,11 @@ func (s *Service) lookup(runID string) (*session, error) {
 }
 
 func (s *Service) askNext(runID string, sess *session) {
+	defer func() {
+		sess.mu.Lock()
+		sess.asking = false
+		sess.mu.Unlock()
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 
@@ -215,6 +243,9 @@ func (s *Service) askNext(runID string, sess *session) {
 	question, err := sess.session.Next(ctx)
 	sess.mu.Unlock()
 	if err != nil {
+		if errors.Is(err, interviewer.ErrSessionDone) {
+			return
+		}
 		s.publish(runID, Event{Type: "run_status", Status: string(domain.RunFailed)})
 		if s.onFinish != nil {
 			s.onFinish(runID, domain.RunFailed)

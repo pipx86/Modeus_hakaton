@@ -44,6 +44,7 @@ type Metrics struct {
 	agentSteps   *vec
 	runs         *vec
 	runDuration  *vec
+	vacancies    *vec
 }
 
 // New returns an empty registry with the backend metric families registered.
@@ -67,6 +68,7 @@ func New() *Metrics {
 			[]string{"status"}, nil),
 		runDuration: newVec("run_duration_seconds", "Activity-descriptor run latency in seconds.", kindHistogram,
 			[]string{"status"}, llmBuckets),
+		vacancies: newVec("vacancies_loaded", "Vacancy sources currently available.", kindGauge, nil, nil),
 	}
 }
 
@@ -100,6 +102,13 @@ func (m *Metrics) AddTokens(agent, model string, input, output int) {
 	if output > 0 {
 		m.llmTokens.add(uint64(output), []string{agent, model, "output"})
 	}
+}
+
+// SetVacancies updates the vacancy gauge.
+func (m *Metrics) SetVacancies(count int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.vacancies.set(float64(count), nil)
 }
 
 // ObserveAgentStep records one agent step outcome.
@@ -334,6 +343,10 @@ func (v *vec) add(delta uint64, values []string) {
 
 func (v *vec) addFloat(delta float64, values []string) {
 	v.getOrCreate(values).gauge += delta
+}
+
+func (v *vec) set(value float64, values []string) {
+	v.getOrCreate(values).gauge = value
 }
 
 func (v *vec) observe(value float64, values []string) {

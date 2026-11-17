@@ -7,8 +7,14 @@
     "profession": "Аналитик данных"
   },
   "responses": [
-    {"kind": "error", "error": "provider returned status 500"},
-    {"kind": "error", "error": "context deadline exceeded"}
+    {
+      "kind": "error",
+      "error": "provider returned status 500"
+    },
+    {
+      "kind": "error",
+      "error": "context deadline exceeded"
+    }
   ],
   "answers": [
     "Я аналитик данных, отвечаю за отчётность и анализ продаж",
@@ -19,10 +25,14 @@
     "Настраиваю фильтры и проверяю корректность показателей"
   ],
   "expect": {
-    "levels": ["role", "function", "task", "action", "task", "action"],
-    "questions": 6,
+    "levels": [
+      "role",
+      "function",
+      "task"
+    ],
+    "questions": 3,
     "clarifications": 0,
-    "fallbacks": 6,
-    "model_errors": 6
+    "fallbacks": 3,
+    "model_errors": 3
   }
 }

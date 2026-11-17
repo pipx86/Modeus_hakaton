@@ -16,6 +16,10 @@ var ErrSessionDone = errors.New("interviewer: session is done")
 // ErrNoOpenQuestion marks an Answer call without a pending question.
 var ErrNoOpenQuestion = errors.New("interviewer: no open question")
 
+// maxFallbackQuestions stops the interview early when the provider keeps
+// failing, instead of showing the respondent an endless run of templates.
+const maxFallbackQuestions = 3
+
 // Session drives one interview dialog. It never aborts because of a model
 // failure: the failure is recorded in LastError, the run degrades to fallback
 // questions and the dialog continues.
@@ -28,6 +32,7 @@ type Session struct {
 	// clarifiedFor is the answer index a clarification has already been asked
 	// for, so one vague answer is clarified at most once.
 	clarifiedFor int
+	fallbacks    int
 	seq          int
 }
 
@@ -67,8 +72,11 @@ func (s *Session) Last() agent.InterviewerOutput { return s.last }
 // session is running in degraded mode.
 func (s *Session) LastError() error { return s.lastErr }
 
-// Done reports whether the question plan is exhausted.
-func (s *Session) Done() bool { return len(s.state.Questions) >= len(s.plan) }
+// Done reports whether the question plan is exhausted or the model has
+// degraded to the fallback limit.
+func (s *Session) Done() bool {
+	return len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions
+}
 
 // Next asks the model for the next question and records it. Model errors are
 // not returned: the session falls back to a deterministic question. Only
@@ -97,6 +105,7 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 	out, err := s.agent.AskNext(ctx, in)
 	if err != nil {
 		s.lastErr = err
+		s.fallbacks++
 		out = fallbackOutput(level, s.state.Profession, clarify, s.state.Answers)
 		s.state.Status = domain.SessionDegraded
 	}
