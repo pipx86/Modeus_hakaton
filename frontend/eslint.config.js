@@ -18,5 +18,22 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "XSS: dangerouslySetInnerHTML запрещён, рендерите данные как текст.",
+        },
+        {
+          selector: "AssignmentExpression[left.property.name='innerHTML']",
+          message: "XSS: innerHTML запрещён, используйте текстовые узлы React.",
+        },
+        {
+          selector: "AssignmentExpression[left.property.name='outerHTML']",
+          message: "XSS: outerHTML запрещён, используйте текстовые узлы React.",
+        },
+      ],
+    },
   },
 ])

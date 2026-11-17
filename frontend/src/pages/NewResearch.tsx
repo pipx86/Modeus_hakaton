@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { apiClient, type SourceType } from "@/lib/api/client"
+import { stripControlChars } from "@/lib/security"
 import {
   AlertCircleIcon,
   FileSearchIcon,
@@ -121,7 +122,11 @@ export function NewResearch() {
       const results = await Promise.all(
         drafts.map((draft) =>
           apiClient.POST("/sources", {
-            body: { type: draft.type, title: draft.title, content: draft.content || undefined },
+            body: {
+              type: draft.type,
+              title: stripControlChars(draft.title),
+              content: draft.content ? stripControlChars(draft.content) : undefined,
+            },
           }),
         ),
       )
@@ -131,7 +136,7 @@ export function NewResearch() {
         return
       }
       const { data: run, error: runError } = await apiClient.POST("/runs", {
-        body: { profession: profession.trim() },
+        body: { profession: stripControlChars(profession).trim() },
       })
       if (runError) {
         setApiError(runError.message)
