@@ -28,7 +28,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"activity-descriptor-api\"}",
+          "expr": "max(up{job=~\"activity-descriptor-api.*\"})",
           "refId": "A"
         }
       ],

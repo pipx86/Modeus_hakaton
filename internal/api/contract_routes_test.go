@@ -48,6 +48,8 @@ var demoContractRoutes = []contractRoute{
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/snapshots"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/snapshots/" + contractID + "/diff"},
 	{http.MethodGet, "/api/v1/reviews/evidence"},
+	{http.MethodGet, "/api/v1/runs/" + contractID + "/conflicts"},
+	{http.MethodGet, "/api/v1/runs/" + contractID + "/agent-messages"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/snapshots/" + contractID},
 }
 

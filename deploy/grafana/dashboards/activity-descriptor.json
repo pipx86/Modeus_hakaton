@@ -18,10 +18,10 @@
       "id": 1,
       "type": "stat",
       "title": "API up",
-      "description": "Prometheus scrape health of the activity-descriptor-api job (1 = up).",
+      "description": "Prometheus scrape health of the API, wherever it runs: the compose `api` service (api:8080) or a backend on the Docker host (host.docker.internal:8080). 1 = up.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
-      "targets": [{ "refId": "A", "expr": "up{job=\"activity-descriptor-api\"}", "legendFormat": "up" }],
+      "targets": [{ "refId": "A", "expr": "max(up{job=~\"activity-descriptor-api.*\"})", "legendFormat": "up" }],
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "colorMode": "background",

@@ -5,6 +5,10 @@ OTLP/HTTP collector (Jaeger, Grafana Tempo, OpenTelemetry Collector, …).
 Exporting is **opt-in**: with no collector configured, spans stay local and the
 service behaves exactly as before.
 
+Metrics and dashboards are documented separately in [`docs/GRAFANA.md`](GRAFANA.md).
+The same compose `monitoring` profile runs Jaeger, Prometheus and Grafana, so
+traces and metrics can be inspected side by side.
+
 ## What is traced
 
 | Item | Value |
@@ -75,6 +79,10 @@ the demo `cmd/api`, which does not call `observability.Setup()`; the production
 `cmd/server` is the traced entrypoint. From inside the compose network the
 collector URL is `http://jaeger:4318`.
 
+Prometheus and Grafana are started by the same profile, for example
+`docker compose --profile monitoring up -d --no-deps prometheus grafana jaeger`
+(see [`docs/GRAFANA.md`](GRAFANA.md) for the target and dashboard details).
+
 ### Plain Docker
 
 ```bash
@@ -103,7 +111,7 @@ OpenTelemetry Collector or hosted OTLP/HTTP receiver instead of Jaeger.
 
    ```bash
    curl -s http://localhost:16686/api/services
-   # {"data":["activity-descriptor"],"total":1,"limit":0,"offset":0,"errors":null}
+   # {"data":["jaeger-all-in-one","activity-descriptor"],"total":2,"limit":0,"offset":0,"errors":null}
    ```
 
 3. Unit tests (no collector needed – they use an in-memory span recorder and
@@ -112,6 +120,32 @@ OpenTelemetry Collector or hosted OTLP/HTTP receiver instead of Jaeger.
    ```bash
    go test ./internal/observability
    ```
+
+## Verified in the local demo (2026-11-18)
+
+The compose `monitoring` profile's Jaeger container was running
+(`activity-descriptor-jaeger-1`, image `jaegertracing/all-in-one:1.60.0`, UI
+<http://localhost:16686>, OTLP/HTTP <http://localhost:4318>) and real spans from
+the instrumented backend were present:
+
+```bash
+curl -s http://localhost:16686/api/services
+# {"data":["jaeger-all-in-one","activity-descriptor"],"total":2,"limit":0,"offset":0,"errors":null}
+
+curl -s "http://localhost:16686/api/traces?service=activity-descriptor&limit=5"
+# returns 5 traces; each trace has one agent.chat span with the tags below
+```
+
+Each returned trace contained one `agent.chat` span with
+`otel.library.name=activity-descriptor/agents` and the documented attributes
+`agent`, `model`, `reasoning`, `otel.status_code=OK` — the exporter, collector
+and UI pipeline all work end to end. The spans were produced by an earlier run
+of the instrumented backend (`cmd/server`); as noted above, the demo `cmd/api`
+does not call `observability.Setup()`, so its process emits no spans.
+
+The metrics counterpart of this verification (Prometheus scraping the local
+backend, Grafana provisioning and dashboards) is in
+[`docs/GRAFANA.md`](GRAFANA.md).
 
 ## Troubleshooting
 
