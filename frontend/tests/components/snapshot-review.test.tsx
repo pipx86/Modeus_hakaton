@@ -271,7 +271,7 @@ describe("SnapshotReviewTab", () => {
 
     expect(await screen.findByText(/Отклонённая цитата/)).toBeInTheDocument()
     const lastQueueCall = fetchCalls()
-      .filter((call) => call.url.includes("/reviews/evidence"))
+      .filter((call) => call.url.includes("/reviews/evidence?"))
       .at(-1)
     expect(lastQueueCall?.url).toContain("status=rejected")
   })

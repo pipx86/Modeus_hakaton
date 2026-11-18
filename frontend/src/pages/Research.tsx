@@ -35,6 +35,8 @@ import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
+import { CoverageTab } from "@/components/coverage-tab"
+import { ZunSuggestionsDialog } from "@/components/zun-suggestions-dialog"
 import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -43,7 +45,9 @@ import {
   apiClient,
   type ActivityNode,
   type Evidence,
+  type Insights,
   type NodeType,
+  type RunCost,
   type Source,
   type SourceType,
 } from "@/lib/api/client"
@@ -59,6 +63,7 @@ import {
   NetworkIcon,
   PrinterIcon,
   Share2Icon,
+  SparklesIcon,
   PencilIcon,
   Trash2Icon,
   XIcon,
@@ -924,6 +929,40 @@ function TreeTab({
     () => new Map(),
   )
   const [sourcesById, setSourcesById] = useState<Map<string, Source>>(() => new Map())
+  const [insights, setInsights] = useState<Insights | null>(null)
+  const [cost, setCost] = useState<RunCost | null>(null)
+  const [zunOpen, setZunOpen] = useState(false)
+
+  const loadInsights = useCallback(async () => {
+    try {
+      const { data } = await apiClient.GET("/runs/{id}/insights", {
+        params: { path: { id } },
+      })
+      if (data && Array.isArray(data.flags)) setInsights(data)
+    } catch {
+      // Инсайты необязательны: дерево и без них остаётся рабочим.
+    }
+  }, [id])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadInsights()
+  }, [loadInsights])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/runs/{id}/cost", { params: { path: { id } } })
+        if (!cancelled && data) setCost(data)
+      } catch {
+        // Стоимость может быть недоступна - это не ошибка страницы.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   useEffect(() => {
     let cancelled = false
@@ -1074,7 +1113,50 @@ function TreeTab({
 
   return (
     <>
+      {cost && cost.request_count > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          <span>Запросов: {cost.request_count}</span>
+          <span>Токенов: {cost.total_tokens.toLocaleString("ru-RU")}</span>
+          {cost.duration_seconds !== null && (
+            <span>
+              Длительность: {Math.max(1, Math.round(cost.duration_seconds / 60))} мин
+            </span>
+          )}
+          <span>
+            Стоимость:{" "}
+            {cost.cost_usd === null
+              ? "неизвестна"
+              : `$${cost.cost_usd.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}`}
+          </span>
+          {cost.estimate && (
+            <span>
+              Оценка: {cost.estimate.estimated_tokens.toLocaleString("ru-RU")} токенов
+              {cost.estimate.estimated_tokens > 0 && (
+                <>
+                  {" "}
+                  · отклонение{" "}
+                  {Math.round(
+                    ((cost.total_tokens - cost.estimate.estimated_tokens) /
+                      cost.estimate.estimated_tokens) *
+                      100,
+                  )}
+                  %
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
       <div className="mb-3 flex justify-end gap-2" data-print-hide>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 px-2.5 text-xs"
+          onClick={() => setZunOpen(true)}
+        >
+          <SparklesIcon className="size-3.5" />
+          Предложить ЗУН
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -1114,6 +1196,7 @@ function TreeTab({
         focusNodeId={focusNodeId}
         sourcesById={sourcesById}
         onShowTranscript={onShowTranscript}
+        insights={insights}
       />
       <NodeEditDialog
         key={editing?.id ?? "closed"}
@@ -1123,7 +1206,10 @@ function TreeTab({
         onOpenChange={(open) => {
           if (!open) setEditing(null)
         }}
-        onSaved={() => void load()}
+        onSaved={() => {
+          void load()
+          void loadInsights()
+        }}
       />
       <EvidenceAttachDialog
         node={attaching}
@@ -1131,7 +1217,19 @@ function TreeTab({
         onOpenChange={(open) => {
           if (!open) setAttaching(null)
         }}
-        onAttached={() => void load()}
+        onAttached={() => {
+          void load()
+          void loadInsights()
+        }}
+      />
+      <ZunSuggestionsDialog
+        runId={id}
+        open={zunOpen}
+        onOpenChange={setZunOpen}
+        onApplied={() => {
+          void load()
+          void loadInsights()
+        }}
       />
     </>
   )
@@ -1161,10 +1259,27 @@ export function Research() {
     }
   }
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
-  const showTranscript = useCallback((item: Evidence) => {
-    setChatFocus({ refId: item.ref_id, quote: item.quote })
-    setTab("chat")
-  }, [])
+  const showTranscript = useCallback(
+    async (item: Evidence) => {
+      let refId = item.ref_id
+      let quote = item.quote
+      try {
+        const { data } = await apiClient.GET(
+          "/runs/{id}/evidence/{evidence_id}/context",
+          { params: { path: { id, evidence_id: item.id } } },
+        )
+        if (data?.match) {
+          refId = data.match.message_id || refId
+          quote = data.match.quote || quote
+        }
+      } catch {
+        // Контекст необязателен: остаётся переход по ref_id/тексту цитаты.
+      }
+      setChatFocus({ refId, quote })
+      setTab("chat")
+    },
+    [id],
+  )
   /**
    * Переход из вкладки «Снимки и проверка» к узлу дерева: переключаем вкладку и
    * дублируем id узла в search-параметре `?node=`, который уже умеет читать
@@ -1293,6 +1408,9 @@ export function Research() {
           <TabsTrigger value="tree" className={TAB_TRIGGER_CLASS}>
             Дерево
           </TabsTrigger>
+          <TabsTrigger value="coverage" className={TAB_TRIGGER_CLASS}>
+            Покрытие
+          </TabsTrigger>
           <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
             Снимки и проверка
           </TabsTrigger>
@@ -1313,6 +1431,9 @@ export function Research() {
             focusNodeId={focusNodeId}
             onShowTranscript={showTranscript}
           />
+        </TabsContent>
+        <TabsContent value="coverage">
+          <CoverageTab runId={id} />
         </TabsContent>
         <TabsContent value="snapshots">
           <SnapshotReviewTab runId={id} onFocusNode={focusNode} />

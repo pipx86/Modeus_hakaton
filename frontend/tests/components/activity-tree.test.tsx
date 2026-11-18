@@ -374,8 +374,52 @@ describe("ActivityTree", () => {
     expect(screen.queryByText("Проверять отчёты")).not.toBeInTheDocument()
   })
 
-  it("переходит к цитате в интервью", () => {
-    const onShowTranscript = vi.fn()
+  it("использует серверные insights: здоровье, флаги и рынок", () => {
+    const insights = {
+      run_id: "7",
+      provenance: {
+        nodes: {
+          f1: { source_count: 2, source_types: ["interview", "standard"], evidence_count: 2 },
+        },
+      },
+      health: {
+        score: 82,
+        breakdown: { groundedness: 90, completeness: 80, duplicates: 100, orphans: 70 },
+        weights: { groundedness: 0.4, completeness: 0.3, duplicates: 0.2, orphans: 0.1 },
+        counts: {
+          node_count: 1,
+          grounded_nodes: 1,
+          duplicate_nodes: 0,
+          orphan_nodes: 0,
+          childless_nodes: 0,
+        },
+        formula: "0.4*groundedness + ...",
+      },
+      flags: [{ node_id: "f1", codes: ["NO_EVIDENCE"], reasons: ["Нет цитат"] }],
+      market_heat: {
+        source: "run.skill_freq",
+        top: [{ skill: "sql", frequency: 2 }],
+        nodes: { f1: { score: 2, matches: ["sql"] } },
+      },
+      coverage: { columns: [], rows: [] },
+      sources: [],
+      node_explanations: {
+        f1: { summary: "Серверное объяснение узла", evidence: [] },
+      },
+    }
+    renderTree({ insights: insights as never })
+
+    expect(screen.getByText("Здоровье: 82")).toBeInTheDocument()
+    expect(screen.getByText("Проблемные")).toBeInTheDocument()
+    expect(screen.getByText("рынок ×2")).toBeInTheDocument()
+    expect(screen.getByText("sql · 2")).toBeInTheDocument()
+    expect(screen.getByText("2 типа")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Здоровье дерева: 82 из 100" }))
+    expect(screen.getByText("Полнота")).toBeInTheDocument()
+  })
+
+  it("переходит к цитате в интервью", () => {    const onShowTranscript = vi.fn()
     const sources = new Map([
       ["src-1", { id: "src-1", type: "interview" as const, title: "Интервью" }],
     ])

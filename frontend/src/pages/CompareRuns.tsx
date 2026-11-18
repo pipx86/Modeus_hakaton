@@ -3,17 +3,16 @@
  * @description Страница сравнения двух завершённых прогонов одной профессии.
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { apiClient, type ActivityNode, type Run } from "@/lib/api/client"
+import { apiClient, type ActivityNode, type Run, type RunCompare } from "@/lib/api/client"
 import { NODE_TYPE_LABELS } from "@/components/activity-tree-model"
-import { diffRunTrees } from "@/lib/run-compare"
 import { downloadText } from "@/lib/export-tree"
-import { ArrowLeftRightIcon, DownloadIcon, GitCompareIcon } from "lucide-react"
+import { AlertTriangleIcon, ArrowLeftRightIcon, DownloadIcon, GitCompareIcon } from "lucide-react"
 
 export function CompareRuns() {
   const [runs, setRuns] = useState<Run[]>([])
@@ -21,9 +20,9 @@ export function CompareRuns() {
   const [error, setError] = useState<string | null>(null)
   const [baseId, setBaseId] = useState<string | null>(null)
   const [headId, setHeadId] = useState<string | null>(null)
-  const [baseTree, setBaseTree] = useState<ActivityNode[] | null>(null)
-  const [headTree, setHeadTree] = useState<ActivityNode[] | null>(null)
-  const [treeError, setTreeError] = useState<string | null>(null)
+  const [diff, setDiff] = useState<RunCompare | null>(null)
+  const [compareError, setCompareError] = useState<string | null>(null)
+  const [comparing, setComparing] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -46,31 +45,34 @@ export function CompareRuns() {
   }, [])
 
   useEffect(() => {
-    if (!baseId || !headId) return
+    if (!baseId || !headId || baseId === headId) return
     let cancelled = false
     void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setComparing(true)
       try {
-        setTreeError(null)
-        const [base, head] = await Promise.all([
-          apiClient.GET("/runs/{id}/tree", { params: { path: { id: baseId } } }),
-          apiClient.GET("/runs/{id}/tree", { params: { path: { id: headId } } }),
-        ])
+        const { data, error: requestError } = await apiClient.GET("/runs/{id}/compare", {
+          params: { path: { id: baseId }, query: { against: headId } },
+        })
         if (cancelled) return
-        setBaseTree(Array.isArray(base.data) ? base.data : [])
-        setHeadTree(Array.isArray(head.data) ? head.data : [])
+        if (requestError) {
+          setCompareError(requestError.message)
+          setDiff(null)
+          return
+        }
+        setDiff(data ?? null)
+        setCompareError(null)
       } catch {
-        if (!cancelled) setTreeError("Не удалось загрузить деревья прогонов.")
+        if (!cancelled) setCompareError("Не удалось сравнить прогоны.")
+      } finally {
+        if (!cancelled) setComparing(false)
       }
     })()
     return () => {
       cancelled = true
     }
   }, [baseId, headId])
-
-  const diff = useMemo(
-    () => (baseTree && headTree ? diffRunTrees(baseTree, headTree) : null),
-    [baseTree, headTree],
-  )
 
   return (
     <div className="space-y-6">
@@ -143,9 +145,9 @@ export function CompareRuns() {
             </CardContent>
           </Card>
 
-          {treeError && (
+          {compareError && (
             <div className="rounded-xl border border-destructive/50 p-4 text-sm text-destructive">
-              {treeError}
+              {compareError}
             </div>
           )}
 
@@ -183,7 +185,21 @@ export function CompareRuns() {
                   Экспорт JSON
                 </Button>
               </div>
-
+              {diff.story && (
+                <p className="rounded-xl bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  {diff.story}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Сопоставлено: по id {diff.match.by_id}, по названию/пути {diff.match.by_title},
+                без пары {diff.match.unmatched}.
+              </p>
+              {!diff.same_profession && (
+                <p className="flex items-center gap-2 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm text-warning">
+                  <AlertTriangleIcon className="size-4 shrink-0" />
+                  Прогоны относятся к разным профессиям: diff может быть неинформативным.
+                </p>
+              )}
               {diff.summary.added + diff.summary.removed + diff.summary.changed === 0 ? (
                 <p className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
                   Деревья совпадают: различий не найдено.
@@ -220,8 +236,10 @@ export function CompareRuns() {
                 </div>
               )}
             </div>
+          ) : comparing ? (
+            <div className="text-sm text-muted-foreground">Сравнение…</div>
           ) : (
-            <div className="text-sm text-muted-foreground">Загрузка деревьев…</div>
+            <div className="text-sm text-muted-foreground">Выберите оба прогона, чтобы увидеть diff.</div>
           )}
         </>
       )}

@@ -3,14 +3,14 @@
  * @description Создание исследования: выбор роли с подсказками и запуск прогона.
  */
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { apiClient } from "@/lib/api/client"
+import { apiClient, type RunEstimate } from "@/lib/api/client"
 import { stripControlChars } from "@/lib/security"
 import {
   AlertCircleIcon,
@@ -48,6 +48,7 @@ export function NewResearch() {
   const [profession, setProfession] = useState("")
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [estimate, setEstimate] = useState<RunEstimate | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
@@ -69,6 +70,36 @@ export function NewResearch() {
   })
 
   const canSubmit = !professionError && !submitting
+
+  useEffect(() => {
+    const value = profession.trim()
+    if (value.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEstimate(null)
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const { data, error } = await apiClient.GET("/runs/estimate", {
+            params: { query: { profession: value, type: "chat" } },
+          })
+          if (!cancelled) {
+            setEstimate(
+              !error && data && typeof data.estimated_tokens === "number" ? data : null,
+            )
+          }
+        } catch {
+          if (!cancelled) setEstimate(null)
+        }
+      })()
+    }, 600)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [profession])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -210,6 +241,29 @@ export function NewResearch() {
               </p>
             )}
 
+            {estimate && (
+              <div className="space-y-1 rounded-lg border bg-muted/20 p-3 text-xs">
+                <p className="font-medium text-foreground">Оценка до запуска</p>
+                <p className="text-muted-foreground">
+                  ~{estimate.estimated_tokens.toLocaleString("ru-RU")} токенов · ~
+                  {Math.max(1, Math.round(estimate.estimated_duration_seconds / 60))} мин ·{" "}
+                  {estimate.estimated_cost_usd === null
+                    ? "стоимость неизвестна"
+                    : `$${estimate.estimated_cost_usd.toLocaleString("ru-RU", {
+                        maximumFractionDigits: 4,
+                      })}`}
+                </p>
+                <p className="text-muted-foreground">
+                  Уверенность:{" "}
+                  {estimate.confidence === "high"
+                    ? "высокая"
+                    : estimate.confidence === "medium"
+                      ? "средняя"
+                      : "низкая"}{" "}
+                  · по {estimate.sample_size} завершённым прогонам
+                </p>
+              </div>
+            )}
             <Button type="submit" disabled={!canSubmit} className="w-full">
               {submitting && <Loader2Icon className="size-4 animate-spin" />}
               {submitting ? "Запуск…" : "Начать исследование"}

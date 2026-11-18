@@ -65,6 +65,14 @@ export type Run = components["schemas"]["Run"]
 export type ChatMessage = components["schemas"]["ChatMessage"]
 export type Conflict = components["schemas"]["Conflict"]
 export type RunEvent = components["schemas"]["RunEvent"]
+export type Insights = components["schemas"]["Insights"]
+export type CoverageResponse = components["schemas"]["CoverageResponse"]
+export type RunCompare = components["schemas"]["RunCompare"]
+export type RunEstimate = components["schemas"]["RunEstimate"]
+export type RunCost = components["schemas"]["RunCost"]
+export type ReviewProgress = components["schemas"]["ReviewProgress"]
+export type ZunSuggestion = components["schemas"]["ZunSuggestion"]
+export type EvidenceContext = components["schemas"]["EvidenceContext"]
 
 // ---------------------------------------------------------------------------
 // Эндпоинты, которых ещё нет в сгенерированной OpenAPI-схеме: снимки дерева,
@@ -75,8 +83,7 @@ export type RunEvent = components["schemas"]["RunEvent"]
 // решает, показать «нет прав» (403) или «нужен PostgreSQL» (501).
 // ---------------------------------------------------------------------------
 
-/** Снимок дерева исследования (`GET /runs/{id}/snapshots`). */
-export interface RunSnapshot {
+/** Снимок дерева исследования (`GET /runs/{id}/snapshots`). */export interface RunSnapshot {
   id: string
   run_id: string
   version: number
@@ -115,6 +122,9 @@ export interface SnapshotDiff {
   removed: ActivityNode[]
   changed: SnapshotNodeChange[]
   summary: SnapshotDiffSummary
+  /** Человекочитаемый changelog от бэкенда (если доступен). */
+  story?: string
+  story_lines?: string[]
 }
 
 /** Статусы очереди проверки (`GET /reviews/evidence`). */

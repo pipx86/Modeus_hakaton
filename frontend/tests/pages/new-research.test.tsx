@@ -174,4 +174,35 @@ describe("NewResearch", () => {
 
     expect(input).toHaveValue("Аналитик данных")
   })
+
+  it("показывает оценку токенов и времени до запуска", async () => {
+    setFetchHandler(async (url) => {
+      if (url.includes("/api/v1/runs/estimate")) {
+        return {
+          status: 200,
+          body: {
+            profession: "Data Analyst",
+            type: "chat",
+            sample_size: 3,
+            estimated_tokens: 4200,
+            estimated_duration_seconds: 180,
+            estimated_cost_usd: null,
+            confidence: "medium",
+            method: "profession_history",
+          },
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
+      target: { value: "Data Analyst" },
+    })
+
+    expect(await screen.findByText("Оценка до запуска")).toBeInTheDocument()
+    expect(screen.getByText(/4 200 токенов/)).toBeInTheDocument()
+    expect(screen.getByText(/3 мин/)).toBeInTheDocument()
+    expect(screen.getByText(/средняя/)).toBeInTheDocument()
+  })
 })

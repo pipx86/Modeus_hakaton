@@ -26,6 +26,7 @@ import {
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  HeartPulseIcon,
   MessageSquareIcon,
   PencilIcon,
   PlusIcon,
@@ -34,9 +35,9 @@ import {
   XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
-import type { ActivityNode, Evidence, NodeType, Source } from "@/lib/api/client"
+import type { ActivityNode, Evidence, Insights, NodeType, Source } from "@/lib/api/client"
 import { SOURCE_PRIORITY, explainNode, provenanceFor, provenanceLabel, type ProvenanceInfo } from "@/lib/provenance"
-import { computeTreeFlags, type TreeFlag } from "@/lib/tree-flags"
+import { computeTreeFlags, type TreeFlag, type TreeFlagCode } from "@/lib/tree-flags"
 import { SOURCE_TYPE_LABEL } from "@/lib/status"
 import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "./activity-tree-model"
 
@@ -86,6 +87,15 @@ const STATUS_TONE: Record<EvidenceStatus, string> = {
   pending: "bg-muted text-muted-foreground",
   approved: "bg-success/15 text-success",
   rejected: "bg-destructive/15 text-destructive",
+}
+
+/** Серверные коды red flags → клиентские подписи и локальные коды. */
+const SERVER_FLAG_META: Record<string, { code: TreeFlagCode; label: string }> = {
+  SUSPICIOUS_TITLE: { code: "generic_title", label: "Подозрительное название" },
+  DUPLICATE_TITLE: { code: "duplicate_title", label: "Дубль" },
+  SINGLE_WEAK_SOURCE: { code: "weak_source", label: "Слабый источник" },
+  NO_CHILDREN: { code: "no_children", label: "Нет детей" },
+  NO_EVIDENCE: { code: "no_evidence", label: "Нет обоснования" },
 }
 
 function confidenceTone(value: number) {
@@ -221,6 +231,8 @@ interface RowProps {
   onShowZun: (node: TreeNode) => void
   provenance?: ProvenanceInfo
   flags?: TreeFlag[]
+  heat?: { score: number; matches: string[] }
+  heatLevel?: number
 }
 
 /**
@@ -248,6 +260,8 @@ const Row = memo(function Row({
   onShowZun,
   provenance,
   flags,
+  heat,
+  heatLevel = 0,
 }: RowProps) {
   const evidenceCount = (node.evidence ?? []).length
   const zun = node.zun
@@ -265,6 +279,14 @@ const Row = memo(function Row({
       aria-expanded={hasChildren ? isOpen : undefined}
       className={`tree-node-enter group relative flex h-11 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-muted/50 ${
         selected ? "bg-muted/70 ring-1 ring-border" : ""
+      } ${
+        heatLevel === 3
+          ? "bg-warning/15"
+          : heatLevel === 2
+            ? "bg-warning/10"
+            : heatLevel === 1
+              ? "bg-warning/5"
+              : ""
       }`}
       style={{ paddingLeft: Math.min(depth * 24, 96), animationDelay: `${Math.min(depth, 6) * 45}ms` }}
     >
@@ -326,6 +348,14 @@ const Row = memo(function Row({
           >
             <AlertTriangleIcon className="size-3.5" />
             {flags.length}
+          </span>
+        )}
+        {heat && heat.score > 0 && (
+          <span
+            className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+            title={`Рынок: ${heat.matches.join(", ")} (${heat.score})`}
+          >
+            рынок ×{heat.score}
           </span>
         )}
         {evidenceCount > 0 && (
@@ -391,6 +421,8 @@ export interface ActivityTreeProps {
   sourcesById?: Map<string, Source>
   /** Перейти к цитате в интервью (вкладка чата и подсветка сообщения). */
   onShowTranscript?: (item: Evidence, source?: Source) => void
+  /** Серверные инсайты: здоровье дерева, провенанс, флаги, рынок и объяснения узлов. */
+  insights?: Insights | null
 }
 
 /**
@@ -414,6 +446,7 @@ export function ActivityTree({
   focusNodeId,
   sourcesById,
   onShowTranscript,
+  insights,
 }: ActivityTreeProps) {
   const [query, setQuery] = useState("")
   const [activeTypes, setActiveTypes] = useState<Set<NodeType>>(() => new Set(TYPE_ORDER))
@@ -426,8 +459,48 @@ export function ActivityTree({
   const [selected, setSelected] = useState<TreeNode | null>(null)
 
   const roots = useMemo(() => buildTree(nodes), [nodes])
-  const flagsByNode = useMemo(() => computeTreeFlags(nodes, sourcesById), [nodes, sourcesById])
+  const flagsByNode = useMemo(() => {
+    if (!insights) return computeTreeFlags(nodes, sourcesById)
+    const map = new Map<string, TreeFlag[]>()
+    for (const item of Array.isArray(insights.flags) ? insights.flags : []) {
+      map.set(
+        item.node_id,
+        item.codes.map((code, index) => {
+          const meta = SERVER_FLAG_META[code] ?? {
+            code: "no_evidence" as const,
+            label: code,
+          }
+          return { ...meta, reason: item.reasons[index] ?? "" }
+        }),
+      )
+    }
+    return map
+  }, [insights, nodes, sourcesById])
+  const heatByNode = insights?.market_heat?.nodes ?? {}
+  const maxHeat = Object.values(heatByNode).reduce((max, item) => Math.max(max, item.score), 0)
+  const [healthOpen, setHealthOpen] = useState(false)
+  const provenanceForNode = (node: TreeNode): ProvenanceInfo => {
+    const server = insights?.provenance?.nodes?.[node.id]
+    if (server) {
+      return {
+        types: server.source_types,
+        labels: server.source_types.map((type) => SOURCE_TYPE_LABEL[type] ?? type),
+        count: server.source_types.length,
+        unknown: 0,
+      }
+    }
+    return provenanceFor(node.evidence ?? [], sourcesById)
+  }
   const flagsTotal = flagsByNode.size
+  const healthScore = insights?.health.score
+  const healthTone =
+    healthScore === undefined
+      ? "text-muted-foreground"
+      : healthScore >= 80
+        ? "text-success"
+        : healthScore >= 60
+          ? "text-warning"
+          : "text-destructive"
   const filtersActive =
     query.trim().length > 0 ||
     onlyWithEvidence ||
@@ -696,12 +769,46 @@ export function ActivityTree({
           Проблемные
           {flagsTotal > 0 && <span className="text-muted-foreground">{flagsTotal}</span>}
         </Button>
+        {insights && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={`h-7 gap-1 px-2.5 text-xs ${healthTone}`}
+            onClick={() => setHealthOpen(true)}
+            aria-label={`Здоровье дерева: ${insights.health.score} из 100`}
+          >
+            <HeartPulseIcon className="size-3.5" />
+            Здоровье: {insights.health.score}
+          </Button>
+        )}
         <span className="ml-auto text-xs text-muted-foreground">
           {filtersActive
             ? `Показано ${visibleIds.size} из ${nodes.length}`
             : `Узлов: ${nodes.length}`}
         </span>
       </div>
+      {insights && (insights.market_heat?.top?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span>Тепло рынка:</span>
+          {insights.market_heat.top.slice(0, 10).map((item) => (
+            <span
+              key={item.skill}
+              className="rounded-full bg-warning/10 px-2 py-0.5 text-warning"
+              title={`${item.skill}: ${item.frequency}`}
+            >
+              {item.skill} · {item.frequency}
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-1">
+            реже
+            <span className="h-1.5 w-12 rounded-full bg-gradient-to-r from-warning/10 to-warning" />
+            чаще
+          </span>
+          {insights.market_heat.source === "vacancy_sources" && insights.market_heat.sample_size ? (
+            <span>· по {insights.market_heat.sample_size} источникам</span>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 
@@ -737,26 +844,33 @@ export function ActivityTree({
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
         {start > 0 && <div style={{ height: start * ROW_HEIGHT }} aria-hidden />}
-        {rows.slice(start, end).map((row, index) => (
-          <Row
-            key={row.node.id}
-            node={row.node}
-            depth={row.depth}
-            position={start + index + 1}
-            total={rows.length}
-            hasChildren={row.hasChildren}
-            isOpen={row.isOpen}
-            query={query}
-            selected={selected?.id === row.node.id || row.node.id === focusNodeId}
-            onToggle={toggle}
-            onSelect={select}
-            onEdit={onEdit}
-            onAttach={onAttach}
-            onShowZun={setZunNode}
-            provenance={provenanceFor(row.node.evidence ?? [], sourcesById)}
-            flags={flagsByNode.get(row.node.id)}
-          />
-        ))}
+        {rows.slice(start, end).map((row, index) => {
+          const heat = heatByNode[row.node.id]
+          const heatLevel =
+            heat && maxHeat > 0 ? Math.max(1, Math.ceil((heat.score / maxHeat) * 3)) : 0
+          return (
+            <Row
+              key={row.node.id}
+              node={row.node}
+              depth={row.depth}
+              position={start + index + 1}
+              total={rows.length}
+              hasChildren={row.hasChildren}
+              isOpen={row.isOpen}
+              query={query}
+              selected={selected?.id === row.node.id || row.node.id === focusNodeId}
+              onToggle={toggle}
+              onSelect={select}
+              onEdit={onEdit}
+              onAttach={onAttach}
+              onShowZun={setZunNode}
+              provenance={provenanceForNode(row.node)}
+              flags={flagsByNode.get(row.node.id)}
+              heat={heat}
+              heatLevel={heatLevel}
+            />
+          )
+        })}
         {end < rows.length && (
           <div style={{ height: (rows.length - end) * ROW_HEIGHT }} aria-hidden />
         )}
@@ -774,7 +888,8 @@ export function ActivityTree({
           {selected && (
             <div className="space-y-3">
               <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-                {explainNode(selected.title, selected.evidence, sourcesById)}
+                {insights?.node_explanations?.[selected.id]?.summary ??
+                  explainNode(selected.title, selected.evidence, sourcesById)}
               </p>
               {(flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
                 <ul className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-xs">
@@ -882,6 +997,53 @@ export function ActivityTree({
               >
                 Скопировать паспорт
               </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={healthOpen} onOpenChange={setHealthOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Здоровье дерева</DialogTitle>
+            <DialogDescription>
+              {insights ? `${insights.health.score} из 100. ${insights.health.formula}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {insights && (
+            <div className="space-y-3">
+              {(
+                [
+                  ["groundedness", "Обоснованность"],
+                  ["completeness", "Полнота"],
+                  ["duplicates", "Отсутствие дублей"],
+                  ["orphans", "Отсутствие сирот"],
+                ] as const
+              ).map(([key, label]) => {
+                const value = insights.health.breakdown[key]
+                return (
+                  <div key={key} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full rounded-full ${
+                          value >= 80 ? "bg-success" : value >= 60 ? "bg-warning" : "bg-destructive"
+                        }`}
+                        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+              <p className="text-xs text-muted-foreground">
+                Узлов: {insights.health.counts.node_count}, с обоснованием:{" "}
+                {insights.health.counts.grounded_nodes}, дублей:{" "}
+                {insights.health.counts.duplicate_nodes}, сирот:{" "}
+                {insights.health.counts.orphan_nodes}, без детей:{" "}
+                {insights.health.counts.childless_nodes}.
+              </p>
             </div>
           )}
         </DialogContent>

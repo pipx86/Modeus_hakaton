@@ -48,6 +48,21 @@ export function ChatTab({ runId, active, runStatus, stage, focus }: ChatTabProps
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const appliedFocus = useRef<string | null>(null)
 
+  const renderContent = (message: (typeof messages)[number]) => {
+    if (highlightedId !== message.id || !focus?.quote) return message.content
+    const index = message.content.toLowerCase().indexOf(focus.quote.toLowerCase())
+    if (index < 0) return message.content
+    return (
+      <>
+        {message.content.slice(0, index)}
+        <mark className="rounded bg-warning/30 px-0.5 text-inherit">
+          {message.content.slice(index, index + focus.quote.length)}
+        </mark>
+        {message.content.slice(index + focus.quote.length)}
+      </>
+    )
+  }
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" })
   }, [messages, thinking])
@@ -183,7 +198,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus }: ChatTabProps
                   : "max-w-[80%] rounded-lg bg-muted px-3 py-2 text-foreground"
               }
             >
-              <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+              <p className="whitespace-pre-wrap text-sm">{renderContent(message)}</p>
               {message.citations && message.citations.length > 0 && (
                 <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
                   <p className="text-xs font-medium text-muted-foreground">

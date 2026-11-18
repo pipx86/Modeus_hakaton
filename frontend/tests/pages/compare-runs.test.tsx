@@ -17,23 +17,28 @@ function stubCompare() {
         ],
       }
     }
-    if (url.endsWith("/api/v1/runs/run-a/tree")) {
+    if (url.includes("/api/v1/runs/run-a/compare")) {
       return {
         status: 200,
-        body: [
-          { id: "r1", type: "role", title: "Аналитик", evidence: [] },
-          { id: "f1", type: "function", title: "Отчётность", parent_id: "r1", evidence: [] },
-        ],
-      }
-    }
-    if (url.endsWith("/api/v1/runs/run-b/tree")) {
-      return {
-        status: 200,
-        body: [
-          { id: "r1", type: "role", title: "Аналитик данных", evidence: [] },
-          { id: "f1", type: "function", title: "Отчётность", parent_id: "r1", evidence: [] },
-          { id: "t1", type: "task", title: "Новая задача", parent_id: "f1", evidence: [] },
-        ],
+        body: {
+          run_id: "run-a",
+          against_run_id: "run-b",
+          profession: "Data Scientist",
+          same_profession: true,
+          match: { by_id: 0, by_title: 2, unmatched: 1 },
+          added: [{ id: "t1", type: "task", title: "Новая задача", evidence: [] }],
+          removed: [],
+          changed: [
+            {
+              id: "r1",
+              before: { id: "r1", type: "role", title: "Аналитик", evidence: [] },
+              after: { id: "r1", type: "role", title: "Аналитик данных", evidence: [] },
+              fields: ["title"],
+            },
+          ],
+          summary: { added: 1, removed: 0, changed: 1 },
+          story: "Узлов добавлено: 1, удалено: 0, изменено: 1.",
+        },
       }
     }
     return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }

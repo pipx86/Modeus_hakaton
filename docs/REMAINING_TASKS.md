@@ -362,6 +362,18 @@ GET /api/v1/runs/{id}/cost
 12. Run-to-run compare page.
 13. Cost estimate before start + actual after.
 
+## 3a. Фронт закрыт по всем 12 фичам (19.11)
+
+- **#1/#3/#5/#8** - `GET /insights`: бейдж провенанса, health score с breakdown, серверные red flags, market heat overlay с топ-10 и легендой.
+- **#2** - панель узла на `node_explanations` (тип, приоритет, шаблонное объяснение).
+- **#4** - `story`/`story_lines` в diff + копирование.
+- **#6** - `GET /runs/{id}/evidence/{id}/context`: переход к реплике по `match.message_id` и подсветка фрагмента в чате.
+- **#7** - `GET /reviews/evidence/progress`: «Проверено X из Y», hotkeys A/R/стрелки.
+- **#9** - вкладка «Покрытие» и `?format=csv`.
+- **#10** - диалог «Предложить ЗУН»: apply и скрытие предложения; ручной ЗУН не перезаписывается.
+- **#11** - `/compare` на `GET /runs/{id}/compare?against=`: added/removed/changed, match, story, JSON-экспорт.
+- **#12** - оценка до старта в `NewResearch`, факт и отклонение из `/runs/{id}/cost`.
+
 ## 4. Остаток вне фич наставника
 
 - UI конфликтов (`GET /runs/{id}/conflicts`) — фронт.

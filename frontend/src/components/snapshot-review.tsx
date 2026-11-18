@@ -77,6 +77,7 @@ import {
   type Evidence,
   type ReviewEvidenceStatus,
   type ReviewQueueItem,
+  type ReviewProgress,
   type RunSnapshot,
   type SnapshotDiff,
   type SnapshotNodeChange,
@@ -814,7 +815,7 @@ function SnapshotDiffSection({
                     className="h-7 gap-1 px-2.5 text-xs"
                     onClick={() => {
                       void navigator.clipboard
-                        ?.writeText(buildSnapshotStory(diff))
+                        ?.writeText(diff.story ?? buildSnapshotStory(diff))
                         .then(() => toast.success("Changelog скопирован"))
                         .catch(() => toast.error("Не удалось скопировать changelog"))
                     }}
@@ -823,6 +824,11 @@ function SnapshotDiffSection({
                     Скопировать changelog
                   </Button>
                 </div>
+                {diff.story && (
+                  <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    {diff.story}
+                  </p>
+                )}
                 {diff.summary.added === 0 &&
                 diff.summary.removed === 0 &&
                 diff.summary.changed === 0 ? (
@@ -894,6 +900,7 @@ function ReviewQueueSection({
   const [initialPending, setInitialPending] = useState(0)
   const [approvedCount, setApprovedCount] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [progress, setProgress] = useState<ReviewProgress | null>(null)
   const initialized = useRef(false)
 
   useEffect(() => {
@@ -901,10 +908,19 @@ function ReviewQueueSection({
     const load = async () => {
       setLoading(true)
       try {
-        const data = await listReviewEvidence(status, REVIEW_PAGE_LIMIT)
+        const [data, progressResult] = await Promise.all([
+          listReviewEvidence(status, REVIEW_PAGE_LIMIT),
+          apiClient.GET("/reviews/evidence/progress", {
+            params: { query: { run_id: runId } },
+          }),
+        ])
         if (cancelled) return
         const rows = Array.isArray(data) ? data : []
         setItems(rows)
+        const progressData = progressResult.data
+        if (progressData && !Array.isArray(progressData) && typeof progressData.pending === "number") {
+          setProgress(progressData)
+        }
         if (status === "pending" && !initialized.current) {
           initialized.current = true
           setInitialPending(rows.length)
@@ -922,7 +938,7 @@ function ReviewQueueSection({
     return () => {
       cancelled = true
     }
-  }, [status, reloadToken])
+  }, [status, reloadToken, runId])
 
   const changeStatus = async (item: ReviewQueueItem, action: "approve" | "reject") => {
     if (busyId) return
@@ -944,6 +960,16 @@ function ReviewQueueSection({
       setItems((previous) => previous.filter((row) => row.id !== item.id))
       setSelectedIndex((index) => Math.max(0, Math.min(index, items.length - 2)))
       if (action === "approve") setApprovedCount((count) => count + 1)
+      setProgress((current) =>
+        current
+          ? {
+              ...current,
+              pending: Math.max(0, current.pending - 1),
+              approved: action === "approve" ? current.approved + 1 : current.approved,
+              rejected: action === "reject" ? current.rejected + 1 : current.rejected,
+            }
+          : current,
+      )
       toast.success(action === "approve" ? "Цитата подтверждена" : "Цитата отклонена")
     } catch {
       toast.error("Сервер недоступен", { description: "Статус цитаты не изменён." })
@@ -1038,9 +1064,11 @@ function ReviewQueueSection({
           <span className="ml-auto text-xs text-muted-foreground">
             {loading
               ? "Загрузка…"
-              : status === "pending" && initialPending > 0
-                ? `Подтверждено ${approvedCount} из ${initialPending} · записей: ${items.length}`
-                : `Записей: ${items.length} (лимит ${REVIEW_PAGE_LIMIT})`}
+              : progress
+                ? `Проверено ${progress.approved + progress.rejected} из ${progress.total} · на проверке ${progress.pending}`
+                : status === "pending" && initialPending > 0
+                  ? `Подтверждено ${approvedCount} из ${initialPending} · записей: ${items.length}`
+                  : `Записей: ${items.length} (лимит ${REVIEW_PAGE_LIMIT})`}
           </span>
         </div>
         <p className="text-[11px] text-muted-foreground">
