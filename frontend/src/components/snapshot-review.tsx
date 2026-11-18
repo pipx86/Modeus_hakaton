@@ -25,11 +25,12 @@
  *
  * Экспорт: {@link SnapshotReviewTab}.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import {
   CheckIcon,
+  CopyIcon,
   ExternalLinkIcon,
   FileDiffIcon,
   GitCompareIcon,
@@ -82,6 +83,7 @@ import {
   type Source,
 } from "@/lib/api/client"
 import { safeHttpUrl } from "@/lib/security"
+import { buildSnapshotStory } from "@/lib/snapshot-story"
 
 /** Размер страницы очереди проверки: контракт допускает 1..200. */
 const REVIEW_PAGE_LIMIT = 50
@@ -804,7 +806,23 @@ function SnapshotDiffSection({
             )}
             {diff && (
               <div className="space-y-4" data-testid="snapshot-diff">
-                <DiffSummaryBadges diff={diff} />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <DiffSummaryBadges diff={diff} />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2.5 text-xs"
+                    onClick={() => {
+                      void navigator.clipboard
+                        ?.writeText(buildSnapshotStory(diff))
+                        .then(() => toast.success("Changelog скопирован"))
+                        .catch(() => toast.error("Не удалось скопировать changelog"))
+                    }}
+                  >
+                    <CopyIcon className="size-3.5" />
+                    Скопировать changelog
+                  </Button>
+                </div>
                 {diff.summary.added === 0 &&
                 diff.summary.removed === 0 &&
                 diff.summary.changed === 0 ? (
@@ -873,6 +891,10 @@ function ReviewQueueSection({
   const [busyId, setBusyId] = useState<string | null>(null)
   const [detail, setDetail] = useState<QuoteDetail | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [initialPending, setInitialPending] = useState(0)
+  const [approvedCount, setApprovedCount] = useState(0)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const initialized = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -881,7 +903,12 @@ function ReviewQueueSection({
       try {
         const data = await listReviewEvidence(status, REVIEW_PAGE_LIMIT)
         if (cancelled) return
-        setItems(Array.isArray(data) ? data : [])
+        const rows = Array.isArray(data) ? data : []
+        setItems(rows)
+        if (status === "pending" && !initialized.current) {
+          initialized.current = true
+          setInitialPending(rows.length)
+        }
         setLoadError(null)
       } catch (error) {
         if (cancelled) return
@@ -915,6 +942,8 @@ function ReviewQueueSection({
       // Строка больше не относится к текущему фильтру: подтверждённая уходит из
       // «На проверке», отклонённая - из «Отклонённые» (и наоборот).
       setItems((previous) => previous.filter((row) => row.id !== item.id))
+      setSelectedIndex((index) => Math.max(0, Math.min(index, items.length - 2)))
+      if (action === "approve") setApprovedCount((count) => count + 1)
       toast.success(action === "approve" ? "Цитата подтверждена" : "Цитата отклонена")
     } catch {
       toast.error("Сервер недоступен", { description: "Статус цитаты не изменён." })
@@ -935,6 +964,31 @@ function ReviewQueueSection({
       nodeTitle: item.node_title,
       runId: item.run_id,
     })
+  }
+
+  const onQueueKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const tag = (event.target as HTMLElement).tagName
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return
+    const current = items[selectedIndex]
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault()
+      setSelectedIndex((index) => Math.min(items.length - 1, index + 1))
+      return
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault()
+      setSelectedIndex((index) => Math.max(0, index - 1))
+      return
+    }
+    if (!current || busyId) return
+    if (event.key === "a" || event.key === "A") {
+      event.preventDefault()
+      void changeStatus(current, "approve")
+    }
+    if (event.key === "r" || event.key === "R") {
+      event.preventDefault()
+      void changeStatus(current, "reject")
+    }
   }
 
   return (
@@ -982,9 +1036,16 @@ function ReviewQueueSection({
             </Button>
           ))}
           <span className="ml-auto text-xs text-muted-foreground">
-            {loading ? "Загрузка…" : `Записей: ${items.length} (лимит ${REVIEW_PAGE_LIMIT})`}
+            {loading
+              ? "Загрузка…"
+              : status === "pending" && initialPending > 0
+                ? `Подтверждено ${approvedCount} из ${initialPending} · записей: ${items.length}`
+                : `Записей: ${items.length} (лимит ${REVIEW_PAGE_LIMIT})`}
           </span>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Горячие клавиши: A - подтвердить, R - отклонить, стрелки - выбрать цитату.
+        </p>
         {loading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((row) => (
@@ -1009,12 +1070,23 @@ function ReviewQueueSection({
               : "Отклонённых цитат нет."}
           </p>
         ) : (
-          <ul className="space-y-2">
-            {items.map((item) => {
+          <ul
+            className="space-y-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            tabIndex={0}
+            onKeyDown={onQueueKeyDown}
+            aria-label="Очередь проверки"
+          >
+            {items.map((item, index) => {
               const sourceUrl = safeHttpUrl(item.source_url)
               const busy = busyId === item.id
               return (
-                <li key={item.id} className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                <li
+                  key={item.id}
+                  className={`space-y-2 rounded-lg border bg-muted/20 p-3 ${
+                    index === selectedIndex ? "ring-2 ring-primary/40" : ""
+                  }`}
+                  onClick={() => setSelectedIndex(index)}
+                >
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       variant="outline"

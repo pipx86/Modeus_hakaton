@@ -49,6 +49,7 @@ import {
 } from "@/lib/api/client"
 import { getValidToken } from "@/lib/auth"
 import { downloadText } from "@/lib/export-tree"
+import { buildSourceIndex } from "@/lib/provenance"
 import {
   CheckIcon,
   DownloadIcon,
@@ -906,10 +907,12 @@ function TreeTab({
   id,
   active,
   focusNodeId,
+  onShowTranscript,
 }: {
   id: string
   active: boolean
   focusNodeId?: string | null
+  onShowTranscript?: (item: Evidence, source?: Source) => void
 }) {
   const [nodes, setNodes] = useState<ActivityNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -920,6 +923,22 @@ function TreeTab({
   const [statuses, setStatuses] = useState<Map<string, "pending" | "approved" | "rejected">>(
     () => new Map(),
   )
+  const [sourcesById, setSourcesById] = useState<Map<string, Source>>(() => new Map())
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/sources")
+        if (!cancelled && Array.isArray(data)) setSourcesById(buildSourceIndex(data))
+      } catch {
+        // Метаданные источников необязательны: дерево работает и без типов/приоритетов.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -1093,6 +1112,8 @@ function TreeTab({
         onEdit={setEditing}
         onAttach={setAttaching}
         focusNodeId={focusNodeId}
+        sourcesById={sourcesById}
+        onShowTranscript={onShowTranscript}
       />
       <NodeEditDialog
         key={editing?.id ?? "closed"}
@@ -1127,6 +1148,7 @@ export function Research() {
   const [searchParams, setSearchParams] = useSearchParams()
   const focusNodeId = searchParams.get("node")
   const guestView = searchParams.get("view") === "guest"
+  const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
     const link = `${window.location.origin}/research/${id}?view=guest`
     try {
@@ -1139,6 +1161,10 @@ export function Research() {
     }
   }
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
+  const showTranscript = useCallback((item: Evidence) => {
+    setChatFocus({ refId: item.ref_id, quote: item.quote })
+    setTab("chat")
+  }, [])
   /**
    * Переход из вкладки «Снимки и проверка» к узлу дерева: переключаем вкладку и
    * дублируем id узла в search-параметре `?node=`, который уже умеет читать
@@ -1154,7 +1180,7 @@ export function Research() {
         return next
       })
     },
-    [setSearchParams],
+    [setSearchParams, setTab],
   )
   const {
     run,
@@ -1281,7 +1307,12 @@ export function Research() {
           <SourcesTab />
         </TabsContent>
         <TabsContent value="tree">
-          <TreeTab id={id} active={isActive} focusNodeId={focusNodeId} />
+          <TreeTab
+            id={id}
+            active={isActive}
+            focusNodeId={focusNodeId}
+            onShowTranscript={showTranscript}
+          />
         </TabsContent>
         <TabsContent value="snapshots">
           <SnapshotReviewTab runId={id} onFocusNode={focusNode} />
@@ -1290,7 +1321,13 @@ export function Research() {
           <ConflictsTab runId={id} onFocusNode={focusNode} />
         </TabsContent>
         <TabsContent value="chat">
-          <ChatTab runId={id} active={!loading && !error} runStatus={run?.status} stage={run?.stage} />
+          <ChatTab
+            runId={id}
+            active={!loading && !error}
+            runStatus={run?.status}
+            stage={run?.stage}
+            focus={chatFocus}
+          />
         </TabsContent>
       </Tabs>
     </div>

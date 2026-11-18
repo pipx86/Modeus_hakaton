@@ -21,10 +21,12 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
+  AlertTriangleIcon,
   CheckIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  MessageSquareIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
@@ -32,7 +34,10 @@ import {
   XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
-import type { ActivityNode, Evidence, NodeType } from "@/lib/api/client"
+import type { ActivityNode, Evidence, NodeType, Source } from "@/lib/api/client"
+import { SOURCE_PRIORITY, explainNode, provenanceFor, provenanceLabel, type ProvenanceInfo } from "@/lib/provenance"
+import { computeTreeFlags, type TreeFlag } from "@/lib/tree-flags"
+import { SOURCE_TYPE_LABEL } from "@/lib/status"
 import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "./activity-tree-model"
 
 /** Порядок типов для чипов-фильтров: от общего к частному, как в самой методологии дерева. */
@@ -104,14 +109,18 @@ function EvidenceList({
   evidence,
   statuses,
   approvedIds,
+  sources,
   onApprove,
   onReject,
+  onShowTranscript,
 }: {
   evidence: Evidence[]
   statuses?: Map<string, EvidenceStatus>
   approvedIds: Set<string>
+  sources?: Map<string, Source>
   onApprove: (evidenceId: string) => void
   onReject?: (evidenceId: string) => void
+  onShowTranscript?: (item: Evidence, source?: Source) => void
 }) {
   if (evidence.length === 0) return null
   return (
@@ -123,11 +132,23 @@ function EvidenceList({
           (approvedIds.has(item.id) ? "approved" : "pending")
         // confidence приходит только из legacy-моков; контракт API его не гарантирует.
         const confidence = (item as Evidence & { confidence?: number }).confidence
+        const source = sources?.get(item.source_id)
         return (
           <li
             key={item.id}
             className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
           >
+            {source && (
+              <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                <span className="rounded-full bg-background/70 px-1.5 py-0.5">
+                  {SOURCE_TYPE_LABEL[source.type] ?? source.type}
+                </span>
+                <span className="max-w-40 truncate" title={source.title}>
+                  {source.title}
+                </span>
+                <span>· {SOURCE_PRIORITY[source.type]}</span>
+              </span>
+            )}
             <span className="min-w-0 flex-1 text-muted-foreground">{item.quote}</span>
             {typeof confidence === "number" && (
               <span
@@ -141,6 +162,17 @@ function EvidenceList({
             >
               {STATUS_LABEL[status]}
             </span>
+            {onShowTranscript && item.ref_id && source?.type === "interview" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 shrink-0 gap-1 px-2 text-xs"
+                onClick={() => onShowTranscript(item, source)}
+              >
+                <MessageSquareIcon className="size-3" />
+                В интервью
+              </Button>
+            )}
             {status !== "approved" && (
               <Button
                 variant="ghost"
@@ -187,6 +219,8 @@ interface RowProps {
   onEdit: (node: TreeNode) => void
   onAttach: (node: TreeNode) => void
   onShowZun: (node: TreeNode) => void
+  provenance?: ProvenanceInfo
+  flags?: TreeFlag[]
 }
 
 /**
@@ -212,6 +246,8 @@ const Row = memo(function Row({
   onEdit,
   onAttach,
   onShowZun,
+  provenance,
+  flags,
 }: RowProps) {
   const evidenceCount = (node.evidence ?? []).length
   const zun = node.zun
@@ -274,6 +310,24 @@ const Row = memo(function Row({
         >
           {NODE_TYPE_LABELS[node.type]}
         </span>
+        {provenance && provenanceLabel(provenance) && (
+          <span
+            className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+            title={provenance.labels.length > 0 ? provenance.labels.join(", ") : "источник без метаданных"}
+          >
+            {provenanceLabel(provenance)}
+          </span>
+        )}
+        {flags && flags.length > 0 && (
+          <span
+            className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-destructive"
+            title={flags.map((flag) => flag.reason).join(" ")}
+            aria-label={`Проблемы узла: ${flags.map((flag) => flag.label).join(", ")}`}
+          >
+            <AlertTriangleIcon className="size-3.5" />
+            {flags.length}
+          </span>
+        )}
         {evidenceCount > 0 && (
           <span className="shrink-0 text-[11px] text-muted-foreground">{evidenceCount}</span>
         )}
@@ -333,6 +387,10 @@ export interface ActivityTreeProps {
   onAttach: (node: TreeNode) => void
   /** Узел из ссылки `?node=`: раскрыть ветку и подсветить строку. */
   focusNodeId?: string | null
+  /** Источники прогона: типы и приоритеты для провенанса и объяснения узла. */
+  sourcesById?: Map<string, Source>
+  /** Перейти к цитате в интервью (вкладка чата и подсветка сообщения). */
+  onShowTranscript?: (item: Evidence, source?: Source) => void
 }
 
 /**
@@ -354,21 +412,27 @@ export function ActivityTree({
   onEdit,
   onAttach,
   focusNodeId,
+  sourcesById,
+  onShowTranscript,
 }: ActivityTreeProps) {
   const [query, setQuery] = useState("")
   const [activeTypes, setActiveTypes] = useState<Set<NodeType>>(() => new Set(TYPE_ORDER))
   const [onlyWithEvidence, setOnlyWithEvidence] = useState(false)
   const [onlyWithZun, setOnlyWithZun] = useState(false)
+  const [onlyProblem, setOnlyProblem] = useState(false)
   const [zunNode, setZunNode] = useState<TreeNode | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<TreeNode | null>(null)
 
   const roots = useMemo(() => buildTree(nodes), [nodes])
+  const flagsByNode = useMemo(() => computeTreeFlags(nodes, sourcesById), [nodes, sourcesById])
+  const flagsTotal = flagsByNode.size
   const filtersActive =
     query.trim().length > 0 ||
     onlyWithEvidence ||
     onlyWithZun ||
+    onlyProblem ||
     activeTypes.size !== TYPE_ORDER.length
 
   /**
@@ -396,6 +460,8 @@ export function ActivityTree({
     const passEvidence = (node: TreeNode) =>
       !onlyWithEvidence || (node.evidence ?? []).length > 0
     const passZun = (node: TreeNode) => !onlyWithZun || !!node.zun
+    const passFlags = (node: TreeNode) =>
+      !onlyProblem || (flagsByNode.get(node.id)?.length ?? 0) > 0
     const includeVisibleDescendants = (node: TreeNode) => {
       if (!typePass(node)) return
       visible.add(node.id)
@@ -407,7 +473,7 @@ export function ActivityTree({
       for (const child of node.children) {
         if (walk(child)) childVisible = true
       }
-      const selfPass = passSearch(node) && passEvidence(node) && passZun(node)
+      const selfPass = passSearch(node) && passEvidence(node) && passZun(node) && passFlags(node)
       if (selfPass) matched.add(node.id)
       const show = selfPass || childVisible
       if (show) {
@@ -418,7 +484,7 @@ export function ActivityTree({
     }
     const shownRoots = roots.filter((root) => walk(root))
     return { visibleIds: visible, matchIds: matched, visibleRoots: shownRoots }
-  }, [roots, query, activeTypes, onlyWithEvidence, onlyWithZun, filtersActive])
+  }, [roots, query, activeTypes, onlyWithEvidence, onlyWithZun, onlyProblem, flagsByNode, filtersActive])
 
   /**
    * Автораскрытие. Без активных фильтров раскрываем только корни (глубина свёрнута).
@@ -556,6 +622,8 @@ export function ActivityTree({
     setQuery("")
     setActiveTypes(new Set(TYPE_ORDER))
     setOnlyWithEvidence(false)
+    setOnlyWithZun(false)
+    setOnlyProblem(false)
   }, [])
 
   const select = useCallback((node: TreeNode) => setSelected(node), [])
@@ -616,6 +684,18 @@ export function ActivityTree({
         >
           С ЗУН
         </Button>
+        <Button
+          variant={onlyProblem ? "secondary" : "outline"}
+          size="sm"
+          aria-pressed={onlyProblem}
+          onClick={() => setOnlyProblem((value) => !value)}
+          className="h-7 gap-1 px-2.5 text-xs"
+          title="Показать узлы с замечаниями качества"
+        >
+          <AlertTriangleIcon className="size-3.5" />
+          Проблемные
+          {flagsTotal > 0 && <span className="text-muted-foreground">{flagsTotal}</span>}
+        </Button>
         <span className="ml-auto text-xs text-muted-foreground">
           {filtersActive
             ? `Показано ${visibleIds.size} из ${nodes.length}`
@@ -673,6 +753,8 @@ export function ActivityTree({
             onEdit={onEdit}
             onAttach={onAttach}
             onShowZun={setZunNode}
+            provenance={provenanceFor(row.node.evidence ?? [], sourcesById)}
+            flags={flagsByNode.get(row.node.id)}
           />
         ))}
         {end < rows.length && (
@@ -689,20 +771,38 @@ export function ActivityTree({
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          {selected &&
-            (selected.evidence.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                К этому узлу пока не прикреплено ни одного обоснования.
+          {selected && (
+            <div className="space-y-3">
+              <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
+                {explainNode(selected.title, selected.evidence, sourcesById)}
               </p>
-            ) : (
-              <EvidenceList
-                evidence={selected.evidence}
-                approvedIds={approvedIds}
-                statuses={statuses}
-                onApprove={onApprove}
-                onReject={onReject}
-              />
-            ))}
+              {(flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
+                <ul className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-xs">
+                  {flagsByNode.get(selected.id)!.map((flag) => (
+                    <li key={flag.code}>
+                      <span className="font-medium text-destructive">{flag.label}: </span>
+                      <span className="text-muted-foreground">{flag.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {selected.evidence.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  К этому узлу пока не прикреплено ни одного обоснования.
+                </p>
+              ) : (
+                <EvidenceList
+                  evidence={selected.evidence}
+                  approvedIds={approvedIds}
+                  statuses={statuses}
+                  sources={sourcesById}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                  onShowTranscript={onShowTranscript}
+                />
+              )}
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button
               variant="ghost"

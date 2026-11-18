@@ -3,7 +3,7 @@
  * @description Вкладка чата: история интервью, отправка ответов и просмотр после завершения.
  */
 
-import { useEffect, useRef, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
@@ -25,9 +25,11 @@ interface ChatTabProps {
   active: boolean
   runStatus?: RunStatus
   stage?: Run["stage"]
+  /** Цитата, к которой нужно прокрутить историю (переход из диалога обоснования). */
+  focus?: { refId?: string; quote: string } | null
 }
 
-export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
+export function ChatTab({ runId, active, runStatus, stage, focus }: ChatTabProps) {
   const {
     messages,
     loading,
@@ -43,10 +45,35 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
     retry,
   } = useChatStream({ runId, active, runStatus, stage })
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const appliedFocus = useRef<string | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" })
   }, [messages, thinking])
+
+  useEffect(() => {
+    if (!focus) return
+    const key = focus.refId || focus.quote
+    if (appliedFocus.current === key) return
+    const target =
+      messages.find((message) => focus.refId && message.id === focus.refId) ??
+      messages.find((message) => message.content.includes(focus.quote))
+    if (!target) return
+    appliedFocus.current = key
+    // Даём DOM дорисовать сообщение, затем центрируем его и подсвечиваем.
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`chat-message-${target.id}`)
+        ?.scrollIntoView?.({ behavior: "smooth", block: "center" })
+      setHighlightedId(target.id)
+    })
+    const timer = window.setTimeout(() => setHighlightedId(null), 4000)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [focus, messages])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -144,7 +171,10 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={message.role === "user" ? "flex justify-end" : "flex justify-start"}
+            id={`chat-message-${message.id}`}
+            className={`rounded-lg transition-shadow ${
+              highlightedId === message.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+            } ${message.role === "user" ? "flex justify-end" : "flex justify-start"}`}
           >
             <div
               className={

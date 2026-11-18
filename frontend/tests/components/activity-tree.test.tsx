@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { ActivityTree } from "@/components/activity-tree"
 import { buildTree, NODE_TYPE_LABELS } from "@/components/activity-tree-model"
@@ -330,5 +330,76 @@ describe("ActivityTree", () => {
 
     expect(writeText).toHaveBeenCalledTimes(1)
     expect(String(writeText.mock.calls[0][0])).toContain("?node=f1")
+  })
+
+  it("показывает тип, приоритет и объяснение узла", () => {
+    const sources = new Map([
+      ["src-1", { id: "src-1", type: "interview" as const, title: "Интервью с аналитиком" }],
+    ])
+    renderTree({ sourcesById: sources })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
+    )
+
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByText(/подтверждён/)).toBeInTheDocument()
+    expect(within(dialog).getByText("Интервью")).toBeInTheDocument()
+    expect(within(dialog).getByText("· 300")).toBeInTheDocument()
+  })
+
+  it("фильтр «Проблемные» оставляет узлы с замечаниями", () => {
+    renderTree({
+      nodes: [
+        {
+          id: "r1",
+          type: "role",
+          title: "Аналитик",
+          evidence: [evidence("e1")],
+        },
+        { id: "f1", type: "function", title: "Анализ", parent_id: "r1", evidence: [] },
+        {
+          id: "a1",
+          type: "action",
+          title: "Проверять отчёты",
+          parent_id: "r1",
+          evidence: [evidence("e2")],
+        },
+      ],
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /Проблемные/ }))
+
+    expect(screen.getByText("Анализ")).toBeInTheDocument()
+    expect(screen.queryByText("Проверять отчёты")).not.toBeInTheDocument()
+  })
+
+  it("переходит к цитате в интервью", () => {
+    const onShowTranscript = vi.fn()
+    const sources = new Map([
+      ["src-1", { id: "src-1", type: "interview" as const, title: "Интервью" }],
+    ])
+    renderTree({
+      nodes: [
+        {
+          id: "f1",
+          type: "function",
+          title: "Анализ метрик",
+          evidence: [{ id: "e1", source_id: "src-1", ref_id: "msg-1", quote: "Цитата" }],
+        },
+      ],
+      sourcesById: sources,
+      onShowTranscript,
+    })
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "В интервью" }))
+
+    expect(onShowTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({ ref_id: "msg-1" }),
+      expect.objectContaining({ type: "interview" }),
+    )
   })
 })

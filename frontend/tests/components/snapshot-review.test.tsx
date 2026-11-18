@@ -5,7 +5,7 @@
  * диалог исходной цитаты с source_id/ref_id и переход к узлу дерева, а также
  * загрузку очереди, подтверждение/отклонение и ошибки доступа (403).
  */
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
@@ -388,5 +388,42 @@ describe("SnapshotReviewTab", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Закрыть" }))
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("копирует changelog сравнения снимков", async () => {
+    stubReviewApi()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    renderTab()
+
+    const compareButton = await screen.findByRole("button", { name: "Сравнить снимки" })
+    await waitFor(() => expect(compareButton).toBeEnabled())
+    await userEvent.click(compareButton)
+    await screen.findByTestId("snapshot-diff")
+
+    await userEvent.click(screen.getByRole("button", { name: "Скопировать changelog" }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(String(writeText.mock.calls[0][0])).toContain("Изменения дерева")
+  })
+
+  it("показывает прогресс проверки и подтверждает по клавише A", async () => {
+    stubReviewApi({ queue: [PENDING_ITEM] })
+    renderTab()
+
+    expect(await screen.findByText(/Подтверждено 0 из 1/)).toBeInTheDocument()
+    const queue = screen.getByLabelText("Очередь проверки")
+
+    fireEvent.keyDown(queue, { key: "a" })
+
+    await waitFor(() =>
+      expect(
+        fetchCalls().some(
+          (call) =>
+            call.url.includes("/api/v1/evidences/ev-1/approve") && call.init.method === "POST",
+        ),
+      ).toBe(true),
+    )
+    expect(await screen.findByText(/Подтверждено 1 из 1/)).toBeInTheDocument()
   })
 })

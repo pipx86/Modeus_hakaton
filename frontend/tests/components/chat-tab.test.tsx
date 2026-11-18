@@ -427,4 +427,22 @@ describe("ChatTab", () => {
     expect(click).toHaveBeenCalledTimes(1)
     click.mockRestore()
   })
+
+  it("прокручивает к цитате из интервью и подсвечивает сообщение", async () => {
+    stubChat()
+    const scroll = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scroll
+    try {
+      render(<ChatTab runId="7" active focus={{ quote: "Какие задачи" }} />)
+      await screen.findByText("Какие задачи вы решаете чаще всего?")
+
+      await waitFor(() => expect(scroll).toHaveBeenCalled())
+      await waitFor(() =>
+        expect(document.getElementById("chat-message-m1")?.className).toContain("ring-primary"),
+      )
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
 })
