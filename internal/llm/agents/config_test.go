@@ -35,7 +35,7 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.Agents[Interviewer].Temperature != 0.4 {
 		t.Fatalf("interviewer temperature = %v", cfg.Agents[Interviewer].Temperature)
 	}
-	if cfg.Agents[Analyst].MaxTokens != 5000 {
+	if cfg.Agents[Analyst].MaxTokens != 8000 {
 		t.Fatalf("analyst max tokens = %d", cfg.Agents[Analyst].MaxTokens)
 	}
 }

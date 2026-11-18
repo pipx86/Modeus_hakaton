@@ -45,13 +45,13 @@ Prompt contract: `agent.io/v1`
 
 При `max_tokens=5000`:
 
-| Temperature | Success | JSON valid | Duration | Tokens |
+| Temperature | Success | JSON valid | Duration | Completion tokens |
 |---:|---|---|---:|---:|
-| 0.0 | yes | yes | 20.7 s | 6201 |
-| 0.5 | yes | yes | 25.2 s | 7151 |
-| 1.0 | yes | yes | 12.3 s | 4337 |
+| 0.0 | yes | yes | 20.7 s | 3879 |
+| 0.5 | yes | yes | 25.2 s | 4829 |
+| 1.0 | yes | yes | 12.3 s | 2015 |
 
-Вывод: для analyst нужен бюджет **не меньше 5000 completion-токенов**, иначе модель обрезает JSON. Текущий дефолт проекта уже 5000 — его нельзя уменьшать.
+Вывод: 5000 — рабочий, но слишком тесный лимит: на temperature 0.5 ответ занял 4829 из 5000 (96.6%). Для production подняли дефолт analyst до **8000** completion-токенов. `max_tokens` — это верхняя граница, а не предоплата: платятся только фактически сгенерированные токены, поэтому запас не увеличивает счёт без необходимости.
 
 ## 4. Модели
 
@@ -73,7 +73,7 @@ LLM_INTERVIEWER_TIMEOUT_S=300
 
 LLM_ANALYST_MODEL=deepseek-v4.1-flash-1017
 LLM_ANALYST_TEMPERATURE=0.2
-LLM_ANALYST_MAX_TOKENS=5000
+LLM_ANALYST_MAX_TOKENS=8000
 LLM_ANALYST_TIMEOUT_S=300
 ```
 
