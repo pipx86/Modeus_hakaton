@@ -58,7 +58,7 @@ func NewPoolWithGate(cfg Config, gate *Gate) (*Pool, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agents: guardrails for %s: %w", name, err)
 		}
-		breaker, err := llm.NewCircuitBreaker(guarded)
+		breaker, err := llm.NewCircuitBreaker(guarded, llm.WithTimeout(spec.Timeout))
 		if err != nil {
 			return nil, fmt.Errorf("agents: circuit breaker for %s: %w", name, err)
 		}
