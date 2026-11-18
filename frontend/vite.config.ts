@@ -73,7 +73,7 @@ export default defineConfig(({ mode }) => {
           selfHandleResponse: true,
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq, req) => {
-              if (env.MODEUS_TOKEN) {
+              if (env.MODEUS_TOKEN && !proxyReq.getHeader("Authorization")) {
                 proxyReq.setHeader("Authorization", `Bearer ${env.MODEUS_TOKEN}`)
               }
               if (String(req.url ?? "").includes("/events")) {

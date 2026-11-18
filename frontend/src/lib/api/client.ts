@@ -1,5 +1,6 @@
 import createClient from "openapi-fetch"
 import { frontendLog } from "@/lib/frontend-log"
+import { getValidToken } from "@/lib/auth"
 import type { paths, components } from "./schema"
 
 // В dev запросы идут на тот же origin через Vite-прокси (он добавляет Authorization).
@@ -19,7 +20,8 @@ export const apiClient = createClient<paths>({ baseUrl: apiBaseUrl })
 // Токен нужен, если фронтенд обращается к API напрямую (без прокси).
 apiClient.use({
   onRequest({ request }) {
-    if (apiToken) request.headers.set("Authorization", `Bearer ${apiToken}`)
+    const token = getValidToken() ?? apiToken
+    if (token) request.headers.set("Authorization", `Bearer ${token}`)
     return request
   },
   onResponse({ request, response }) {

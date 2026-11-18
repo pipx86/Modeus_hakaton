@@ -9,6 +9,7 @@ import {
   ChevronRightIcon,
   FlaskConicalIcon,
   GraduationCapIcon,
+  KeyRoundIcon,
   MenuIcon,
   MoonIcon,
   PanelLeftCloseIcon,
@@ -123,6 +124,16 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
 
       <div className="mt-auto flex flex-col gap-1 border-t p-3">
         <ThemeToggle collapsed={collapsed} />
+        <Button
+          asChild
+          variant="ghost"
+          className={cn("w-full justify-start gap-2.5 px-2.5", collapsed && "justify-center px-0")}
+        >
+          <Link to="/login" onClick={onNavigate}>
+            <KeyRoundIcon className="size-4" />
+            {!collapsed && <span>Аккаунт</span>}
+          </Link>
+        </Button>
         {!collapsed && <p className="px-2.5 pt-1 text-xs text-muted-foreground">Версия 0.1.0</p>}
       </div>
     </div>
