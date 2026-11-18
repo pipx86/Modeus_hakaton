@@ -369,7 +369,7 @@ func (c *GuardedClient) leaks(answer string, systemContents []string) bool {
 	for _, system := range systemContents {
 		for _, line := range strings.Split(system, "\n") {
 			line = strings.TrimSpace(line)
-			if len([]rune(line)) < minLeakLineRunes {
+			if isJSONStructuralLine(line) || len([]rune(line)) < minLeakLineRunes {
 				continue
 			}
 			if strings.Contains(normalizedAnswer, normalizeForLeak(line)) {
@@ -586,6 +586,22 @@ func neutralize(text string, detection hostileDetection) string {
 	}
 	builder.WriteString(text[last:])
 	return builder.String()
+}
+
+// isJSONStructuralLine reports whether a system-prompt line is just JSON
+// syntax/keys. A model answer is JSON, so schema/format examples naturally share
+// these lines with the prompt; treating them as a system-prompt leak is a false
+// positive. Prose instructions are still checked by leaks.
+func isJSONStructuralLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return true
+	}
+	switch trimmed[0] {
+	case '{', '}', '[', ']', '`':
+		return true
+	}
+	return strings.HasPrefix(trimmed, `"`) && strings.Contains(trimmed, `":`)
 }
 
 func normalizeForLeak(text string) string {
