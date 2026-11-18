@@ -93,3 +93,9 @@
 {"time":"2026-11-18T14:57:52.9929094+03:00","level":"INFO","msg":"request","method":"POST","path":"/api/v1/runs","status":403,"duration_ms":0,"remote_addr":"127.0.0.1:54335"}
 {"time":"2026-11-18T14:57:53.0779837+03:00","level":"INFO","msg":"request","method":"GET","path":"/api/v1/runs/6407e6df-a37a-4b12-ba05-162bb3382c51","status":200,"duration_ms":3,"remote_addr":"127.0.0.1:54343"}
 {"time":"2026-11-18T14:57:53.1088739+03:00","level":"INFO","msg":"request","method":"DELETE","path":"/api/v1/sources/missing","status":403,"duration_ms":0,"remote_addr":"127.0.0.1:54343"}
+{"time":"2026-11-18T16:13:41.4411623+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:13:41.5606868+03:00","level":"INFO","msg":"LLM provider configured","base_url":"https://api.reformboss.com/v1","interviewer_model":"deepseek-v4.1-flash-1017","analyst_model":"deepseek-v4.1-flash-1017"}
+{"time":"2026-11-18T16:13:41.5704279+03:00","level":"INFO","msg":"development API listening","addr":{"IP":"127.0.0.1","Port":8080,"Zone":""},"db":"postgresql"}
+{"time":"2026-11-18T16:13:41.5763405+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T16:13:51.362381+03:00","level":"INFO","msg":"request","method":"GET","path":"/api/v1/health","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:64095"}
+{"time":"2026-11-18T16:13:53.8375443+03:00","level":"INFO","msg":"request","method":"GET","path":"/api/v1/runs/5815a047-f944-41e5-80a1-e1dd4762dd24/recommendations","status":404,"duration_ms":0,"remote_addr":"127.0.0.1:64142"}

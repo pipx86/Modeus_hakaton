@@ -49,18 +49,12 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 // after all questions are answered and before the run is marked done.
 type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
 
-// Advisor generates the final personalised recommendation after the tree is
-// saved. It is a chat message produced by the LLM, not a static UI catalogue.
-// Advice failures never fail the run.
-type Advisor func(ctx context.Context, runID, profession string, session domain.InterviewSession) (string, error)
-
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
 // Service owns one interviewer session per run.
 type Service struct {
 	client        llm.ChatClient
 	finalizer     Finalizer
-	advisor       Advisor
 	onFinish      func(runID string, status domain.RunStatus)
 	promptVersion string
 
@@ -96,14 +90,6 @@ func (s *Service) SetFinalizer(finalizer Finalizer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.finalizer = finalizer
-}
-
-// SetAdvisor installs the optional LLM advisor that posts the final
-// recommendation into the chat after the finalizer finishes.
-func (s *Service) SetAdvisor(advisor Advisor) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.advisor = advisor
 }
 
 // SetPromptVersion pins the interviewer prompt version for new sessions.
@@ -305,14 +291,9 @@ func (s *Service) complete(runID, profession string, state domain.InterviewSessi
 			status = finalStatus
 		}
 	}
-	if s.advisor != nil && (status == domain.RunDone || status == domain.RunDegraded) {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		advice, err := s.advisor(ctx, runID, profession, state)
-		cancel()
-		if err != nil {
-			log.Printf("chat: advisor failed for run %s: %v", runID, err)
-		} else if advice != "" {
-			s.appendAgentMessage(runID, advice)
+	if status == domain.RunDone || status == domain.RunDegraded {
+		if message := interviewer.FinalCoursesMessage(profession); message != "" {
+			s.appendAgentMessage(runID, message)
 		}
 	}
 	s.publish(runID, Event{Type: "run_status", Status: string(status)})
