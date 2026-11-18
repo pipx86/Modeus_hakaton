@@ -44,6 +44,10 @@ func TestAnalysisStep(t *testing.T) {
 		"hybrid_weights_raw",
 		"per_vacancy_skills",
 		"source_vacancies",
+		"ranked_skills",
+		"skill_cooccurrence",
+		"skill_affinity",
+		"skill_clusters",
 	} {
 		if _, ok := run.Data[key]; !ok {
 			t.Errorf("Результат %s отсутствует", key)

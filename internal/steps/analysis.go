@@ -44,6 +44,19 @@ func (a *AnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, vac
 	run.Data["per_vacancy_skills"] = triple.PerVacancy
 	run.Data["source_vacancies"] = vacancies
 
+	// Ранжирование навыков по частоте появления и востребованности.
+	ranked := analysis.RankSkills(triple.Freq, triple.WeightsRaw)
+	run.Data["ranked_skills"] = ranked
+
+	// Оценка «неразрывности» навыков через совместную встречаемость.
+	cooc := analysis.ComputeCoOccurrence(triple.PerVacancy, 2)
+	run.Data["skill_cooccurrence"] = cooc
+	run.Data["skill_affinity"] = cooc.Affinity
+
+	// Кластеризация связанных навыков (co-occurrence + taxonomy.Related).
+	clusters := analysis.ClusterRelatedSkills(cooc.Affinity, analysis.DefaultTaxonomy(), 0.3)
+	run.Data["skill_clusters"] = clusters
+
 	return nil
 }
 

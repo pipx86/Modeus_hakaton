@@ -15,6 +15,10 @@ type MarketData struct {
 	SkillFreq        map[string]int
 	HybridWeights    map[string]float64
 	VacanciesByLevel [][]string
+	// Affinity — матрица «неразрывности» навыков (из ComputeCoOccurrence).
+	// Если задана, приоритет рекомендаций дополнительно учитывает,
+	// насколько missing-навык связан с навыками кандидата.
+	Affinity map[string]map[string]float64
 }
 
 type Recommendation struct {
@@ -68,9 +72,12 @@ func ComputeGapWithTaxonomy(profiles []CandidateProfile, market MarketData, topK
 		for _, skill := range missing {
 			freq := canonicalFreq[skill]
 			weight := canonicalWeight[skill]
+			priority := weight * math.Log(float64(freq)+1)
+			priority = BoostPriorityByAffinity(priority, skill, profile.Skills, market.Affinity, 0.35)
 			recs = append(recs, Recommendation{
-				Skill: skill, Priority: weight * math.Log(float64(freq)+1),
-				Reason: "missing in profile, high demand in market",
+				Skill:    skill,
+				Priority: priority,
+				Reason:   "missing in profile, high demand in market",
 			})
 		}
 		sort.Slice(recs, func(i, j int) bool {

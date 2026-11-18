@@ -648,3 +648,125 @@
 {"time":"2026-11-18T00:42:20.9878954+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
 {"time":"2026-11-18T00:42:20.9878954+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
 {"time":"2026-11-18T00:42:20.9878954+03:00","level":"ERROR","msg":"create_run_store_error","error":"TOO_MANY_REQUESTS"}
+{"time":"2026-11-18T00:53:25.9572723+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.9807278+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.9812337+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.9812337+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.9812337+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.9817509+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.9817509+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:25.991446+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T00:53:25.991446+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T00:53:25.991446+03:00","level":"WARN","msg":"create_run_bad_request","error":"unexpected EOF"}
+{"time":"2026-11-18T00:53:25.9935066+03:00","level":"INFO","msg":"resume_found_incomplete_runs","count":1}
+{"time":"2026-11-18T00:53:25.9935066+03:00","level":"INFO","msg":"resume_continuing_run","run_id":"run-1","stage":"analysis"}
+{"time":"2026-11-18T00:53:25.9945313+03:00","level":"INFO","msg":"resume_run_completed_successfully","run_id":"run-1"}
+{"time":"2026-11-18T00:53:25.9945313+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T00:53:25.9945313+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T00:53:25.9951283+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-18T00:53:25.9951283+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-18T00:53:25.9951283+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T00:53:25.9956325+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9956325+03:00","level":"ERROR","msg":"get_run_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9961456+03:00","level":"ERROR","msg":"get_tree_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9961456+03:00","level":"ERROR","msg":"get_answers_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9961456+03:00","level":"ERROR","msg":"export_get_run_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9961456+03:00","level":"ERROR","msg":"export_get_tree_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9966599+03:00","level":"ERROR","msg":"list_runs_internal_error","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9966599+03:00","level":"ERROR","msg":"save_tree_requires_pgstore","run_id":"r1"}
+{"time":"2026-11-18T00:53:25.9966599+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
+{"time":"2026-11-18T00:53:25.9971723+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
+{"time":"2026-11-18T00:53:25.9976904+03:00","level":"ERROR","msg":"chat_start_failed","run_id":"run-1","error":"llm provider unavailable"}
+{"time":"2026-11-18T00:53:25.998198+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T00:53:25.9987125+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-18T00:53:25.9987125+03:00","level":"ERROR","msg":"save_tree_requires_pgstore","run_id":"r1"}
+{"time":"2026-11-18T00:53:25.9987125+03:00","level":"ERROR","msg":"chat_start_failed","run_id":"run-1","error":"llm provider unavailable"}
+{"time":"2026-11-18T00:53:25.9987125+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
+{"time":"2026-11-18T00:53:25.9987125+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
+{"time":"2026-11-18T00:53:25.9992181+03:00","level":"ERROR","msg":"create_run_store_error","error":"TOO_MANY_REQUESTS"}
+{"time":"2026-11-18T16:04:44.7845101+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8221598+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8226799+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8226799+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8232871+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8237901+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8237901+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:44.8598738+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:04:44.8598738+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:04:44.8598738+03:00","level":"WARN","msg":"create_run_bad_request","error":"unexpected EOF"}
+{"time":"2026-11-18T16:04:44.8658949+03:00","level":"INFO","msg":"resume_found_incomplete_runs","count":1}
+{"time":"2026-11-18T16:04:44.8658949+03:00","level":"INFO","msg":"resume_continuing_run","run_id":"run-1","stage":"analysis"}
+{"time":"2026-11-18T16:04:44.8683609+03:00","level":"INFO","msg":"resume_run_completed_successfully","run_id":"run-1"}
+{"time":"2026-11-18T16:04:44.8683609+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T16:04:44.8683609+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T16:04:44.8689025+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-18T16:04:44.8689025+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-18T16:04:44.8689025+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:04:44.8689025+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8696208+03:00","level":"ERROR","msg":"get_run_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8696208+03:00","level":"ERROR","msg":"get_tree_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8696208+03:00","level":"ERROR","msg":"get_answers_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8701257+03:00","level":"ERROR","msg":"export_get_run_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8701257+03:00","level":"ERROR","msg":"export_get_tree_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8706506+03:00","level":"ERROR","msg":"list_runs_internal_error","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8711737+03:00","level":"ERROR","msg":"save_tree_requires_pgstore","run_id":"r1"}
+{"time":"2026-11-18T16:04:44.8712444+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
+{"time":"2026-11-18T16:04:44.8712444+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
+{"time":"2026-11-18T16:04:44.8745352+03:00","level":"ERROR","msg":"chat_start_failed","run_id":"run-1","error":"llm provider unavailable"}
+{"time":"2026-11-18T16:04:44.8750793+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:04:44.8755826+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-18T16:04:44.8763411+03:00","level":"ERROR","msg":"save_tree_requires_pgstore","run_id":"r1"}
+{"time":"2026-11-18T16:04:44.8763411+03:00","level":"ERROR","msg":"chat_start_failed","run_id":"run-1","error":"llm provider unavailable"}
+{"time":"2026-11-18T16:04:44.8768521+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
+{"time":"2026-11-18T16:04:44.8768521+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
+{"time":"2026-11-18T16:04:44.8768521+03:00","level":"ERROR","msg":"create_run_store_error","error":"TOO_MANY_REQUESTS"}
+{"time":"2026-11-18T16:39:23.7875322+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:23.8195915+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:23.8201069+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:23.8201069+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:23.8201069+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:23.8201069+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:23.8201069+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.8806479+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.9123286+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.9128593+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.9128593+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.9133892+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.9133892+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:37.9133892+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.158307+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1805893+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1805893+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1810976+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1810976+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1810976+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1810976+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1924555+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:39:49.1924555+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:39:49.1924555+03:00","level":"WARN","msg":"create_run_bad_request","error":"unexpected EOF"}
+{"time":"2026-11-18T16:39:49.1954487+03:00","level":"INFO","msg":"resume_found_incomplete_runs","count":1}
+{"time":"2026-11-18T16:39:49.1954487+03:00","level":"INFO","msg":"resume_continuing_run","run_id":"run-1","stage":"analysis"}
+{"time":"2026-11-18T16:39:49.1978782+03:00","level":"INFO","msg":"resume_run_completed_successfully","run_id":"run-1"}
+{"time":"2026-11-18T16:39:49.1985049+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T16:39:49.1985049+03:00","level":"INFO","msg":"resume_no_incomplete_runs"}
+{"time":"2026-11-18T16:39:49.1985049+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-18T16:39:49.1985049+03:00","level":"WARN","msg":"create_run_bad_request","error":"EOF"}
+{"time":"2026-11-18T16:39:49.1985049+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:39:49.1990088+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.1990088+03:00","level":"ERROR","msg":"get_run_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.1995389+03:00","level":"ERROR","msg":"get_tree_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.1995389+03:00","level":"ERROR","msg":"get_answers_internal_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.1995389+03:00","level":"ERROR","msg":"export_get_run_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.2000522+03:00","level":"ERROR","msg":"export_get_tree_error","run_id":"r1","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.2000522+03:00","level":"ERROR","msg":"list_runs_internal_error","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.2005617+03:00","level":"ERROR","msg":"save_tree_requires_pgstore","run_id":"r1"}
+{"time":"2026-11-18T16:39:49.2010796+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
+{"time":"2026-11-18T16:39:49.2010796+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
+{"time":"2026-11-18T16:39:49.2026468+03:00","level":"ERROR","msg":"chat_start_failed","run_id":"run-1","error":"llm provider unavailable"}
+{"time":"2026-11-18T16:39:49.2031632+03:00","level":"WARN","msg":"create_run_bad_request","error":"profession is empty"}
+{"time":"2026-11-18T16:39:49.2041996+03:00","level":"ERROR","msg":"create_run_store_error","error":"database unavailable"}
+{"time":"2026-11-18T16:39:49.2041996+03:00","level":"ERROR","msg":"save_tree_requires_pgstore","run_id":"r1"}
+{"time":"2026-11-18T16:39:49.2041996+03:00","level":"ERROR","msg":"chat_start_failed","run_id":"run-1","error":"llm provider unavailable"}
+{"time":"2026-11-18T16:39:49.2047172+03:00","level":"ERROR","msg":"create_run_store_error","error":"SERVICE_UNAVAILABLE"}
+{"time":"2026-11-18T16:39:49.2047172+03:00","level":"ERROR","msg":"create_run_store_error","error":"GATEWAY_TIMEOUT"}
+{"time":"2026-11-18T16:39:49.2052345+03:00","level":"ERROR","msg":"create_run_store_error","error":"TOO_MANY_REQUESTS"}

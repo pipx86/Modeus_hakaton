@@ -118,3 +118,12 @@
 {"time":"2026-11-18T00:42:21.7464415+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
 {"time":"2026-11-18T00:42:21.7735608+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
 {"time":"2026-11-18T00:42:21.7966847+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:26.7321498+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:26.7587827+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T00:53:26.7762349+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:43.5639086+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:43.591941+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:04:43.6271787+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.0760031+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.1198702+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}
+{"time":"2026-11-18T16:39:49.162466+03:00","level":"INFO","msg":"logging initialized","file":"logs\\app.log","max_size_mb":1024}

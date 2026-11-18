@@ -44,10 +44,12 @@ func (r *ReviewStep) Execute(ctx context.Context, run *domain.Run) error {
 		return fmt.Errorf("skill_freq absent or empty in run.Data")
 	}
 	weightsRaw, _ := run.Data["hybrid_weights_raw"].(map[string]float64)
+	affinity, _ := run.Data["skill_affinity"].(map[string]map[string]float64)
 
 	market := analysis.MarketData{
 		SkillFreq:     skillFreq,
 		HybridWeights: weightsRaw,
+		Affinity:      affinity,
 	}
 
 	profiles := r.Profiles
