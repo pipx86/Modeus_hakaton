@@ -23,7 +23,7 @@ import (
 //
 //	GET /api/v1/runs/{id}/export?format=md|json
 //
-// format=md (по умолчанию) отдаёт Markdown-отчёт для человека: профессию,
+// format=md отдаёт Markdown-отчёт для человека: профессию,
 // статус, идентификатор прогона, иерархию role → function → task → action,
 // подтверждения (цитата, source_id, ref_id, статус), разрешённые конфликты,
 // финальное сообщение с рекомендациями/курсами (если оно доступно) и время
@@ -116,7 +116,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 
 	// Формат проверяем до обращения к хранилищу: неизвестный format — это 400
 	// независимо от того, существует ли прогон.
-	format, err := parseExportFormat(r.URL.Query())
+	format, err := parseExportFormat(r.URL.Query(), r.Header.Get("Accept"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
@@ -189,10 +189,18 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 // parseExportFormat разбирает и валидирует ?format=. Пустое значение означает
 // формат по умолчанию md. Регистр и пробелы вокруг значения нормализуются,
 // любое другое значение — ошибка для 400.
-func parseExportFormat(values url.Values) (exportFormat, error) {
+func parseExportFormat(values url.Values, accept string) (exportFormat, error) {
 	raw := strings.ToLower(strings.TrimSpace(values.Get("format")))
+	if raw == "" {
+		// Backward compatibility: the legacy /export endpoint returned the tree
+		// as JSON. Markdown is explicit via ?format=md or Accept: text/markdown.
+		if strings.Contains(strings.ToLower(accept), "text/markdown") {
+			return exportFormatMarkdown, nil
+		}
+		return exportFormatJSON, nil
+	}
 	switch raw {
-	case "", string(exportFormatMarkdown):
+	case string(exportFormatMarkdown):
 		return exportFormatMarkdown, nil
 	case string(exportFormatJSON):
 		return exportFormatJSON, nil

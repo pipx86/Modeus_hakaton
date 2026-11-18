@@ -741,7 +741,8 @@ paths:
       summary: Export a completed run as Markdown or JSON
       description: >-
         Exports the finalized activity tree of a run whose status is `done`.
-        `format=md` (default) returns a human-readable Markdown report with the
+        The default `format=json` preserves the legacy tree JSON contract;
+        `format=md` returns a human-readable Markdown report with the
         profession, status, run id, role → function → task → action hierarchy,
         evidence quotes (source_id/ref_id/status), resolved conflicts, the final
         recommendations/courses chat message when available and the generation
@@ -758,15 +759,15 @@ paths:
           in: query
           required: false
           description: >-
-            Export format: `md` (default) or `json`. Any other value returns 400
+            Export format: `json` (default) or `md`. Any other value returns 400
             BAD_REQUEST. Case and surrounding whitespace are normalized.
           schema:
             type: string
             enum: [md, json]
-            default: md
+            default: json
       responses:
         "200":
-          description: Exported run as Markdown (default) or as a JSON document.
+          description: Exported run as JSON (default) or as Markdown when requested.
           headers:
             Content-Disposition:
               description: >-

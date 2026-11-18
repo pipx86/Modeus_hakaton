@@ -2,14 +2,12 @@ openapi: 3.0.3
 info:
   title: Modeus activity-descriptor API
   version: 0.1.0
-  description: Contract for the multi-agent activity-descriptor backend (cards 1,
-    18, 19, 20). This file is the source of truth; the copies served by the API from
-    `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated
-    from it. All endpoints are relative to the `/api/v1` server and, except for `GET
-    /health`, require a JWT bearer token. Successful responses are JSON, except the
-    run export which serves Markdown by default (`?format=md`) and JSON on request
-    (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`.
-    Error responses carry a stable machine-readable `code` and a human-readable `message`.
+  description: Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of
+    truth; the copies served by the API from `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated
+    from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, require a JWT bearer token.
+    Successful responses are JSON, except the run export which serves Markdown by default (`?format=md`) and JSON on request
+    (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a
+    stable machine-readable `code` and a human-readable `message`.
 servers:
 - url: /api/v1
   description: API prefix used by cmd/api and cmd/server.
@@ -17,16 +15,13 @@ tags:
 - name: system
   description: Liveness probe.
 - name: sources
-  description: Source documents (vacancies, interviews, standards) and their searchable
-    fragments.
+  description: Source documents (vacancies, interviews, standards) and their searchable fragments.
 - name: evidences
-  description: Evidence quotes attached to tree nodes and their expert approval or
-    rejection state.
+  description: Evidence quotes attached to tree nodes and their expert approval or rejection state.
 - name: reviews
   description: Expert review queue of disputed evidence (pending and rejected quotes).
 - name: runs
-  description: Research runs, saved activity trees, answers, snapshots, snapshot diffs,
-    export and search.
+  description: Research runs, saved activity trees, answers, snapshots, snapshot diffs, export and search.
 - name: nodes
   description: Editing of individual activity-tree nodes.
 - name: chat
@@ -58,8 +53,7 @@ paths:
       tags:
       - sources
       summary: List sources
-      description: Returns sources ordered by creation time, newest first (at most
-        1000).
+      description: Returns sources ordered by creation time, newest first (at most 1000).
       operationId: listSources
       responses:
         '200':
@@ -151,8 +145,7 @@ paths:
       tags:
       - sources
       summary: Delete a source
-      description: A source is deleted only when no evidence references it; otherwise
-        the server returns 409.
+      description: A source is deleted only when no evidence references it; otherwise the server returns 409.
       operationId: deleteSource
       parameters:
       - $ref: '#/components/parameters/SourceId'
@@ -203,8 +196,7 @@ paths:
         '501':
           $ref: '#/components/responses/NotImplemented'
         '502':
-          description: The source or the embedding model is unavailable; the previous
-            index is kept.
+          description: The source or the embedding model is unavailable; the previous index is kept.
           content:
             application/json:
               schema:
@@ -309,8 +301,7 @@ paths:
       tags:
       - evidences
       summary: Get one evidence
-      description: Returns the evidence with the legacy `approved` flag in addition
-        to `status`.
+      description: Returns the evidence with the legacy `approved` flag in addition to `status`.
       operationId: getEvidence
       parameters:
       - $ref: '#/components/parameters/EvidenceId'
@@ -336,8 +327,7 @@ paths:
       tags:
       - evidences
       summary: Approve an evidence
-      description: Confirmation status is stored server-side; no body is returned.
-        Only pending evidence can be approved.
+      description: Confirmation status is stored server-side; no body is returned. Only pending evidence can be approved.
       operationId: approveEvidence
       parameters:
       - $ref: '#/components/parameters/EvidenceId'
@@ -374,9 +364,8 @@ paths:
       tags:
       - evidences
       summary: Reject an evidence
-      description: Marks a quote as rejected; only pending evidence can be rejected.
-        Rejected evidence appears in the expert review queue with `status=rejected`
-        (`GET /reviews/evidence`), where an expert can then approve it.
+      description: Marks a quote as rejected; only pending evidence can be rejected. Rejected evidence appears in the expert
+        review queue with `status=rejected` (`GET /reviews/evidence`), where an expert can then approve it.
       operationId: rejectEvidence
       parameters:
       - $ref: '#/components/parameters/EvidenceId'
@@ -413,8 +402,7 @@ paths:
       tags:
       - evidences
       summary: Bulk approve evidences
-      description: Approves several quotes at once; ids that are missing or not pending
-        are counted as skipped.
+      description: Approves several quotes at once; ids that are missing or not pending are counted as skipped.
       operationId: bulkApproveEvidences
       requestBody:
         required: true
@@ -456,21 +444,18 @@ paths:
       tags:
       - reviews
       summary: Expert review queue for disputed evidence
-      description: 'Returns evidence that still needs expert review: `status=pending`
-        (default) or `status=rejected`. Approved evidence is intentionally never returned.
-        Each row carries run_id, node_id/node_title, source_id/source_title/source_url,
-        ref_id and the quote so an expert can decide without extra lookups. The order
-        is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default
-        50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`,
-        never `null`. Only the expert roles admin, teacher and rop may call this operation;
-        student and guest receive 403.'
+      description: 'Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved
+        evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url,
+        ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`),
+        so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is
+        `[]`, never `null`. Only the expert roles admin, teacher and rop may call this operation; student and guest receive
+        403.'
       operationId: listReviewQueue
       parameters:
       - name: status
         in: query
         required: false
-        description: Review state to list. Any value other than pending or rejected
-          is a 400.
+        description: Review state to list. Any value other than pending or rejected is a 400.
         schema:
           type: string
           enum:
@@ -571,10 +556,9 @@ paths:
       tags:
       - runs
       summary: Start a run
-      description: Starts an analysis run for the given profession. When the chat
-        interviewer is configured, the run is created in the interview stage and the
-        interviewer starts immediately; otherwise the batch pipeline is triggered
-        for the PostgreSQL store.
+      description: Starts an analysis run for the given profession. When the chat interviewer is configured, the run is created
+        in the interview stage and the interviewer starts immediately; otherwise the batch pipeline is triggered for the PostgreSQL
+        store.
       operationId: createRun
       requestBody:
         required: true
@@ -648,8 +632,7 @@ paths:
       tags:
       - runs
       summary: Delete a research run
-      description: Deletes the run together with its tree, evidences and messages
-        (cascade).
+      description: Deletes the run together with its tree, evidences and messages (cascade).
       operationId: deleteRun
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -698,9 +681,8 @@ paths:
       tags:
       - runs
       summary: Save a new activity tree in one transaction
-      description: Requires the admin, teacher or rop role. Validates the flat node
-        list and saves it atomically. An existing tree is never replaced; saving again
-        is rejected with 409. Tree writes require the PostgreSQL store.
+      description: Requires the admin, teacher or rop role. Validates the flat node list and saves it atomically. An existing
+        tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.
       operationId: saveRunTree
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -773,51 +755,46 @@ paths:
       tags:
       - runs
       summary: Export a completed run as Markdown or JSON
-      description: 'Exports the finalized activity tree of a run whose status is `done`.
-        `format=md` (default) returns a human-readable Markdown report with the profession,
-        status, run id, role → function → task → action hierarchy, evidence quotes
-        (source_id/ref_id/status), resolved conflicts, the final recommendations/courses
-        chat message when available and the generation timestamp. `format=json` returns
-        the same data as a structured document (`schema=run-export/v1`). Roles: admin,
-        teacher, rop and guest; student receives 403. Conflicts and source metadata
-        are auxiliary and are read best-effort: if they cannot be loaded the export
-        still succeeds without them. The response is served with `Content-Disposition:
-        attachment` and a filename built from a sanitized run id.'
+      description: 'Exports the finalized activity tree of a run whose status is `done`. The default `format=json` preserves
+        the legacy tree JSON contract; `format=md` returns a human-readable Markdown report with the profession, status, run
+        id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the
+        final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the
+        same data as a structured document (`schema=run-export/v1`). Roles: admin, teacher, rop and guest; student receives
+        403. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still
+        succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized
+        run id.'
       operationId: exportRun
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: format
         in: query
         required: false
-        description: 'Export format: `md` (default) or `json`. Any other value returns
-          400 BAD_REQUEST. Case and surrounding whitespace are normalized.'
+        description: 'Export format: `json` (default) or `md`. Any other value returns 400 BAD_REQUEST. Case and surrounding
+          whitespace are normalized.'
         schema:
           type: string
           enum:
           - md
           - json
-          default: md
+          default: json
       responses:
         '200':
-          description: Exported run as Markdown (default) or as a JSON document.
+          description: Exported run as JSON (default) or as Markdown when requested.
           headers:
             Content-Disposition:
-              description: '`attachment; filename="run-<sanitized-id>.md"` or `.json`;
-                the id is reduced to ASCII letters, digits, `-` and `_`.'
+              description: '`attachment; filename="run-<sanitized-id>.md"` or `.json`; the id is reduced to ASCII letters,
+                digits, `-` and `_`.'
               schema:
                 type: string
           content:
             text/markdown:
               schema:
                 type: string
-              example: "# Run export: Аналитик данных\n\n- Run ID: `run-export-1`\n\
-                - Status: done\n- Generated at: 2026-11-18T10:12:00Z\n\n## Competency\
-                \ tree\n\n- Аналитик данных (role) `node-role`\n  - Аналитика требований\
-                \ (function) `node-function`\n\n## Evidence\n\n| Node | Quote | Source\
-                \ | Ref ID | Status |\n| --- | --- | --- | --- | --- |\n| `node-function`\
-                \ — Аналитика требований | Цитата про анализ требований | `src-interview`\
-                \ (interview) | `ref-function` | approved |\n\n## Conflicts\n\nNo\
-                \ source conflicts were resolved for this run.\n"
+              example: "# Run export: Аналитик данных\n\n- Run ID: `run-export-1`\n- Status: done\n- Generated at: 2026-11-18T10:12:00Z\n\
+                \n## Competency tree\n\n- Аналитик данных (role) `node-role`\n  - Аналитика требований (function) `node-function`\n\
+                \n## Evidence\n\n| Node | Quote | Source | Ref ID | Status |\n| --- | --- | --- | --- | --- |\n| `node-function`\
+                \ — Аналитика требований | Цитата про анализ требований | `src-interview` (interview) | `ref-function` | approved\
+                \ |\n\n## Conflicts\n\nNo source conflicts were resolved for this run.\n"
             application/json:
               schema:
                 $ref: '#/components/schemas/ExportRun'
@@ -830,8 +807,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: The run is not finished (`RUN_NOT_FINISHED`) or is finished
-            but has no saved tree (`RUN_HAS_NO_TREE`); there is nothing to export.
+          description: The run is not finished (`RUN_NOT_FINISHED`) or is finished but has no saved tree (`RUN_HAS_NO_TREE`);
+            there is nothing to export.
           content:
             application/json:
               schema:
@@ -858,20 +835,17 @@ paths:
       tags:
       - runs
       summary: Stream run progress (SSE)
-      description: '`text/event-stream`. Pipeline events are `stage_change`, `error`
-        and `done` with `data` containing `stage`, `status`, `pct` and, when applicable,
-        `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and
-        `run_status` events. Heartbeats are sent as `event: heartbeat`. The client
-        may reconnect with `Last-Event-ID`; previously delivered events are skipped,
-        and the stream closes when the run reaches done or failed.'
+      description: '`text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`,
+        `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and
+        `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously
+        delivered events are skipped, and the stream closes when the run reaches done or failed.'
       operationId: streamRunEvents
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: Last-Event-ID
         in: header
         required: false
-        description: ID of the last received event; the server resumes after it without
-          duplicates.
+        description: ID of the last received event; the server resumes after it without duplicates.
         schema:
           type: string
       responses:
@@ -892,8 +866,7 @@ paths:
       tags:
       - chat
       summary: List chat messages of a run
-      description: Returns the interview chat history, oldest first. Available while
-        the chat service is configured.
+      description: Returns the interview chat history, oldest first. Available while the chat service is configured.
       operationId: listMessages
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -932,8 +905,7 @@ paths:
       tags:
       - chat
       summary: Send a user message to the interviewer
-      description: Records the respondent answer and schedules the next question.
-        Guest role cannot post messages.
+      description: Records the respondent answer and schedules the next question. Guest role cannot post messages.
       operationId: sendMessage
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -982,8 +954,7 @@ paths:
                 code: NOT_FOUND
                 message: chat session not found
         '409':
-          description: The chat session does not accept this message (for example
-            it is already finished).
+          description: The chat session does not accept this message (for example it is already finished).
           content:
             application/json:
               schema:
@@ -1005,10 +976,9 @@ paths:
       tags:
       - runs
       summary: Resolved synthesizer conflicts for a run
-      description: Returns title/description conflicts detected and deterministically
-        resolved by the synthesizer during finalization. Every conflict keeps the
-        competing values and the winner (interview > standard > vacancy > document).
-        The list is empty when the run has no stored conflicts.
+      description: Returns title/description conflicts detected and deterministically resolved by the synthesizer during finalization.
+        Every conflict keeps the competing values and the winner (interview > standard > vacancy > document). The list is
+        empty when the run has no stored conflicts.
       operationId: getRunConflicts
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -1059,9 +1029,8 @@ paths:
       tags:
       - runs
       summary: Synthesizer agent-memory messages for a run
-      description: Returns agent-memory messages emitted by the deterministic synthesizer
-        during finalization. Messages of kind `conflict` carry the resolved conflict
-        object in `payload`. The list is empty when the run has no stored messages.
+      description: Returns agent-memory messages emitted by the deterministic synthesizer during finalization. Messages of
+        kind `conflict` carry the resolved conflict object in `payload`. The list is empty when the run has no stored messages.
       operationId: getRunAgentMessages
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -1077,8 +1046,7 @@ paths:
               example:
               - id: msg-conflict-1
                 kind: conflict
-                text: 'Конфликт title: побеждает interview (Собирать требования к
-                  интеграции)'
+                text: 'Конфликт title: побеждает interview (Собирать требования к интеграции)'
                 payload:
                   id: conflict-1
                   node_id: 6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11
@@ -1102,8 +1070,8 @@ paths:
       tags:
       - runs
       summary: Search fragments in the run's sources
-      description: Vector search by default; `strategy=hybrid` combines vector and
-        BM25 hits. Requires the PostgreSQL store and a configured embedding model.
+      description: Vector search by default; `strategy=hybrid` combines vector and BM25 hits. Requires the PostgreSQL store
+        and a configured embedding model.
       operationId: searchRunFragments
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -1216,8 +1184,7 @@ paths:
       tags:
       - runs
       summary: Create a snapshot of the saved tree
-      description: Captures the currently saved activity tree as the next snapshot
-        version.
+      description: Captures the currently saved activity tree as the next snapshot version.
       operationId: createSnapshot
       responses:
         '201':
@@ -1279,15 +1246,12 @@ paths:
       tags:
       - runs
       summary: Diff two snapshots of a run
-      description: Compares the tree stored in the `against` snapshot (base) with
-        the tree stored in the path snapshot (head). Both snapshots must belong to
-        the run `{id}`. Nodes are matched by id; `added` and `removed` list whole
-        nodes and `changed` lists nodes with the changed field names in the fixed
-        order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order
-        inside a node is not significant, an empty status is treated as `pending`,
-        and every returned node carries its evidence (`source_id`, `ref_id`, `quote`,
-        `status`) so the UI can jump to the original source quote. Equal snapshots
-        produce an empty diff (all arrays empty, summary zeros).
+      description: Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head).
+        Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and
+        `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`,
+        `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned
+        node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote.
+        Equal snapshots produce an empty diff (all arrays empty, summary zeros).
       operationId: diffRunSnapshots
       parameters:
       - name: against
@@ -1398,8 +1362,7 @@ paths:
                 code: SNAPSHOT_RUN_MISMATCH
                 message: snapshot belongs to another run
         '500':
-          description: A stored snapshot tree could not be parsed, or a database error
-            occurred.
+          description: A stored snapshot tree could not be parsed, or a database error occurred.
           content:
             application/json:
               schema:
@@ -1422,9 +1385,8 @@ paths:
       tags:
       - nodes
       summary: Edit a node (rename or describe)
-      description: Updates title, description and/or the full evidence list of a node.
-        Only these fields are applied; retyping or moving a node (type, parent_id)
-        is not supported by the backend and such fields are ignored.
+      description: Updates title, description and/or the full evidence list of a node. Only these fields are applied; retyping
+        or moving a node (type, parent_id) is not supported by the backend and such fields are ignored.
       operationId: patchNode
       parameters:
       - $ref: '#/components/parameters/NodeId'
@@ -1473,8 +1435,7 @@ paths:
       tags:
       - users
       summary: List demo users
-      description: List of demo accounts and their roles; available to the admin role
-        only.
+      description: List of demo accounts and their roles; available to the admin role only.
       operationId: listUsers
       responses:
         '200':
@@ -1501,15 +1462,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT with `sub` and `role` claims; roles are admin, teacher, rop,
-        student and guest.
+      description: JWT with `sub` and `role` claims; roles are admin, teacher, rop, student and guest.
   parameters:
     RunId:
       name: id
       in: path
       required: true
-      description: Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory
-        demo store).
+      description: Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store).
       schema:
         type: string
     SourceId:
@@ -1537,8 +1496,7 @@ components:
       name: snapshot_id
       in: path
       required: true
-      description: Snapshot identifier (UUID). The path snapshot is the head of a
-        diff comparison.
+      description: Snapshot identifier (UUID). The path snapshot is the head of a diff comparison.
       schema:
         type: string
         format: uuid
@@ -1571,8 +1529,7 @@ components:
             code: FORBIDDEN
             message: insufficient permissions for this action
     NotFound:
-      description: The requested run, snapshot, source, node or evidence does not
-        exist.
+      description: The requested run, snapshot, source, node or evidence does not exist.
       content:
         application/json:
           schema:
@@ -1581,9 +1538,8 @@ components:
             code: NOT_FOUND
             message: not found
     UnprocessableTree:
-      description: Tree or evidence validation failed. `code` is a stable machine-readable
-        value such as MISSING_EVIDENCE, INVALID_EVIDENCE, DUPLICATE_NODE_ID, DUPLICATE_SIBLING_TITLE,
-        CYCLE_DETECTED, INVALID_TREE_DEPTH, ORPHAN_NODE or INVALID_REFERENCE.
+      description: Tree or evidence validation failed. `code` is a stable machine-readable value such as MISSING_EVIDENCE,
+        INVALID_EVIDENCE, DUPLICATE_NODE_ID, DUPLICATE_SIBLING_TITLE, CYCLE_DETECTED, INVALID_TREE_DEPTH, ORPHAN_NODE or INVALID_REFERENCE.
       content:
         application/json:
           schema:
@@ -1602,8 +1558,8 @@ components:
             code: INTERNAL
             message: internal error
     NotImplemented:
-      description: The configured store does not support this operation. The in-memory
-        demo store returns this for PostgreSQL-only features.
+      description: The configured store does not support this operation. The in-memory demo store returns this for PostgreSQL-only
+        features.
       content:
         application/json:
           schema:
@@ -1694,16 +1650,14 @@ components:
       enum:
       - batch
       - chat
-      description: chat runs are driven by the interview chat; batch runs by the batch
-        pipeline.
+      description: chat runs are driven by the interview chat; batch runs by the batch pipeline.
     EvidenceStatus:
       type: string
       enum:
       - pending
       - approved
       - rejected
-      description: Review state of an evidence quote. An empty status is treated as
-        pending on legacy records.
+      description: Review state of an evidence quote. An empty status is treated as pending on legacy records.
     Evidence:
       type: object
       required:
@@ -1858,8 +1812,7 @@ components:
             $ref: '#/components/schemas/Evidence'
     ExportTreeNode:
       type: object
-      description: Node of the nested `tree` of a JSON run export; children repeat
-        the same shape.
+      description: Node of the nested `tree` of a JSON run export; children repeat the same shape.
       required:
       - id
       - type
@@ -1933,19 +1886,17 @@ components:
             $ref: '#/components/schemas/Evidence'
         conflicts:
           type: array
-          description: Resolved synthesizer conflicts; empty when none or when the
-            store cannot provide them.
+          description: Resolved synthesizer conflicts; empty when none or when the store cannot provide them.
           items:
             $ref: '#/components/schemas/Conflict'
         final_message:
           type: string
-          description: Last agent chat message with recommendations/courses. Empty
-            for batch runs and after a server restart because the chat session lives
-            in memory.
+          description: Last agent chat message with recommendations/courses. Empty for batch runs and after a server restart
+            because the chat session lives in memory.
         sources:
           type: array
-          description: Metadata of sources linked to the run (best-effort, PostgreSQL
-            only). The full source content is intentionally not exported.
+          description: Metadata of sources linked to the run (best-effort, PostgreSQL only). The full source content is intentionally
+            not exported.
           items:
             $ref: '#/components/schemas/Source'
       example:
@@ -2029,9 +1980,8 @@ components:
         tree:
           type: object
           additionalProperties: true
-          description: Stored snapshot document (`schema_version`, `root_node_id`,
-            `nodes`); the server compares it internally and returns nodes in domain
-            form.
+          description: Stored snapshot document (`schema_version`, `root_node_id`, `nodes`); the server compares it internally
+            and returns nodes in domain form.
         created_at:
           type: string
           format: date-time
@@ -2126,8 +2076,7 @@ components:
             $ref: '#/components/schemas/Node'
         changed:
           type: array
-          description: Nodes present in both snapshots whose fields changed, sorted
-            by id.
+          description: Nodes present in both snapshots whose fields changed, sorted by id.
           items:
             $ref: '#/components/schemas/SnapshotNodeChange'
         summary:
@@ -2198,8 +2147,7 @@ components:
           type: string
         priority:
           type: integer
-          description: Source trust priority (interview 300, standard 200, vacancy
-            100, document 50).
+          description: Source trust priority (interview 300, standard 200, vacancy 100, document 50).
     Conflict:
       type: object
       description: A disagreement between sources and its deterministic resolution.
@@ -2231,8 +2179,8 @@ components:
           type: string
     AgentMessage:
       type: object
-      description: One synthesizer agent-memory message. Messages of kind `conflict`
-        carry the resolved conflict object in payload.
+      description: One synthesizer agent-memory message. Messages of kind `conflict` carry the resolved conflict object in
+        payload.
       required:
       - id
       - kind
@@ -2244,13 +2192,11 @@ components:
           minLength: 1
         kind:
           type: string
-          description: Message kind; the synthesizer emits kind=conflict for resolved
-            conflicts.
+          description: Message kind; the synthesizer emits kind=conflict for resolved conflicts.
         text:
           type: string
         payload:
-          description: Arbitrary JSON payload; for kind=conflict it is a domain.Conflict
-            object.
+          description: Arbitrary JSON payload; for kind=conflict it is a domain.Conflict object.
     BulkApproveRequest:
       type: object
       required:

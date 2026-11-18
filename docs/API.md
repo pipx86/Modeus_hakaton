@@ -64,7 +64,7 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 | `GET /users` | Демо-пользователи и роли | admin | 200, 403 |
 | `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin, teacher, rop | 200, 404, 501 |
 | `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin, teacher, rop | 200, 404, 501 |
-| `GET /runs/{id}/export?format=md\|json` | Экспорт завершённого исследования: Markdown-отчёт (по умолчанию) или структурированный JSON (`schema=run-export/v1`) | admin, teacher, rop, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
+| `GET /runs/{id}/export?format=json\|md` | Экспорт завершённого исследования: JSON по умолчанию (обратная совместимость) или Markdown через `?format=md` | admin, teacher, rop, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
 
 Детали контрактов: [`snapshot_diff.go`](../internal/api/snapshot_diff.go),
 [`review_queue.go`](../internal/api/review_queue.go),
@@ -81,14 +81,15 @@ events, snapshots, search, index, nodes) сохранили прежнее по�
 
 `GET /runs/{id}/export` отдаёт результат завершённого (`status=done`) прогона.
 
-- `format=md` (по умолчанию) — Markdown-отчёт: профессия, статус, run id,
-  иерархия `role → function → task → action`, таблица подтверждений (цитата,
-  `source_id`, `ref_id`, статус), разрешённые конфликты, финальное сообщение чата
-  с рекомендациями/курсами (если доступно) и время генерации.
-- `format=json` — документ `schema=run-export/v1`: `run`, вложенное `tree`,
+- `format=json` (по умолчанию) — документ `schema=run-export/v1`: `run`, вложенное `tree`,
   плоский `nodes`, `evidence`, `conflicts`, `final_message`, `generated_at` и
   (при наличии PostgreSQL) метаданные `sources`. Полный `content` источников
   намеренно не экспортируется.
+- `format=md` — Markdown-отчёт: профессия, статус, run id, иерархия
+  `role → function → task → action`, таблица подтверждений (цитата, `source_id`,
+  `ref_id`, статус), разрешённые конфликты, финальное сообщение чата с
+  рекомендациями/курсами (если доступно) и время генерации.
+- Без `format` возвращается JSON для обратной совместимости; `Accept: text/markdown` включает Markdown.
 - Любое другое значение `format` — `400 BAD_REQUEST`; формат проверяется до
   поиска прогона.
 - Неизвестный/невалидный `id` — `404 NOT_FOUND`; незавершённый прогон —
