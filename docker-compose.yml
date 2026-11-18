@@ -2,7 +2,7 @@ name: activity-descriptor
 
 # Local development stack for the Go backend demo:
 #   docker compose up -d --build          -> api + web + postgres
-#   docker compose --profile monitoring up -d prometheus grafana
+#   docker compose --profile monitoring up -d prometheus grafana jaeger
 #   docker compose --profile automation up -d n8n n8n-postgres
 #
 # The api service runs cmd/api: the in-memory store + deterministic chat
@@ -11,6 +11,17 @@ name: activity-descriptor
 #
 # Credentials come from the environment / .env (see .env.example). The
 # fallbacks are local-development placeholders only; never use them in prod.
+#
+# Monitoring security posture (see docs/GRAFANA.md):
+#   * Grafana anonymous access is DISABLED; the admin user/password come from
+#     GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD (local fallback in this file).
+#   * Grafana, Prometheus and Jaeger ports are published on 127.0.0.1 only.
+#     Prometheus and Jaeger have no authentication of their own - do not expose
+#     them beyond the host (production: TLS + auth reverse proxy / managed
+#     observability, see docs/GRAFANA.md).
+#   * Two Prometheus scrape configs are mounted and selected with
+#     PROMETHEUS_CONFIG (PROMETHEUS_CONFIG=prometheus.host.yml for a backend on
+#     the Docker host), so the UI never lists an expected-DOWN api:8080 target.
 
 services:
   api:
@@ -63,8 +74,9 @@ services:
   postgres:
     # pgvector image matches the backend migrations (vector extension).
     image: pgvector/pgvector:0.8.0-pg16
+    # Host-only binding: the database is not a public demo surface.
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-activity}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-activity_dev_password}"
@@ -80,15 +92,29 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     profiles: ["monitoring"]
+    # Host-only binding: Prometheus has no auth/TLS of its own.
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    # PROMETHEUS_CONFIG picks the scrape config inside the mounted directory:
+    #   prometheus.yml       -> compose `api` service (default)
+    #   prometheus.host.yml  -> backend running on the Docker host (local demo)
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--config.file=/etc/prometheus/${PROMETHEUS_CONFIG:-prometheus.yml}"
       - "--storage.tsdb.path=/prometheus"
       - "--web.enable-lifecycle"
     volumes:
-      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
+    # Resolves host.docker.internal on Linux Docker Engine too (Docker Desktop
+    # already provides it); harmless when the compose `api` config is used.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       api:
         condition: service_healthy
@@ -96,18 +122,32 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     profiles: ["monitoring"]
+    # Host-only binding. Anonymous access is disabled below, so a browser always
+    # gets the login page; credentials are environment-based.
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      # Local fallback only. Set GRAFANA_ADMIN_PASSWORD (e.g. in .env) to a
+      # non-default secret for any shared/demo deployment; production injects
+      # it from a secret manager.
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin_dev_password}"
+      GF_AUTH_BASIC_ENABLED: "true"
+      # No anonymous access: every request must authenticate.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       prometheus:
         condition: service_started
@@ -116,13 +156,20 @@ services:
   # backend. Enable it with the monitoring profile:
   #   docker compose --profile monitoring up -d jaeger
   # UI http://localhost:16686, OTLP/HTTP http://localhost:4318 (in-network:
-  # http://jaeger:4318). See docs/OBSERVABILITY.md.
+  # http://jaeger:4318). See docs/OBSERVABILITY.md. Host-only binding: Jaeger
+  # has no auth of its own and stores traces in memory (demo only).
   jaeger:
     image: jaegertracing/all-in-one:1.60.0
     profiles: ["monitoring"]
     ports:
-      - "${JAEGER_UI_PORT:-16686}:16686"
-      - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"
+      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+      - "127.0.0.1:${JAEGER_OTLP_HTTP_PORT:-4318}:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:16686/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   n8n:
     image: n8nio/n8n:1.63.4

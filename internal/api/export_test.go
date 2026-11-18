@@ -125,9 +125,24 @@ func exportFilenameFromDisposition(t *testing.T, header string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(header, prefix), `"`)
 }
 
-func TestExportRunMarkdownDefault(t *testing.T) {
+func TestExportRunLegacyDefaultIsBareTreeArray(t *testing.T) {
 	handler := NewServer(exportSeedStore()).Routes()
 	rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export", "teacher", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ожидали 200, получили %d (%s)", rec.Code, rec.Body.String())
+	}
+	var nodes []domain.Node
+	if err := json.Unmarshal(rec.Body.Bytes(), &nodes); err != nil {
+		t.Fatalf("legacy export должен быть массивом Node: %v (%s)", err, rec.Body.String())
+	}
+	if len(nodes) != 4 {
+		t.Fatalf("legacy export: ожидали 4 узла, получили %d", len(nodes))
+	}
+}
+
+func TestExportRunMarkdown(t *testing.T) {
+	handler := NewServer(exportSeedStore()).Routes()
+	rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export?format=md", "teacher", "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("ожидали 200, получили %d (%s)", rec.Code, rec.Body.String())
@@ -435,7 +450,7 @@ func TestExportRunIncludesConflictsAndSources(t *testing.T) {
 		t.Error("тело источника утекло в JSON-экспорт")
 	}
 
-	markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export", "teacher", "")
+	markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export?format=md", "teacher", "")
 	if markdown.Code != http.StatusOK {
 		t.Fatalf("markdown: ожидали 200, получили %d", markdown.Code)
 	}
@@ -466,12 +481,12 @@ func TestExportRunEnrichmentErrorsDoNotFailExport(t *testing.T) {
 	}
 	handler := NewServer(stub).Routes()
 
-	for _, suffix := range []string{"", "?format=json"} {
+	for _, suffix := range []string{"?format=md", "?format=json"} {
 		rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export"+suffix, "teacher", "")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("suffix=%q: вспомогательные ошибки не должны ломать экспорт, получили %d (%s)", suffix, rec.Code, rec.Body.String())
 		}
-		if suffix == "" && !strings.Contains(rec.Body.String(), "No source conflicts were resolved for this run.") {
+		if suffix == "?format=md" && !strings.Contains(rec.Body.String(), "No source conflicts were resolved for this run.") {
 			t.Errorf("ожидали пустую секцию конфликтов, получили:\n%s", rec.Body.String())
 		}
 	}
@@ -485,7 +500,7 @@ func TestExportRunFinalMessageFromChat(t *testing.T) {
 	}}
 	handler := NewServerWithChat(exportSeedStore(), chatStub).Routes()
 
-	markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export", "teacher", "")
+	markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export?format=md", "teacher", "")
 	if markdown.Code != http.StatusOK {
 		t.Fatalf("ожидали 200, получили %d (%s)", markdown.Code, markdown.Body.String())
 	}
@@ -516,7 +531,7 @@ func TestExportRunFinalMessageUnavailable(t *testing.T) {
 	for _, chatErr := range []error{chat.ErrNotFound, errors.New("chat service down")} {
 		t.Run("err="+chatErr.Error(), func(t *testing.T) {
 			handler := NewServerWithChat(exportSeedStore(), &exportChatStub{err: chatErr}).Routes()
-			markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export", "teacher", "")
+			markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export?format=md", "teacher", "")
 			if markdown.Code != http.StatusOK {
 				t.Fatalf("ожидали 200, получили %d (%s)", markdown.Code, markdown.Body.String())
 			}
@@ -567,7 +582,7 @@ func TestExportRunKeepsOrphanNode(t *testing.T) {
 		t.Fatalf("осиротевший узел потерян из дерева: %+v", document.Tree)
 	}
 
-	markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export", "teacher", "")
+	markdown := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export?format=md", "teacher", "")
 	if !strings.Contains(markdown.Body.String(), "Осиротевшее действие") {
 		t.Error("Markdown не содержит осиротевший узел")
 	}
@@ -588,7 +603,7 @@ func TestExportRunSafeFilename(t *testing.T) {
 		suffix     string
 		wantSuffix string
 	}{
-		{"", ".md"},
+		{"?format=md", ".md"},
 		{"?format=json", ".json"},
 	} {
 		rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+escapedID+"/export"+tc.suffix, "teacher", "")

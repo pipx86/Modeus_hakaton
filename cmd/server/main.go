@@ -68,8 +68,8 @@ func run(ctx context.Context, c config) error {
 		return errors.New("cannot connect to PostgreSQL")
 	}
 	var schemaReady bool
-	if err = pool.QueryRow(connectCtx, "SELECT (SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped) AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('evidence') AND attname='ref_id' AND NOT attisdropped) AND to_regclass('run_sse_events') IS NOT NULL").Scan(&schemaReady); err != nil || !schemaReady {
-		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000002_sse_events.sql")
+	if err = pool.QueryRow(connectCtx, "SELECT (SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped) AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('evidence') AND attname='ref_id' AND NOT attisdropped) AND to_regclass('run_sse_events') IS NOT NULL AND to_regclass('run_chat_messages') IS NOT NULL").Scan(&schemaReady); err != nil || !schemaReady {
+		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000002_sse_events.sql и 20261118030000_run_chat_messages.sql")
 	}
 
 	listener, err := net.Listen("tcp", c.address)
@@ -138,6 +138,9 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
+	// Persist the dialog so chat history survives restarts; the in-memory
+	// session still serves live SSE events for the active interview.
+	chatService.SetMessageStore(store.NewChatMessageStore(pool))
 	if analystClient != nil {
 		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
 	}

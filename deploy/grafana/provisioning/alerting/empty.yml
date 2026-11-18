@@ -1,0 +1,5 @@
+﻿# Placeholder: this stack does not provision Grafana-managed alerting.
+# Alerting rules live in Prometheus: deploy/prometheus/alerts.yml
+# (docker-compose mounts them into /etc/prometheus and Prometheus evaluates
+# them; notification routing would need an Alertmanager, see docs/GRAFANA.md).
+apiVersion: 1

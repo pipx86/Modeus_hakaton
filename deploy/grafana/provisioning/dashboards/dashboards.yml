@@ -1,5 +1,11 @@
 # Grafana dashboard provisioning: everything in /var/lib/grafana/dashboards is
-# loaded every 30s. The host directory is bind-mounted in docker-compose.yml.
+# loaded every 30s. The host directory is bind-mounted read-only in
+# docker-compose.yml.
+#
+# The files are the single source of truth: UI edits are disabled
+# (allowUiUpdates: false) and provisioned dashboards cannot be deleted
+# (disableDeletion: true), so the running stack cannot drift from the reviewed
+# JSON in git. Change the JSON, wait <=30s, or restart Grafana.
 apiVersion: 1
 
 providers:
@@ -7,9 +13,9 @@ providers:
     orgId: 1
     folder: Activity Descriptor
     type: file
-    disableDeletion: false
+    disableDeletion: true
     updateIntervalSeconds: 30
-    allowUiUpdates: true
+    allowUiUpdates: false
     options:
       path: /var/lib/grafana/dashboards
       foldersFromFilesStructure: false

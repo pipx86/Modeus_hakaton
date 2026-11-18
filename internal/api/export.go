@@ -23,7 +23,7 @@ import (
 //
 //	GET /api/v1/runs/{id}/export?format=md|json
 //
-// format=md (по умолчанию) отдаёт Markdown-отчёт для человека: профессию,
+// format=md отдаёт Markdown-отчёт для человека: профессию,
 // статус, идентификатор прогона, иерархию role → function → task → action,
 // подтверждения (цитата, source_id, ref_id, статус), разрешённые конфликты,
 // финальное сообщение с рекомендациями/курсами (если оно доступно) и время
@@ -53,6 +53,7 @@ const exportSchemaVersion = "run-export/v1"
 type exportFormat string
 
 const (
+	exportFormatLegacy   exportFormat = "legacy"
 	exportFormatMarkdown exportFormat = "md"
 	exportFormatJSON     exportFormat = "json"
 )
@@ -116,7 +117,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 
 	// Формат проверяем до обращения к хранилищу: неизвестный format — это 400
 	// независимо от того, существует ли прогон.
-	format, err := parseExportFormat(r.URL.Query())
+	format, err := parseExportFormat(r.URL.Query(), r.Header.Get("Accept"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
@@ -149,6 +150,22 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 		// Прогон формально done, но результата нет: это конфликт состояния, а
 		// не отсутствие ресурса, поэтому 409 с явным кодом.
 		writeErr(w, http.StatusConflict, "RUN_HAS_NO_TREE", "run has no saved tree yet")
+		return
+	}
+
+	if format == exportFormatLegacy {
+		// Backward compatibility: without an explicit format this endpoint has
+		// always returned a bare JSON array of domain.Node values.
+		payload, marshalErr := json.Marshal(nodes)
+		if marshalErr != nil {
+			logging.Logger.Error("export_marshal_error", "run_id", id, "error", marshalErr)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "failed to encode export")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", exportFilename(run.ID, "json")))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(append(payload, '\n'))
 		return
 	}
 
@@ -189,10 +206,18 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 // parseExportFormat разбирает и валидирует ?format=. Пустое значение означает
 // формат по умолчанию md. Регистр и пробелы вокруг значения нормализуются,
 // любое другое значение — ошибка для 400.
-func parseExportFormat(values url.Values) (exportFormat, error) {
+func parseExportFormat(values url.Values, accept string) (exportFormat, error) {
 	raw := strings.ToLower(strings.TrimSpace(values.Get("format")))
+	if raw == "" {
+		// Backward compatibility: the legacy /export endpoint returned a bare
+		// JSON array of nodes. New formats are explicit: ?format=md|json.
+		if strings.Contains(strings.ToLower(accept), "text/markdown") {
+			return exportFormatMarkdown, nil
+		}
+		return exportFormatLegacy, nil
+	}
 	switch raw {
-	case "", string(exportFormatMarkdown):
+	case string(exportFormatMarkdown):
 		return exportFormatMarkdown, nil
 	case string(exportFormatJSON):
 		return exportFormatJSON, nil
@@ -282,9 +307,10 @@ func (s *Server) exportSources(ctx context.Context, runID string) []domain.Sourc
 }
 
 // exportFinalMessage возвращает последнее сообщение агента в чате интервью —
-// это финальное сообщение с рекомендациями и бесплатными курсами. Чат живёт
-// в памяти процесса, поэтому для batch-прогонов и после перезапуска сервера
-// сообщение недоступно и возвращается пустая строка.
+// это финальное сообщение с рекомендациями и бесплатными курсами. История
+// читается из chat.Service, который возвращает сохранённый диалог даже после
+// перезапуска backend; для batch-прогонов без чата сообщение недоступно и
+// возвращается пустая строка.
 func (s *Server) exportFinalMessage(runID string) string {
 	if s.chat == nil {
 		return ""

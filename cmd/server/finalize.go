@@ -47,6 +47,20 @@ type synthesisRunner interface {
 	Synthesize(ctx context.Context, in agent.SynthesizerInput) (agent.SynthesizerOutput, error)
 }
 
+// runSourceContentLister is an optional capability of the persistence layer:
+// the analyst needs the full content of the run-linked sources to quote them,
+// while the synthesizer only needs metadata. *api.PGStore implements it.
+type runSourceContentLister interface {
+	ListRunSourceContents(ctx context.Context, runID string) ([]domain.Source, error)
+}
+
+// runSourceLinker is an optional capability used to attach fallback sources
+// (admin/global or retrieved fragments) to the run so their provenance survives
+// finalization.
+type runSourceLinker interface {
+	LinkRunSources(ctx context.Context, runID string, sourceIDs []string) error
+}
+
 // finalizerDeps are the collaborators of one finalization. zunClient is
 // optional and only used for the best-effort knowledge/skills enrichment.
 type finalizerDeps struct {
@@ -101,37 +115,34 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 	transcript := transcriptFromSession(session)
 	setFinalizeStage(deps.store, runID, domain.StageAnalysis)
 
+	// The sources attached to this run are the only material the analyst is
+	// allowed to quote besides the transcript. Their full content is loaded
+	// first so the model can produce evidence-backed standard/vacancy nodes; RAG
+	// fragments and admin/global sources remain fallbacks for runs without
+	// attached sources.
+	analystSources := loadRunSourceContents(ctx, deps.store, runID)
+	if len(analystSources) == 0 {
+		analystSources = retrieveSources(ctx, deps, runID, profession, transcript)
+	}
+	if len(analystSources) == 0 {
+		analystSources = loadGlobalSources(ctx, deps.store)
+	}
+	// Fallback sources are attached to the run after the fact so their type and
+	// priority reach the synthesizer the same way run-linked sources do.
+	linkRunSources(ctx, deps.store, runID, analystSources)
+
 	input := agent.AnalystInput{
 		SessionID:  session.ID,
 		Profession: profession,
 		Transcript: transcript,
-	}
-	if len(deps.retrievers) > 0 && deps.retrievers[0] != nil {
-		query := profession + " " + truncateRunes(transcript, 2000)
-		if sources, retrieveErr := deps.retrievers[0](ctx, runID, query); retrieveErr == nil {
-			input.Sources = sources
-		}
-	}
-	// Материалы, загруженные администратором, доступны всем прогонам.
-	if len(input.Sources) == 0 {
-		if lister, ok := deps.store.(interface {
-			ListGlobalSources(int) ([]domain.Source, error)
-		}); ok {
-			if global, globalErr := lister.ListGlobalSources(5); globalErr == nil {
-				for index := range global {
-					global[index].Content = truncateRunes(global[index].Content, 4000)
-				}
-				input.Sources = global
-			}
-		}
+		Sources:    analystSources,
 	}
 	analysis, err := deps.analyst.Analyze(ctx, input)
 	if err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
 	}
 
-	// The sources linked to this run are the only source metadata available at
-	// finalization time, and they are what recovers the provenance of the
+	// The sources linked to this run are what recovers the provenance of the
 	// analyst's entities: every evidence item references a source by id. Loading
 	// them is best-effort: without metadata the already supported interview-only
 	// path must keep working.
@@ -140,10 +151,13 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 		log.Printf("finalizer: load run sources for %s: %v", runID, err)
 		runSources = nil
 	}
-	interviewNodes, standardNodes, vacancyNodes := partitionEntitiesByProvenance(analysis.Entities, runSources)
+	provenanceSources := mergeSources(runSources, analystSources)
+	interviewNodes, standardNodes, vacancyNodes := partitionEntitiesByProvenance(analysis.Entities, provenanceSources)
+	log.Printf("finalizer: run %s entities=%d sources=%d interview=%d standard=%d vacancy=%d",
+		runID, len(analysis.Entities), len(provenanceSources), len(interviewNodes), len(standardNodes), len(vacancyNodes))
 
 	setFinalizeStage(deps.store, runID, domain.StageSynthesis)
-	synthesis, err := deps.synthesizer.Synthesize(ctx, buildSynthesizerInput(profession, runSources, interviewNodes, standardNodes, vacancyNodes))
+	synthesis, err := deps.synthesizer.Synthesize(ctx, buildSynthesizerInput(profession, synthesisSources(runSources, provenanceSources), interviewNodes, standardNodes, vacancyNodes))
 	if err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: synthesize: %w", err)
 	}
@@ -158,11 +172,140 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 
 	setFinalizeStage(deps.store, runID, domain.StageReview)
 	nodes := enrichZun(ctx, deps.zunClient, profession, synthesis.Tree)
-	if err := saveInterviewTree(ctx, deps.store, runID, profession, transcript, nodes); err != nil {
+	if err := saveInterviewTree(ctx, deps.store, runID, profession, transcript, nodes, knownSourceIDs(provenanceSources)); err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
 	}
 	setFinalizeStage(deps.store, runID, domain.StageDone)
 	return domain.RunDone, nil
+}
+
+// loadRunSourceContents returns the full content of the sources linked to run.
+// The capability is optional: without it the finalizer keeps the previous
+// metadata-only behaviour.
+func loadRunSourceContents(ctx context.Context, store finalizeStore, runID string) []domain.Source {
+	lister, ok := store.(runSourceContentLister)
+	if !ok {
+		return nil
+	}
+	sources, err := lister.ListRunSourceContents(ctx, runID)
+	if err != nil {
+		log.Printf("finalizer: load run source contents for %s: %v", runID, err)
+		return nil
+	}
+	for i := range sources {
+		sources[i].Content = truncateRunes(sources[i].Content, maxFinalizeSourceRunes)
+	}
+	return sources
+}
+
+// maxFinalizeSourceRunes caps the context handed to the analyst. The analyst
+// applies its own, smaller cap; this one protects the finalizer from loading
+// huge documents into memory.
+const maxFinalizeSourceRunes = 4000
+
+// retrieveSources runs the optional RAG retriever for a plain interview run.
+func retrieveSources(ctx context.Context, deps finalizerDeps, runID, profession, transcript string) []domain.Source {
+	if len(deps.retrievers) == 0 || deps.retrievers[0] == nil {
+		return nil
+	}
+	query := profession + " " + truncateRunes(transcript, 2000)
+	sources, err := deps.retrievers[0](ctx, runID, query)
+	if err != nil {
+		log.Printf("finalizer: retrieve sources for %s: %v", runID, err)
+		return nil
+	}
+	return sources
+}
+
+// loadGlobalSources returns the admin-uploaded materials shared by all runs.
+func loadGlobalSources(ctx context.Context, store finalizeStore) []domain.Source {
+	lister, ok := store.(interface {
+		ListGlobalSources(int) ([]domain.Source, error)
+	})
+	if !ok {
+		return nil
+	}
+	global, err := lister.ListGlobalSources(5)
+	if err != nil {
+		log.Printf("finalizer: load global sources: %v", err)
+		return nil
+	}
+	for i := range global {
+		global[i].Content = truncateRunes(global[i].Content, maxFinalizeSourceRunes)
+	}
+	return global
+}
+
+// linkRunSources attaches fallback sources to the run so the run_sources table
+// reflects every material that actually fed the analyst. Errors are non-fatal.
+func linkRunSources(ctx context.Context, store finalizeStore, runID string, sources []domain.Source) {
+	linker, ok := store.(runSourceLinker)
+	if !ok || len(sources) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(sources))
+	for _, source := range sources {
+		if strings.TrimSpace(source.ID) != "" {
+			ids = append(ids, source.ID)
+		}
+	}
+	if err := linker.LinkRunSources(ctx, runID, ids); err != nil {
+		log.Printf("finalizer: link fallback sources for %s: %v", runID, err)
+	}
+}
+
+// mergeSources returns the authoritative metadata of the run sources plus any
+// analyst source the run does not link yet. Run sources win on id conflicts
+// because they are the persisted rows.
+func mergeSources(runSources, analystSources []domain.Source) []domain.Source {
+	merged := make([]domain.Source, 0, len(runSources)+len(analystSources))
+	seen := make(map[string]bool, len(runSources)+len(analystSources))
+	for _, source := range runSources {
+		if seen[source.ID] {
+			continue
+		}
+		seen[source.ID] = true
+		merged = append(merged, source)
+	}
+	for _, source := range analystSources {
+		if seen[source.ID] {
+			continue
+		}
+		seen[source.ID] = true
+		merged = append(merged, source)
+	}
+	return merged
+}
+
+// synthesisSources is the metadata list handed to the deterministic
+// synthesizer. Run sources are preferred; when the store has none (for example
+// an in-memory test double) the analyst sources are used so priorities and
+// source types are still available.
+func synthesisSources(runSources, provenanceSources []domain.Source) []domain.Source {
+	if len(runSources) > 0 {
+		return runSources
+	}
+	return provenanceSources
+}
+
+// knownSourceIDs returns the lower-cased ids of sources that exist in the
+// database, so the saved tree can keep real source references instead of
+// rewriting every evidence item to the interview transcript.
+func knownSourceIDs(sources []domain.Source) map[string]bool {
+	ids := make(map[string]bool, len(sources))
+	for _, source := range sources {
+		if validSourceUUID(source.ID) {
+			ids[strings.ToLower(source.ID)] = true
+		}
+	}
+	return ids
+}
+
+// validSourceUUID reports whether value is a canonical 36-character UUID. The
+// finalizer uses it to decide which evidence source ids are real database rows.
+func validSourceUUID(value string) bool {
+	var id pgtype.UUID
+	return id.Scan(value) == nil && id.Valid
 }
 
 // partitionEntitiesByProvenance routes the analyst entities into the three
@@ -280,8 +423,22 @@ func newRAGRetriever(pgStore *api.PGStore) sourceRetriever {
 			sourceID := hit.SourceID.String()
 			item := bySource[sourceID]
 			if item == nil {
-				item = &domain.Source{ID: sourceID, Type: domain.SourceDocument, Title: "Retrieved source"}
-				bySource[sourceID] = item
+				// Keep the real source type so the finalizer can still route
+				// evidence from a retrieved standard/vacancy fragment to the
+				// matching synthesizer slot instead of treating everything as
+				// an untyped document.
+				source := domain.Source{ID: sourceID, Type: domain.SourceDocument, Title: "Retrieved source"}
+				var storedType, title string
+				if metaErr := pgStore.Pool.QueryRow(ctx, "SELECT type,title FROM sources WHERE id=$1", hit.SourceID).Scan(&storedType, &title); metaErr == nil {
+					source.Type = domain.SourceType(storedType)
+					source.Title = title
+				}
+				if source.Type == "" {
+					source.Type = domain.SourceDocument
+				}
+				source.Priority = domain.SourcePriority(source.Type)
+				bySource[sourceID] = &source
+				item = &source
 			}
 			if item.Content != "" {
 				item.Content += "\n"
@@ -312,8 +469,11 @@ func transcriptFromSession(session domain.InterviewSession) string {
 }
 
 // saveInterviewTree assigns database-safe UUIDs to the AI tree, creates the
-// interview source and persists the tree through the finalize store.
-func saveInterviewTree(ctx context.Context, store finalizeStore, runID, profession, transcript string, nodes []domain.Node) error {
+// interview source and persists the tree through the finalize store. Evidence
+// that already references a real run source keeps that source id; every other
+// evidence item (interview quotes, synthetic ids) is attributed to the created
+// interview source.
+func saveInterviewTree(ctx context.Context, store finalizeStore, runID, profession, transcript string, nodes []domain.Node, keepSources map[string]bool) error {
 	if store == nil {
 		return fmt.Errorf("postgres store is not configured")
 	}
@@ -326,7 +486,7 @@ func saveInterviewTree(ctx context.Context, store finalizeStore, runID, professi
 	if err != nil {
 		return fmt.Errorf("repair tree: %w", err)
 	}
-	converted := assignUUIDs(repaired, sourceID)
+	converted := assignUUIDsPreservingSources(repaired, sourceID, keepSources)
 	rootCount := 0
 	for _, node := range converted {
 		if node.ParentID == nil {
@@ -347,7 +507,10 @@ func saveInterviewTree(ctx context.Context, store finalizeStore, runID, professi
 	return nil
 }
 
-func assignUUIDs(nodes []domain.Node, sourceID pgtype.UUID) []domain.Node {
+// assignUUIDsPreservingSources is assignUUIDs with provenance retention: an
+// evidence item whose source id is a known real source keeps it, so the saved
+// tree still shows which standard/vacancy material backs the node.
+func assignUUIDsPreservingSources(nodes []domain.Node, interviewSourceID pgtype.UUID, keepSources map[string]bool) []domain.Node {
 	ids := make(map[string]string, len(nodes))
 	for _, node := range nodes {
 		ids[node.ID] = newUUID().String()
@@ -366,9 +529,13 @@ func assignUUIDs(nodes []domain.Node, sourceID pgtype.UUID) []domain.Node {
 		}
 		converted.Evidence = make([]domain.Evidence, 0, len(node.Evidence))
 		for _, evidence := range node.Evidence {
+			source := interviewSourceID.String()
+			if keepSources != nil && keepSources[strings.ToLower(strings.TrimSpace(evidence.SourceID))] {
+				source = strings.ToLower(strings.TrimSpace(evidence.SourceID))
+			}
 			converted.Evidence = append(converted.Evidence, domain.Evidence{
 				ID:       newUUID().String(),
-				SourceID: sourceID.String(),
+				SourceID: source,
 				RefID:    evidence.RefID,
 				Quote:    evidence.Quote,
 			})
@@ -376,6 +543,10 @@ func assignUUIDs(nodes []domain.Node, sourceID pgtype.UUID) []domain.Node {
 		out = append(out, converted)
 	}
 	return out
+}
+
+func assignUUIDs(nodes []domain.Node, sourceID pgtype.UUID) []domain.Node {
+	return assignUUIDsPreservingSources(nodes, sourceID, nil)
 }
 
 func newUUID() pgtype.UUID {

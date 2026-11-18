@@ -1,157 +1,475 @@
 {
   "uid": "activity-descriptor-business",
-  "title": "Activity Descriptor — Business metrics",
+  "title": "Activity Descriptor — Business metrics & SLOs",
+  "description": "Business view of the activity-descriptor demo: real HTTP traffic/SLOs from the running API plus LLM/agent and run metrics. Agent panels show an explicit 'no traffic yet' state until the backend serves an LLM-backed interview; nothing is faked.",
   "tags": [
     "activity-descriptor",
     "business",
     "llm",
+    "slo",
     "grafana"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-1h",
     "to": "now"
   },
+  "editable": true,
+  "graphTooltip": 1,
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
   "panels": [
     {
       "id": 1,
       "type": "stat",
-      "title": "API up",
+      "title": "API scrape",
+      "description": "Prometheus scrape health of the running API in the selected mode (compose api:8080 or host backend). 1 = UP. The target list below shows exactly which one is configured.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 5,
-        "w": 6,
+        "w": 4,
         "x": 0,
         "y": 0
       },
       "targets": [
         {
-          "expr": "max(up{job=~\"activity-descriptor-api.*\"})",
-          "refId": "A"
+          "refId": "A",
+          "expr": "max(last_over_time(up{job=~\"activity-descriptor-api.*\"}[1m]))",
+          "legendFormat": "up",
+          "instant": true
         }
       ],
       "options": {
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "API not being scraped",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
       }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "LLM calls (1h)",
+      "title": "HTTP requests (selected range)",
+      "description": "Real HTTP requests recorded by the API in the dashboard time range (counter increase, Prometheus samples only).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 6,
+        "w": 4,
+        "x": 4,
         "y": 0
       },
       "targets": [
         {
-          "expr": "sum(increase(activity_descriptor_agent_calls_total[1h]))",
-          "refId": "A"
+          "refId": "A",
+          "expr": "sum(increase(activity_descriptor_http_requests_total[$__range]))",
+          "legendFormat": "requests"
         }
       ],
       "options": {
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "no HTTP traffic in range"
+        },
+        "overrides": []
       }
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "Vacancies loaded",
+      "title": "5xx error ratio (SLO < 1%)",
+      "description": "Share of 5xx responses over the selected range. Empty when there is no traffic in range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 12,
+        "w": 4,
+        "x": 8,
         "y": 0
       },
       "targets": [
         {
-          "expr": "activity_descriptor_vacancies_loaded",
-          "refId": "A"
+          "refId": "A",
+          "expr": "(sum(rate(activity_descriptor_http_requests_total{status=~\"5..\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(activity_descriptor_http_requests_total[$__rate_interval])), 0.000001)",
+          "legendFormat": "5xx ratio"
         }
       ],
       "options": {
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "noValue": "no HTTP traffic in range",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
       }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "Run failures (1h)",
+      "title": "API availability (SLO >= 99.9%)",
+      "description": "Fraction of successful Prometheus scrapes of the API in the selected range. 1 = every scrape succeeded.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 18,
+        "w": 4,
+        "x": 12,
         "y": 0
       },
       "targets": [
         {
-          "expr": "sum(increase(activity_descriptor_runs_total{status=~\"failed|degraded\"}[1h]))",
-          "refId": "A"
+          "refId": "A",
+          "expr": "avg_over_time((max(up{job=~\"activity-descriptor-api.*\"}))[$__range:1m])",
+          "legendFormat": "availability"
         }
       ],
       "options": {
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
-          ]
-        }
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "noValue": "no scrape data in range",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.99
+              },
+              {
+                "color": "green",
+                "value": 0.999
+              }
+            ]
+          }
+        },
+        "overrides": []
       }
     },
     {
       "id": 5,
-      "type": "timeseries",
-      "title": "LLM requests by agent",
+      "type": "stat",
+      "title": "LLM calls (last 15m)",
+      "description": "Live-traffic check for the agent pipeline. Always renders a value: 0 with the text \"no LLM traffic (15m)\" means the backend has not served an LLM-backed interview in the last 15 minutes. The agent charts below keep the retained history. Counters reset when the backend process restarts.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 5
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 0
       },
       "targets": [
         {
-          "expr": "sum by (agent) (rate(activity_descriptor_agent_calls_total[5m]))",
-          "legendFormat": "{{agent}}",
-          "refId": "A"
+          "refId": "A",
+          "expr": "sum(increase(activity_descriptor_agent_calls_total[15m])) or vector(0)",
+          "legendFormat": "calls",
+          "instant": true
         }
-      ]
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "no LLM traffic (15m)",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "no LLM traffic (15m)",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
     },
     {
       "id": 6,
-      "type": "timeseries",
-      "title": "LLM tokens by direction",
+      "type": "stat",
+      "title": "LLM error ratio (last 5m)",
+      "description": "Share of failed agent calls in the last 5 minutes. No data is shown until there is recent LLM traffic, so a quiet demo does not look like a healthy or a failing pipeline; the \"LLM calls (last 15m)\" stat above is the live-traffic indicator.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 5
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 0
       },
       "targets": [
         {
-          "expr": "sum by (agent,direction) (rate(activity_descriptor_agent_tokens_total[5m]))",
-          "legendFormat": "{{agent}} {{direction}}",
-          "refId": "A"
+          "refId": "A",
+          "expr": "(sum(rate(activity_descriptor_agent_calls_total{status!=\"ok\"}[5m])) or vector(0)) / clamp_min(sum(rate(activity_descriptor_agent_calls_total[5m])), 0.000001)",
+          "legendFormat": "error ratio",
+          "instant": true
         }
-      ]
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "noValue": "no LLM traffic in the last 5m",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "LLM latency p95",
+      "title": "HTTP request rate by route",
+      "description": "Real request rate per normalized route (run ids are never used as labels).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(activity_descriptor_http_requests_total[$__rate_interval])) by (route)",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "HTTP latency p95 by route",
+      "description": "Real 95th percentile HTTP latency from the internal/metrics histogram (SLO target < 2s).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(activity_descriptor_http_request_duration_seconds_bucket[$__rate_interval])) by (le, route))",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "LLM requests by agent",
+      "description": "Rate of real LLM agent calls per agent. The panel stays empty with an explicit message until the backend serves an LLM-backed interview.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -160,16 +478,39 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(activity_descriptor_agent_latency_seconds_bucket[5m])) by (le,agent))",
-          "legendFormat": "{{agent}}",
-          "refId": "A"
+          "refId": "A",
+          "expr": "sum by (agent) (rate(activity_descriptor_agent_calls_total[$__rate_interval]))",
+          "legendFormat": "{{agent}}"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "no LLM traffic yet — run an interview"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "timeseries",
-      "title": "Runs by status",
+      "title": "LLM tokens by direction",
+      "description": "Real input/output token rates per agent and model. Empty until LLM traffic exists.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -178,11 +519,183 @@
       },
       "targets": [
         {
-          "expr": "sum by (status) (increase(activity_descriptor_runs_total[1h]))",
-          "legendFormat": "{{status}}",
-          "refId": "A"
+          "refId": "A",
+          "expr": "sum by (agent, direction) (rate(activity_descriptor_agent_tokens_total[$__rate_interval]))",
+          "legendFormat": "{{agent}} {{direction}}"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "no LLM traffic yet — run an interview"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "LLM latency p95",
+      "description": "Real 95th percentile LLM call latency per agent. Empty until LLM traffic exists.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(activity_descriptor_agent_latency_seconds_bucket[$__rate_interval])) by (le, agent))",
+          "legendFormat": "{{agent}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "no LLM traffic yet — run an interview"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Runs by status",
+      "description": "Completed activity-descriptor runs per 10 minutes by terminal status. Empty until a run completes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(activity_descriptor_runs_total[10m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "no completed runs yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Prometheus scrape targets (this config)",
+      "description": "The only API target Prometheus is configured to scrape in the selected mode. There is no cross-mode api:8080/host target, so the demo never shows an expected-DOWN target.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 0,
+        "y": 29
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(up{job=~\"activity-descriptor-api.*|prometheus\"}[1m])",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 14,
+        "x": 10,
+        "y": 29
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Reading this dashboard\n\n**HTTP panels read real Prometheus samples** scraped from the running API (`activity_descriptor_http_*`), so they are populated as soon as the backend serves any request.\n\n**Agent/LLM panels only get samples after the backend serves an LLM-backed interview.** They reset when the backend process restarts; Prometheus keeps the history for its retention window. The **LLM calls (last 15m)** and **LLM error ratio (last 5m)** stats are the live-traffic indicators: before the first call they show *no LLM traffic* instead of a misleading zero. The agent charts may still show earlier recorded traffic inside the selected window; that history is real Prometheus data, not a fake.\n\n**To populate the agent panels (real traffic, no fakes):** run one interview against the running API (see `docs/API.md` / `docs/DEMO_RUNBOOK.md`), then wait one scrape interval (15 s).\n\n**SLOs shown here:** API availability >= 99.9% of scrapes, 5xx ratio < 1%, HTTP p95 < 2 s, LLM error ratio < 5%. Alert rules that back these targets are in `deploy/prometheus/alerts.yml` and evaluated by Prometheus (UI -> Alerts); notification routing needs an Alertmanager, which is not part of this local demo.\n\n**Target list (left)** shows exactly the API target configured in the selected mode: `deployment=host` for a backend on the Docker host, `deployment=compose` for the compose `api` service. The two modes use separate scrape configs, so there is never an expected-DOWN `api:8080` target in the demo."
+      }
     }
   ]
 }

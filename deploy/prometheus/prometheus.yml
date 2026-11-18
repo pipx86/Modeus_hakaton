@@ -1,38 +1,39 @@
-# Prometheus configuration for the local compose stack (monitoring profile).
+# Prometheus configuration: API inside the compose network (default).
 #
-# The API exposes the stdlib Prometheus exposition on /metrics at :8080. There
-# are two ways to run it, so there are two scrape jobs:
+# Use this file when the monitoring profile runs together with the compose
+# `api` service:
 #
-#   activity-descriptor-api       -> api:8080 (the compose `api` service)
-#   activity-descriptor-api-host  -> host.docker.internal:8080 (a backend
-#                                    started on the Docker host, e.g.
-#                                    `make run` / `go run ./cmd/server`)
+#   docker compose --profile monitoring up -d --build api prometheus grafana jaeger
 #
-# Usually exactly one of them is UP: the API runs either inside compose or on
-# the host. Docker Desktop resolves host.docker.internal natively (verified on
-# Windows); on Linux add `host.docker.internal:host-gateway` to the prometheus
-# service and make the backend listen on 0.0.0.0, or delete the host job.
-# Change the target below if the local API listens on another host/port.
+# The host-demo variant (backend started on the Docker host with `make run` /
+# `go run ./cmd/server`) is deploy/prometheus/prometheus.host.yml; selecting it
+# replaces THIS file, so the demo never contains a dead `api:8080` target:
+#
+#   PROMETHEUS_CONFIG=prometheus.host.yml \
+#     docker compose --profile monitoring up -d --no-deps prometheus grafana jaeger
+#
+# Both files are mounted from this directory into /etc/prometheus; only the one
+# named by PROMETHEUS_CONFIG is loaded (see docker-compose.yml).
+#
+# There is deliberately no cross-scraping between the two modes: a target that
+# cannot be scraped is either absent from the config or the service it belongs
+# to is a compose dependency, so the UI never shows an expected-DOWN target.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
+  # The compose `api` service. Prometheus `depends_on` api: service_healthy in
+  # docker-compose.yml, so this target only runs once the API is healthy.
   - job_name: activity-descriptor-api
     metrics_path: /metrics
     static_configs:
       - targets: ["api:8080"]
         labels:
           deployment: compose
-
-  # Extra target for the local/demo backend that runs outside the compose
-  # network (docs/GRAFANA.md explains when this job is the one that is UP).
-  - job_name: activity-descriptor-api-host
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["host.docker.internal:8080"]
-        labels:
-          deployment: host
 
   - job_name: prometheus
     static_configs:

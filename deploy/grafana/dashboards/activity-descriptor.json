@@ -21,13 +21,13 @@
       "description": "Prometheus scrape health of the API, wherever it runs: the compose `api` service (api:8080) or a backend on the Docker host (host.docker.internal:8080). 1 = up.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
-      "targets": [{ "refId": "A", "expr": "max(up{job=~\"activity-descriptor-api.*\"})", "legendFormat": "up" }],
+      "targets": [{ "refId": "A", "expr": "max(last_over_time(up{job=~\"activity-descriptor-api.*\"}[1m]))", "legendFormat": "up" }],
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "colorMode": "background",
         "graphMode": "none"
       },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "API not scraped" }, "overrides": [] }
     },
     {
       "id": 2,
@@ -44,7 +44,7 @@
         "colorMode": "value",
         "graphMode": "area"
       },
-      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2, "noValue": "no traffic in window" }, "overrides": [] }
     },
     {
       "id": 3,
@@ -69,6 +69,7 @@
         "defaults": {
           "unit": "percentunit",
           "decimals": 3,
+          "noValue": "no traffic in window",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -96,7 +97,7 @@
         "colorMode": "value",
         "graphMode": "area"
       },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "no requests yet" }, "overrides": [] }
     },
     {
       "id": 5,
@@ -112,7 +113,7 @@
           "legendFormat": "{{route}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "reqps", "noValue": "no traffic in window" }, "overrides": [] },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
