@@ -87,6 +87,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v1/nodes/{id}", s.handlePatchNode)
 	mux.HandleFunc("POST /api/v1/evidences/bulk-approve", s.handleBulkApprove)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleDeleteSource)
+	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
@@ -636,6 +637,34 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("delete_source_internal_error", "source_id", sourceID, "error", err)
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDeleteRun godoc
+// @Summary      Delete a research run
+// @Description  Удаляет исследование вместе с деревом, источниками и сообщениями (каскадно).
+// @Tags         runs
+// @Param        id   path      string  true  "Run ID"
+// @Success      204   "No Content"
+// @Failure      404   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id} [delete]
+func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+		return
+	}
+	runID := r.PathValue("id")
+
+	if err := s.store.DeleteRun(runID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+			return
+		}
+		logging.Logger.Error("delete_run_internal_error", "run_id", runID, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
 	}

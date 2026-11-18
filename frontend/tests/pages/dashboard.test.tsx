@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 import { setFetchHandler } from "@/test/fetch-stub"
@@ -98,5 +98,33 @@ describe("Dashboard", () => {
     fireEvent.click(await screen.findByText("Data Scientist"))
 
     expect(await screen.findByText("page-research")).toBeInTheDocument()
+  })
+
+  it("удаляет исследование после подтверждения", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init.method ?? "GET"
+      if (url.endsWith("/api/v1/runs") && method === "GET") {
+        return {
+          status: 200,
+          body: [{ id: "1", profession: "Data Scientist", status: "done" }],
+        }
+      }
+      if (url.endsWith("/api/v1/runs/1") && method === "DELETE") {
+        return { status: 204, body: null }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderPage()
+    expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /Удалить исследование Data Scientist/ }))
+    expect(await screen.findByText("Удалить исследование?")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }))
+
+    await waitFor(() => {
+      expect(screen.queryByText("Data Scientist")).not.toBeInTheDocument()
+    })
   })
 })

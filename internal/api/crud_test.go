@@ -270,3 +270,67 @@ func TestBulkApproveInvalidJSON(t *testing.T) {
 		t.Fatalf("ожидали 400 для невалидного JSON, получили %d", resp.StatusCode)
 	}
 }
+
+func TestDeleteRunRemovesItAndChildren(t *testing.T) {
+	store, ts := setupCRUDTest(t)
+	auth.EnsureTestSecret()
+	tok, _ := auth.Issue("admin-user", auth.RoleAdmin, time.Hour)
+
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v1/runs/run-1", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("ожидали 204, получили %d", resp.StatusCode)
+	}
+
+	getReq, _ := http.NewRequest("GET", ts.URL+"/api/v1/runs/run-1", nil)
+	getReq.Header.Set("Authorization", "Bearer "+tok)
+	getResp, err := http.DefaultClient.Do(getReq)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("после удаления ожидали 404, получили %d", getResp.StatusCode)
+	}
+
+	_ = store
+}
+
+func TestDeleteRunNotFound(t *testing.T) {
+	_, ts := setupCRUDTest(t)
+	auth.EnsureTestSecret()
+	tok, _ := auth.Issue("admin-user", auth.RoleAdmin, time.Hour)
+
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v1/runs/nonexistent", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("ожидали 404, получили %d", resp.StatusCode)
+	}
+}
+
+func TestDeleteRunRequiresAdmin(t *testing.T) {
+	_, ts := setupCRUDTest(t)
+	auth.EnsureTestSecret()
+	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v1/runs/run-1", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("ожидали 403, получили %d", resp.StatusCode)
+	}
+}

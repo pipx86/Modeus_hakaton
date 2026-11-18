@@ -420,6 +420,22 @@ func (p *PGStore) DeleteSource(sourceID string) error {
 	return nil
 }
 
+func (p *PGStore) DeleteRun(runID string) error {
+	if !validUUID(runID) {
+		return ErrNotFound
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tag, err := p.Pool.Exec(ctx, `DELETE FROM runs WHERE id=$1`, runID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (p *PGStore) ListRuns() ([]*domain.Run, error) {
 	ctx, cancel := operation()
 	defer cancel()

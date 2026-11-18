@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
-import { AlertCircleIcon, ChevronRightIcon, FlaskConicalIcon, PlusIcon } from "lucide-react"
+import { AlertCircleIcon, ChevronRightIcon, FlaskConicalIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { apiClient, type Run } from "@/lib/api/client"
@@ -29,6 +37,8 @@ export function Dashboard() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -62,6 +72,32 @@ export function Dashboard() {
   }, [load])
 
   const active = runs.filter((run) => run.status === "running").length
+
+  const removeRun = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    try {
+      const { error: apiError, response } = await apiClient.DELETE("/runs/{id}", {
+        params: { path: { id: pendingDelete.id } },
+      })
+      if (apiError) {
+        const forbidden = response.status === 403
+        toast.error(forbidden ? "Недостаточно прав" : "Не удалось удалить исследование", {
+          description: forbidden
+            ? "Удалять исследования может только администратор."
+            : apiError.message,
+        })
+        return
+      }
+      setRuns((prev) => prev.filter((run) => run.id !== pendingDelete.id))
+      toast.success("Исследование удалено")
+      setPendingDelete(null)
+    } catch {
+      toast.error("Сервер недоступен", { description: "Исследование не удалено." })
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -125,10 +161,10 @@ export function Dashboard() {
         <div className="overflow-hidden rounded-xl border">
           <ul className="divide-y">
             {runs.map((run) => (
-              <li key={run.id}>
+              <li key={run.id} className="flex items-center gap-1 pr-2">
                 <Link
                   to={`/research/${run.id}`}
-                  className="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-muted/60"
+                  className="flex min-w-0 flex-1 items-center gap-4 px-4 py-3.5 transition-colors hover:bg-muted/60"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{run.profession}</p>
@@ -137,11 +173,39 @@ export function Dashboard() {
                   <StatusBadge status={run.status} />
                   <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Удалить исследование ${run.profession}`}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => setPendingDelete(run)}
+                >
+                  <Trash2Icon className="size-4" />
+                </Button>
               </li>
             ))}
           </ul>
         </div>
       )}
+      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Удалить исследование?</DialogTitle>
+            <DialogDescription>
+              «{pendingDelete?.profession}» будет удалено вместе с деревом, источниками и чатом.
+              Действие необратимо.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              Отмена
+            </Button>
+            <Button variant="destructive" onClick={() => void removeRun()} disabled={deleting}>
+              {deleting ? "Удаляю…" : "Удалить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

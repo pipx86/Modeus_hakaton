@@ -388,4 +388,15 @@ describe("ChatTab", () => {
     expect(await screen.findByText(/История чата недоступна/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Повторить/ })).toBeInTheDocument()
   })
+
+  it("после завершения интервью показывает работу аналитика вместо обрыва", async () => {
+    stubChat()
+    render(<ChatTab runId="7" active stage="analysis" />)
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+
+    expect(
+      screen.getByText(/Интервью завершено - агент-аналитик строит дерево/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Соединение потеряно/)).not.toBeInTheDocument()
+  })
 })

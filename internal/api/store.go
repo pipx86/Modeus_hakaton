@@ -37,6 +37,7 @@ type Store interface {
 	UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error)
 	BulkApproveEvidence(ids []string) (approved int, skipped int, err error)
 	DeleteSource(sourceID string) error
+	DeleteRun(runID string) error
 	ListRuns() ([]*domain.Run, error)
 	CreateSource(src domain.Source) (*domain.Source, error)
 }
@@ -259,6 +260,23 @@ func (m *memStore) DeleteSource(sourceID string) error {
 		}
 	}
 	delete(m.sources, sourceID)
+	return nil
+}
+
+func (m *memStore) DeleteRun(runID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, found := m.runs[runID]; !found {
+		return ErrNotFound
+	}
+	for _, evidenceID := range m.runEvidenceIDs[runID] {
+		delete(m.evidences, evidenceID)
+		delete(m.approved, evidenceID)
+	}
+	delete(m.runEvidenceIDs, runID)
+	delete(m.nodes, runID)
+	delete(m.runs, runID)
 	return nil
 }
 

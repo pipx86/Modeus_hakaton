@@ -3,17 +3,18 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { apiClient, type ChatMessage, type RunStatus } from "@/lib/api/client"
+import { apiClient, type ChatMessage, type Run, type RunStatus } from "@/lib/api/client"
 import { connectRunEvents, type StreamState } from "@/lib/api/chat-stream"
-import { Loader2Icon, RefreshCwIcon, SendIcon, WifiOffIcon } from "lucide-react"
+import { InfoIcon, Loader2Icon, RefreshCwIcon, SendIcon, WifiOffIcon } from "lucide-react"
 
 interface ChatTabProps {
   runId: string
   active: boolean
   runStatus?: RunStatus
+  stage?: Run["stage"]
 }
 
-export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
+export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -24,6 +25,8 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const knownIds = useRef<Set<string>>(new Set())
   const previousStreamState = useRef<StreamState>("open")
+  const interviewFinished =
+    stage === "analysis" || stage === "synthesis" || stage === "review"
 
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
     // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
@@ -86,16 +89,16 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
         previousStreamState.current = state
         setStreamState(state)
         if (state === "open") {
-          if (previous !== "open") toast.success("Соединение восстановлено")
+          if (previous !== "open" && !interviewFinished) toast.success("Соединение восстановлено")
           void loadHistory()
         }
-        if (state === "reconnecting" && previous === "open") {
+        if (state === "reconnecting" && previous === "open" && !interviewFinished) {
           toast.warning("Соединение потеряно", {
             description: "Пробую переподключиться к серверу.",
           })
         }
         if (state === "failed") {
-          if (previous !== "failed") {
+          if (previous !== "failed" && !interviewFinished) {
             toast.error("Соединение с сервером потеряно", {
               description: "Новые сообщения приходят опросом раз в 5 секунд.",
             })
@@ -114,7 +117,7 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
       disconnect()
       if (pollTimer !== undefined) window.clearInterval(pollTimer)
     }
-  }, [runId, active, appendMessages, loadHistory])
+  }, [runId, active, appendMessages, loadHistory, interviewFinished])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" })
@@ -180,26 +183,36 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
 
   return (
     <div className="space-y-3">
-      {(streamState !== "open" || runStatus === "failed" || runStatus === "degraded") && (
+      {runStatus === "failed" || runStatus === "degraded" ? (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive">
           <WifiOffIcon className="size-3.5 shrink-0" />
-          {runStatus === "failed" || runStatus === "degraded"
-            ? "Прогон завершился ошибкой - чат закрыт."
-            : streamState === "reconnecting"
+          Прогон завершился ошибкой - чат закрыт.
+        </div>
+      ) : interviewFinished ? (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <InfoIcon className="size-3.5 shrink-0" />
+          Интервью завершено - агент-аналитик строит дерево.
+        </div>
+      ) : (
+        streamState !== "open" && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive">
+            <WifiOffIcon className="size-3.5 shrink-0" />
+            {streamState === "reconnecting"
               ? "Соединение потеряно - переподключаюсь…"
               : "SSE-поток недоступен: новые сообщения приходят опросом раз в 5 секунд."}
-          {streamState === "failed" && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto h-6 px-2 text-xs"
-              onClick={() => void loadHistory()}
-            >
-              <RefreshCwIcon className="size-3" />
-              Обновить
-            </Button>
-          )}
-        </div>
+            {streamState === "failed" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto h-6 px-2 text-xs"
+                onClick={() => void loadHistory()}
+              >
+                <RefreshCwIcon className="size-3" />
+                Обновить
+              </Button>
+            )}
+          </div>
+        )
       )}
 
       <div className="max-h-[480px] space-y-3 overflow-y-auto rounded-xl border p-4">
