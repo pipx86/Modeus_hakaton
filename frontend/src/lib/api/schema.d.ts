@@ -228,6 +228,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reviews/evidence/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evidence review progress counters
+         * @description Returns how many evidence rows are pending, approved and rejected. Without `run_id` the counters are global across all runs; with `run_id` they are scoped to that run. `total` always equals `pending + approved + rejected`. Status is read from `evidence.status` with legacy records treated as `pending`. Used by the review progress counter and the keyboard review mode; expert roles only.
+         */
+        get: operations["getReviewProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -243,6 +263,26 @@ export interface paths {
          * @description Starts an analysis run for the given profession. When the chat interviewer is configured, the run is created in the interview stage and the interviewer starts immediately; otherwise the batch pipeline is triggered for the PostgreSQL store.
          */
         post: operations["createRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estimate the next run (duration, tokens, cost)
+         * @description Read-only pre-run estimate built only from data already stored by this backend; no external provider is called. Duration is the median wall-clock time of completed runs of the same profession (matched case-insensitively and trimmed) and type, falling back to all completed runs of the type and then to documented constants. Tokens are the mean attributed LLM usage of the profession history, or a per-request mean from stored usage multiplied by the expected call count, or documented constants. Cost is `null` unless a recorded price or the `COST_ESTIMATE_USD_PER_1M_TOKENS` fallback price is available (never silently reported as zero). `confidence` is a three-state label: high with at least 10 duration and 10 token samples, medium with at least 3 of both, low otherwise or when a default-based input is used. `sample_size` is the number of completed runs behind the duration estimate; `method` names the inputs that were used.
+         */
+        get: operations["getRunEstimate"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -331,6 +371,146 @@ export interface paths {
          *     immediately. Admin and teacher only.
          */
         post: operations["attachRunSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Actual LLM cost and usage of a run
+         * @description Read-only report of the LLM usage attributed to one run: request count, prompt/completion/total tokens, recorded cost (`null` when the provider reported no price, never silently zero), per-model and per-agent breakdowns, request-status counts and the run duration (finished duration, elapsed time for a running run, or `null` when the run never started). `attribution` says how requests were attributed: `run_id` (exact, recorded run context), `time_window` (requests created during the run window; approximate) or `none`; `attribution_ambiguous` is true when the time window overlaps another run. `estimate` is the same profession/type estimate as `GET /runs/estimate`, recomputed without this run so actual and expected can be compared. Matches the read roles of `GET /runs/{id}`.
+         */
+        get: operations["getRunCost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Consolidated tree insights for a run
+         * @description One deterministic payload for the mentor insights. `provenance` gives per-node source count, source types in trust order and evidence count; `health` gives the 0..100 tree quality score with its groundedness/completeness/duplicates/orphans breakdown, the weights, the raw counts and the formula; `flags` lists red flags from the five fixed rules (`SUSPICIOUS_TITLE`, `DUPLICATE_TITLE`, `SINGLE_WEAK_SOURCE`, `NO_CHILDREN`, `NO_EVIDENCE`) with parallel `codes`/`reasons`; `market_heat` overlays skill frequencies on node text with source `run.skill_freq` when the run has skill frequencies, otherwise `vacancy_sources` (deterministic extraction from vacancy/standard source content, with `sample_size`) or `none`; `coverage` is the source-type matrix; `sources` is run-source metadata; `node_explanations` is template-only "why this node" text. All collections are non-null (`[]`/`{}`), no LLM or external calls are made. Requires PostgreSQL and linked run sources; the in-memory demo store returns 501.
+         */
+        get: operations["getRunInsights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Source-type coverage matrix for a run
+         * @description Returns the coverage matrix of role/function/task rows by source-type evidence counts. JSON is the default; any `format` value other than `csv` (compared case-insensitively and trimmed) also selects JSON. `format=csv` returns the same matrix as a text/csv attachment with the header `node_id,title,type,interview,standard,vacancy,document`. Every column is always present (cells are 0 when no source of that type is linked) and action nodes are excluded from the rows. Requires PostgreSQL; the in-memory demo store returns 501.
+         */
+        get: operations["getRunCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare two research runs
+         * @description Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. Guest may read.
+         */
+        get: operations["compareRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/zun/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rule-based ZUN suggestions for a run tree
+         * @description Returns deterministic, rule-based knowledge/skills/abilities suggestions for every node of the run tree, in tree order. No LLM is used: `source` is always `rule`. A node with a non-empty ZUN keeps it untouched — its suggestion lists are empty and `can_apply` is false — while a node without a ZUN always gets a non-empty fallback suggestion for the node type and profession. Expert roles only.
+         */
+        get: operations["listZunSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/zun/suggestions/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a rule-based ZUN suggestion to one node
+         * @description Persists knowledge/skills/abilities to one node of the run tree, but only when the node has no ZUN yet. An existing manual or auto-generated ZUN is never overwritten: the request fails with 409 `ZUN_ALREADY_SET` (the caller should re-read suggestions). Items are normalized: trimmed, inner spaces collapsed, empty items dropped, case-insensitive dedupe, at most 200 characters per item and 50 items per list. At least one non-empty item across the three lists is required and `node_id` is mandatory. The node must belong to the run (404 otherwise). Expert roles only.
+         */
+        post: operations["applyZunSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/evidence/{evidence_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evidence context in the interview transcript
+         * @description Returns the evidence item (quote, ref_id, node and source titles) plus the full saved interview transcript of the run and the message that best matches the quote, so the UI can scroll to and highlight it after a reload. Matching is deterministic in this order: message id, `answer-N`/`a-N`/`ответ-N` (Nth user reply), `q-N`/`question-N`/`вопрос-N` (Nth interviewer question), `msg-N`/`N` (message sequence), exact quote text, then the best lexical token overlap. `match` is null and `note` explains why when no message matches. `quote_start` and `quote_end` are rune offsets in the message `content` only when the quote is found verbatim (case-insensitive text search included); the lexical fallback has no offsets. `messages` is ordered by sequence (at most 500). Available to every authenticated role. The in-memory demo store serves the evidence with an empty transcript unless the live chat service still holds the dialog.
+         */
+        get: operations["getEvidenceContext"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -524,7 +704,7 @@ export interface paths {
         };
         /**
          * Diff two snapshots of a run
-         * @description Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros).
+         * @description Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros, story says the trees are identical). `story` is a deterministic one-line Russian summary of the diff and `story_lines` is the same story line by line (header with counts, then one line per change, at most 20 detail lines followed by an "Ещё изменений: N." overflow line); the counts in both always agree with `summary`.
          */
         get: operations["diffRunSnapshots"];
         put?: never;
@@ -632,12 +812,12 @@ export interface components {
             /** @description True when status is approved. */
             approved: boolean;
         };
-        /** @description Knowledge, skills and abilities attached to a tree node. */
+        /** @description Knowledge, skills and abilities attached to a tree node. In responses that carry an optional ZUN (for example a ZUN suggestion) the value is `null` when the node has no ZUN yet. */
         Zun: {
             knowledge?: string[];
             skills?: string[];
             abilities?: string[];
-        };
+        } | null;
         Node: {
             id: string;
             type: components["schemas"]["NodeType"];
@@ -797,6 +977,10 @@ export interface components {
             /** @description Nodes present in both snapshots whose fields changed, sorted by id. */
             changed: components["schemas"]["SnapshotNodeChange"][];
             summary: components["schemas"]["SnapshotDiffSummary"];
+            /** @description Deterministic one-line human-readable description of the diff in Russian (header counts plus up to five details; long titles are truncated and a "Ещё изменений: N." suffix reports omitted details). Equal trees produce "Изменений нет: деревья идентичны.". */
+            story: string;
+            /** @description The same story line by line: a header with counts followed by one line per change; at most 20 detail lines, then an overflow line. Equal trees produce a single identical-trees line. */
+            story_lines: string[];
         };
         /** @description One disputed-evidence row of the expert review queue. */
         ReviewQueueItem: {
@@ -880,6 +1064,345 @@ export interface components {
             /** @enum {string} */
             role: "admin" | "teacher" | "rop" | "student" | "guest";
             read_only?: boolean;
+        };
+        /** @description JSON body of GET /runs/estimate (pre-run cost and time estimate). */
+        RunEstimate: {
+            profession: string;
+            type: components["schemas"]["RunType"];
+            /** @description Number of completed runs behind the duration estimate (0 when defaults are used). */
+            sample_size: number;
+            estimated_tokens: number;
+            estimated_duration_seconds: number;
+            /** @description Estimated cost in USD, or null when no honest estimate is possible (no recorded price and no COST_ESTIMATE_USD_PER_1M_TOKENS fallback). */
+            estimated_cost_usd: number | null;
+            /**
+             * @description Three-state confidence label derived from sample sizes (high: at least 10 duration and 10 token samples; medium: at least 3 of both; low otherwise or when a default-based input is used).
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /**
+             * @description Which inputs the estimate used.
+             * @enum {string}
+             */
+            method: "profession_history" | "partial_history" | "global_history" | "defaults";
+        };
+        /** @description Token (and optional cost) usage of one model inside one run. */
+        ModelUsage: {
+            model: string;
+            request_count: number;
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+            /** @description Recorded cost, or null when the provider reported no price. */
+            cost_usd: number | null;
+        };
+        /** @description Token (and optional cost) usage of one agent inside one run. */
+        AgentUsage: {
+            agent: string;
+            request_count: number;
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+            /** @description Recorded cost, or null when the provider reported no price. */
+            cost_usd: number | null;
+        };
+        /** @description One bucket of the LLM request status breakdown (for example ok or error). */
+        RequestStatusCount: {
+            status: string;
+            count: number;
+        };
+        /** @description JSON body of GET /runs/{id}/cost (actual usage plus the recomputed estimate). */
+        RunCost: {
+            run_id: string;
+            profession: string;
+            type: components["schemas"]["RunType"];
+            status: components["schemas"]["RunStatus"];
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** @description Finished duration, elapsed time of a running run measured at request time, or null when the run never started. */
+            duration_seconds: number | null;
+            request_count: number;
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+            /** @description Sum of recorded costs, or null when no request has a recorded cost. */
+            cost_usd: number | null;
+            by_model: components["schemas"]["ModelUsage"][];
+            by_agent: components["schemas"]["AgentUsage"][];
+            status_counts: components["schemas"]["RequestStatusCount"][];
+            /**
+             * @description How LLM requests were attributed to the run: exact recorded run context, the run time window (possibly approximate), or no attributable data.
+             * @enum {string}
+             */
+            attribution: "run_id" | "time_window" | "none";
+            /** @description True when the time-window attribution may include requests of a parallel run. */
+            attribution_ambiguous: boolean;
+            estimate: components["schemas"]["RunEstimate"];
+        };
+        /** @description How one node is grounded by the run sources (evidence is deduplicated). */
+        InsightsNodeProvenance: {
+            /** @description Number of distinct evidence source ids on the node. */
+            source_count: number;
+            /** @description Distinct source types in trust-priority order. */
+            source_types: components["schemas"]["SourceType"][];
+            evidence_count: number;
+        };
+        /** @description Per-node provenance aggregate; nodes is empty for an empty tree. */
+        InsightsProvenance: {
+            nodes: {
+                [key: string]: components["schemas"]["InsightsNodeProvenance"];
+            };
+        };
+        /** @description The four 0..100 quality components of the tree health score (higher is better). */
+        InsightsHealthBreakdown: {
+            groundedness: number;
+            completeness: number;
+            duplicates: number;
+            orphans: number;
+        };
+        /** @description Raw counters behind the health breakdown. */
+        InsightsHealthCounts: {
+            node_count: number;
+            grounded_nodes: number;
+            duplicate_nodes: number;
+            orphan_nodes: number;
+            childless_nodes: number;
+        };
+        /** @description Deterministic tree health score with its breakdown, weights, counts and formula. */
+        InsightsHealth: {
+            score: number;
+            breakdown: components["schemas"]["InsightsHealthBreakdown"];
+            /** @description Weight of every health component in the score; the values sum to 1. */
+            weights: {
+                [key: string]: number;
+            };
+            counts: components["schemas"]["InsightsHealthCounts"];
+            /** @description Human-readable formula and component definitions. */
+            formula: string;
+        };
+        /** @description Red flags of one node; codes and reasons are parallel arrays. */
+        InsightFlag: {
+            node_id: string;
+            codes: ("SUSPICIOUS_TITLE" | "DUPLICATE_TITLE" | "SINGLE_WEAK_SOURCE" | "NO_CHILDREN" | "NO_EVIDENCE")[];
+            reasons: string[];
+        };
+        /** @description One row of the market-heat top list. */
+        MarketSkill: {
+            skill: string;
+            frequency: number;
+        };
+        /** @description Market heat matched to one tree node. */
+        MarketNodeHeat: {
+            /** @description Sum of the frequencies of the matched skills. */
+            score: number;
+            /** @description Matched skill names in top-list order. */
+            matches: string[];
+        };
+        /** @description Market skill frequencies overlaid on the tree. */
+        MarketHeat: {
+            /**
+             * @description run.skill_freq — persisted/analysed run skill frequencies; vacancy_sources — deterministic extraction from the content of the run's vacancy/standard sources; none — no market data available.
+             * @enum {string}
+             */
+            source: "run.skill_freq" | "vacancy_sources" | "none";
+            /** @description Number of vacancy/standard documents scanned for the vacancy_sources fallback (omitted for other sources). */
+            sample_size?: number;
+            top: components["schemas"]["MarketSkill"][];
+            /** @description Heat per node id; only nodes with matches are present. */
+            nodes: {
+                [key: string]: components["schemas"]["MarketNodeHeat"];
+            };
+        };
+        /** @description One role/function/task row of the source-type coverage matrix. */
+        CoverageRow: {
+            node_id: string;
+            title: string;
+            /** @enum {string} */
+            type: "role" | "function" | "task";
+            /** @description Evidence count per source type; every column is present, 0 when empty. */
+            cells: {
+                [key: string]: number;
+            };
+        };
+        /** @description Role/function/task rows by source-type evidence counts. */
+        Coverage: {
+            /** @description Fixed, ordered column set; every column is always present. */
+            columns: ("interview" | "standard" | "vacancy" | "document")[];
+            rows: components["schemas"]["CoverageRow"][];
+        };
+        /** @description Run source metadata shown next to the insights. */
+        InsightSource: {
+            id: string;
+            type: components["schemas"]["SourceType"];
+            title: string;
+            priority: number;
+        };
+        /** @description One evidence item of a node explanation. */
+        ExplanationEvidence: {
+            quote: string;
+            source_id: string;
+            source_type: components["schemas"]["SourceType"];
+            priority: number;
+            ref_id?: string;
+            status?: components["schemas"]["EvidenceStatus"];
+        };
+        /** @description Template-only "why this node" explanation; summary is never empty. */
+        NodeExplanation: {
+            summary: string;
+            evidence: components["schemas"]["ExplanationEvidence"][];
+        };
+        /** @description JSON body of GET /runs/{id}/insights; all collections are non-null. */
+        Insights: {
+            run_id: string;
+            provenance: components["schemas"]["InsightsProvenance"];
+            health: components["schemas"]["InsightsHealth"];
+            flags: components["schemas"]["InsightFlag"][];
+            market_heat: components["schemas"]["MarketHeat"];
+            coverage: components["schemas"]["Coverage"];
+            sources: components["schemas"]["InsightSource"][];
+            node_explanations: {
+                [key: string]: components["schemas"]["NodeExplanation"];
+            };
+        };
+        /** @description JSON body of GET /runs/{id}/coverage (default format). */
+        CoverageResponse: {
+            run_id: string;
+            columns: ("interview" | "standard" | "vacancy" | "document")[];
+            rows: components["schemas"]["CoverageRow"][];
+        };
+        /** @description Node-matching counters of a run-to-run comparison. */
+        RunCompareMatch: {
+            /** @description Number of pairs matched by node id. */
+            by_id: number;
+            /** @description Number of pairs matched semantically by type, normalized title and ancestor path. */
+            by_title: number;
+            /** @description Number of nodes that could not be matched (equals added + removed). */
+            unmatched: number;
+        };
+        /** @description JSON body of GET /runs/{id}/compare?against={other_run_id}. */
+        RunCompare: {
+            run_id: string;
+            against_run_id: string;
+            profession: string;
+            /** @description True when the profession matches after normalization either by runs.profession or by the normalized title of the root role node of both trees. */
+            same_profession: boolean;
+            match: components["schemas"]["RunCompareMatch"];
+            /** @description Nodes that exist only in the head run, sorted by id. */
+            added: components["schemas"]["Node"][];
+            /** @description Nodes that exist only in the base run, sorted by id. */
+            removed: components["schemas"]["Node"][];
+            /** @description Nodes matched between the runs whose fields changed, sorted by id. */
+            changed: components["schemas"]["SnapshotNodeChange"][];
+            summary: components["schemas"]["SnapshotDiffSummary"];
+            /** @description Deterministic one-line human-readable description of the diff in Russian; its counts always agree with summary. */
+            story: string;
+        };
+        /** @description JSON body of GET /reviews/evidence/progress. */
+        ReviewProgress: {
+            /**
+             * @description global for counters across all runs; run for a run-scoped counter.
+             * @enum {string}
+             */
+            scope: "global" | "run";
+            /** @description Present only when scope is run. */
+            run_id?: string;
+            pending: number;
+            approved: number;
+            rejected: number;
+            /** @description Always equals pending + approved + rejected. */
+            total: number;
+        };
+        /** @description One rule-based ZUN suggestion for a tree node. */
+        ZunSuggestion: {
+            node_id: string;
+            node_title: string;
+            /** @description Suggested knowledge items; empty when the node already has a ZUN. */
+            knowledge: string[];
+            skills: string[];
+            abilities: string[];
+            /**
+             * @description Always rule; ZUN suggestions never come from an LLM.
+             * @enum {string}
+             */
+            source: "rule";
+            current_zun: components["schemas"]["Zun"];
+            /** @description True only when the node has no ZUN and the suggestion is non-empty. */
+            can_apply: boolean;
+        };
+        /** @description Body of POST /runs/{id}/zun/suggestions/apply. */
+        ZunApplyRequest: {
+            node_id: string;
+            /** @description Knowledge items; at least one non-empty item across all three lists is required. */
+            knowledge?: string[];
+            skills?: string[];
+            abilities?: string[];
+        };
+        /** @description Result of a successful ZUN apply (an updated, no-longer-applicable suggestion). */
+        ZunApplyResponse: {
+            run_id: string;
+            node_id: string;
+            node_title: string;
+            /** @enum {string} */
+            source: "rule";
+            applied: boolean;
+            /** @description Always false after a successful apply. */
+            can_apply: boolean;
+            current_zun: components["schemas"]["Zun"];
+        };
+        /** @description Evidence plus the node/source titles needed by the review panel. */
+        EvidenceContextItem: {
+            id: string;
+            node_id: string;
+            node_title?: string;
+            source_id: string;
+            source_title?: string;
+            source_url?: string;
+            ref_id?: string;
+            quote: string;
+            status: components["schemas"]["EvidenceStatus"];
+        };
+        /** @description One saved interview chat message; sequence is the 1-based position in the dialog. */
+        ChatTranscriptMessage: {
+            id: string;
+            /** @enum {string} */
+            role: "user" | "agent";
+            content: string;
+            sequence: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description The chat message that best matches the evidence quote; null when nothing matches. */
+        EvidenceTranscriptMatch: {
+            message_id: string;
+            sequence: number;
+            /** @enum {string} */
+            role: "user" | "agent";
+            /**
+             * @description Which matching rule selected the message: ref_id equals the message id; answer-N (Nth user reply); q-N (Nth interviewer question); msg-N/N (message sequence); quote text search; best lexical token overlap.
+             * @enum {string}
+             */
+            strategy: "message_id" | "answer_index" | "question_index" | "sequence" | "quote" | "token_overlap";
+            /** @description True when the quote is contained in the message content. */
+            contains_quote: boolean;
+            quote: string;
+            /** @description Rune offset of the quote start in content; present only for verbatim (case-insensitive included) matches. */
+            quote_start?: number;
+            /** @description Rune offset of the quote end in content; present only for verbatim (case-insensitive included) matches. */
+            quote_end?: number;
+            /** @description Lexical-overlap score (0..1); present for token_overlap matches. */
+            score?: number;
+        } | null;
+        /** @description JSON body of GET /runs/{id}/evidence/{evidence_id}/context. */
+        EvidenceContext: {
+            run_id: string;
+            evidence: components["schemas"]["EvidenceContextItem"];
+            /** @description Saved transcript ordered by sequence (at most 500 messages). */
+            messages: components["schemas"]["ChatTranscriptMessage"][];
+            match: components["schemas"]["EvidenceTranscriptMatch"];
+            /** @description Human-readable explanation of the chosen match strategy (or why nothing matched). */
+            note: string;
         };
     };
     responses: {
@@ -1031,6 +1554,8 @@ export interface components {
         NodeId: string;
         /** @description Snapshot identifier (UUID). The path snapshot is the head of a diff comparison. */
         SnapshotId: string;
+        /** @description Evidence identifier. It must belong to the run in the path; evidence of another run is indistinguishable from a missing one (404). */
+        EvidenceContextId: string;
     };
     requestBodies: never;
     headers: never;
@@ -1594,6 +2119,63 @@ export interface operations {
             501: components["responses"]["NotImplemented"];
         };
     };
+    getReviewProgress: {
+        parameters: {
+            query?: {
+                /** @description Optional run UUID filter. A malformed UUID is a 400; a valid but unknown run id is a 404 (so the UI can tell a typo from an empty run). */
+                run_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review counters for the requested scope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewProgress"];
+                };
+            };
+            /** @description run_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "run_id must be a UUID"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The referenced run does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "run not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
     listRuns: {
         parameters: {
             query?: never;
@@ -1677,6 +2259,69 @@ export interface operations {
             };
             503: components["responses"]["ServiceUnavailable"];
             504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    getRunEstimate: {
+        parameters: {
+            query: {
+                /** @description Target profession. */
+                profession: string;
+                /** @description Run type the estimate is for. */
+                type: components["schemas"]["RunType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pre-run estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "profession": "Аналитик данных",
+                     *       "type": "chat",
+                     *       "sample_size": 12,
+                     *       "estimated_tokens": 9800,
+                     *       "estimated_duration_seconds": 95,
+                     *       "estimated_cost_usd": 0.0123,
+                     *       "confidence": "high",
+                     *       "method": "profession_history"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunEstimate"];
+                };
+            };
+            /** @description profession is missing/blank, or type is missing or not chat/batch. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The stored run history could not be read. The estimate is never silently replaced by defaults on a storage error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "INTERNAL",
+                     *       "message": "failed to read run history"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getRun: {
@@ -1841,7 +2486,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -1914,6 +2562,774 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getRunCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Actual run usage plus the recomputed estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "profession": "Аналитик данных",
+                     *       "type": "chat",
+                     *       "status": "done",
+                     *       "started_at": "2026-11-18T10:00:00Z",
+                     *       "finished_at": "2026-11-18T10:01:36Z",
+                     *       "duration_seconds": 96,
+                     *       "request_count": 7,
+                     *       "prompt_tokens": 7000,
+                     *       "completion_tokens": 2800,
+                     *       "total_tokens": 9800,
+                     *       "cost_usd": 0.0123,
+                     *       "by_model": [
+                     *         {
+                     *           "model": "openai/gpt-4o-mini",
+                     *           "request_count": 7,
+                     *           "prompt_tokens": 7000,
+                     *           "completion_tokens": 2800,
+                     *           "total_tokens": 9800,
+                     *           "cost_usd": 0.0123
+                     *         }
+                     *       ],
+                     *       "by_agent": [
+                     *         {
+                     *           "agent": "interviewer",
+                     *           "request_count": 6,
+                     *           "prompt_tokens": 6000,
+                     *           "completion_tokens": 2400,
+                     *           "total_tokens": 8400,
+                     *           "cost_usd": 0.0105
+                     *         },
+                     *         {
+                     *           "agent": "analyst",
+                     *           "request_count": 1,
+                     *           "prompt_tokens": 1000,
+                     *           "completion_tokens": 400,
+                     *           "total_tokens": 1400,
+                     *           "cost_usd": 0.0018
+                     *         }
+                     *       ],
+                     *       "status_counts": [
+                     *         {
+                     *           "status": "ok",
+                     *           "count": 7
+                     *         }
+                     *       ],
+                     *       "attribution": "run_id",
+                     *       "attribution_ambiguous": false,
+                     *       "estimate": {
+                     *         "profession": "Аналитик данных",
+                     *         "type": "chat",
+                     *         "sample_size": 12,
+                     *         "estimated_tokens": 9800,
+                     *         "estimated_duration_seconds": 95,
+                     *         "estimated_cost_usd": 0.0123,
+                     *         "confidence": "high",
+                     *         "method": "profession_history"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunCost"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    getRunInsights: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Consolidated insights payload. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "provenance": {
+                     *         "nodes": {
+                     *           "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
+                     *             "source_count": 2,
+                     *             "source_types": [
+                     *               "interview",
+                     *               "standard"
+                     *             ],
+                     *             "evidence_count": 2
+                     *           },
+                     *           "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c": {
+                     *             "source_count": 1,
+                     *             "source_types": [
+                     *               "interview"
+                     *             ],
+                     *             "evidence_count": 1
+                     *           }
+                     *         }
+                     *       },
+                     *       "health": {
+                     *         "score": 85,
+                     *         "breakdown": {
+                     *           "groundedness": 100,
+                     *           "completeness": 50,
+                     *           "duplicates": 100,
+                     *           "orphans": 100
+                     *         },
+                     *         "weights": {
+                     *           "groundedness": 0.4,
+                     *           "completeness": 0.3,
+                     *           "duplicates": 0.2,
+                     *           "orphans": 0.1
+                     *         },
+                     *         "counts": {
+                     *           "node_count": 2,
+                     *           "grounded_nodes": 2,
+                     *           "duplicate_nodes": 0,
+                     *           "orphan_nodes": 0,
+                     *           "childless_nodes": 1
+                     *         },
+                     *         "formula": "score = round(0.40*groundedness + 0.30*completeness + 0.20*duplicates + 0.10*orphans). All components are 0..100 quality scores where 100 is best: groundedness = share of nodes with at least one evidence record; completeness = share of structurally complete nodes (role/function/task nodes with at least one child, action leaves are complete by design); duplicates = share of nodes whose (type, normalized title) is unique; orphans = share of nodes whose parent exists (roots have no parent by design). An empty tree scores 0."
+                     *       },
+                     *       "flags": [
+                     *         {
+                     *           "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *           "codes": [
+                     *             "NO_CHILDREN"
+                     *           ],
+                     *           "reasons": [
+                     *             "У узла типа task нет дочерних узлов — уровень не раскрыт, добавьте декомпозицию"
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "market_heat": {
+                     *         "source": "run.skill_freq",
+                     *         "top": [
+                     *           {
+                     *             "skill": "SQL",
+                     *             "frequency": 42
+                     *           }
+                     *         ],
+                     *         "nodes": {
+                     *           "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
+                     *             "score": 42,
+                     *             "matches": [
+                     *               "SQL"
+                     *             ]
+                     *           }
+                     *         }
+                     *       },
+                     *       "coverage": {
+                     *         "columns": [
+                     *           "interview",
+                     *           "standard",
+                     *           "vacancy",
+                     *           "document"
+                     *         ],
+                     *         "rows": [
+                     *           {
+                     *             "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *             "title": "Собирать требования",
+                     *             "type": "task",
+                     *             "cells": {
+                     *               "interview": 1,
+                     *               "standard": 1,
+                     *               "vacancy": 0,
+                     *               "document": 0
+                     *             }
+                     *           }
+                     *         ]
+                     *       },
+                     *       "sources": [
+                     *         {
+                     *           "id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *           "type": "interview",
+                     *           "title": "Интервью с ведущим аналитиком",
+                     *           "priority": 300
+                     *         },
+                     *         {
+                     *           "id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
+                     *           "type": "standard",
+                     *           "title": "Профессиональный стандарт аналитика",
+                     *           "priority": 200
+                     *         }
+                     *       ],
+                     *       "node_explanations": {
+                     *         "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
+                     *           "summary": "Узел «Собирать требования» (task) включён в дерево по подтверждениям: цитат 2, источников 2, типы источников interview, standard; максимальный приоритет — interview (300).",
+                     *           "evidence": [
+                     *             {
+                     *               "quote": "Каждую неделю я собираю требования у заказчика.",
+                     *               "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *               "source_type": "interview",
+                     *               "priority": 300,
+                     *               "ref_id": "frag-12",
+                     *               "status": "pending"
+                     *             }
+                     *           ]
+                     *         },
+                     *         "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c": {
+                     *           "summary": "Узел «Собирать требования еженедельно» (action) включён в дерево по подтверждениям: цитат 1, источников 1, типы источников interview; максимальный приоритет — interview (300).",
+                     *           "evidence": [
+                     *             {
+                     *               "quote": "Каждую неделю я собираю требования у заказчика.",
+                     *               "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *               "source_type": "interview",
+                     *               "priority": 300,
+                     *               "ref_id": "frag-12",
+                     *               "status": "pending"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Insights"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    getRunCoverage: {
+        parameters: {
+            query?: {
+                /** @description csv selects text/csv; any other value (or none) returns JSON. */
+                format?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Coverage matrix as JSON (default) or as a CSV attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "columns": [
+                     *         "interview",
+                     *         "standard",
+                     *         "vacancy",
+                     *         "document"
+                     *       ],
+                     *       "rows": [
+                     *         {
+                     *           "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *           "title": "Собирать требования",
+                     *           "type": "task",
+                     *           "cells": {
+                     *             "interview": 1,
+                     *             "standard": 1,
+                     *             "vacancy": 0,
+                     *             "document": 0
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CoverageResponse"];
+                    /**
+                     * @example node_id,title,type,interview,standard,vacancy,document
+                     *     6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11,Собирать требования,task,1,1,0,0
+                     */
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    compareRuns: {
+        parameters: {
+            query: {
+                /** @description Base run id; must be a UUID and must differ from the path run id. The path run is the head of the comparison. */
+                against: string;
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run-to-run tree diff with match counters and a story. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+                     *       "against_run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "profession": "Аналитик данных",
+                     *       "same_profession": true,
+                     *       "match": {
+                     *         "by_id": 0,
+                     *         "by_title": 2,
+                     *         "unmatched": 2
+                     *       },
+                     *       "added": [
+                     *         {
+                     *           "id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                     *           "type": "action",
+                     *           "title": "Собирать требования еженедельно",
+                     *           "parent_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *           "evidence": [
+                     *             {
+                     *               "id": "e1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                     *               "node_id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                     *               "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *               "ref_id": "frag-12",
+                     *               "quote": "Каждую неделю я собираю требования у заказчика.",
+                     *               "status": "pending"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "removed": [
+                     *         {
+                     *           "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+                     *           "type": "task",
+                     *           "title": "Готовить отчёты",
+                     *           "evidence": [
+                     *             {
+                     *               "id": "b2c3d4e5-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+                     *               "node_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+                     *               "source_id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
+                     *               "ref_id": "frag-7",
+                     *               "quote": "Готовлю еженедельные отчёты для руководителя.",
+                     *               "status": "approved"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "changed": [
+                     *         {
+                     *           "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *           "before": {
+                     *             "id": "3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d",
+                     *             "type": "task",
+                     *             "title": "Собирать требования",
+                     *             "evidence": [
+                     *               {
+                     *                 "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                     *                 "node_id": "3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d",
+                     *                 "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *                 "ref_id": "frag-7",
+                     *                 "quote": "Собираю требования у заказчика.",
+                     *                 "status": "approved"
+                     *               }
+                     *             ]
+                     *           },
+                     *           "after": {
+                     *             "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *             "type": "task",
+                     *             "title": "Собирать требования к интеграции",
+                     *             "evidence": [
+                     *               {
+                     *                 "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                     *                 "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *                 "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *                 "ref_id": "frag-7",
+                     *                 "quote": "Собираю требования у заказчика.",
+                     *                 "status": "approved"
+                     *               }
+                     *             ]
+                     *           },
+                     *           "fields": [
+                     *             "title"
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "summary": {
+                     *         "added": 1,
+                     *         "removed": 1,
+                     *         "changed": 1
+                     *       },
+                     *       "story": "Узлов добавлено: 1, удалено: 1, изменено: 1. Добавлен узел «Собирать требования еженедельно». Удалён узел «Готовить отчёты». Изменён узел «Собирать требования к интеграции»: название."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunCompare"];
+                };
+            };
+            /** @description against is missing, is not a UUID, or equals the path run id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description One of the runs does not exist (including an invalid UUID in the path). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "run not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The runs have different professions or one run has no saved tree. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    listZunSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One suggestion per tree node; [] when the tree is empty. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *         "node_title": "Собирать требования",
+                     *         "knowledge": [
+                     *           "SQL-запросы и реляционные базы данных",
+                     *           "PostgreSQL"
+                     *         ],
+                     *         "skills": [
+                     *           "Анализировать данные и требования"
+                     *         ],
+                     *         "abilities": [
+                     *           "Ответственность за результат"
+                     *         ],
+                     *         "source": "rule",
+                     *         "current_zun": null,
+                     *         "can_apply": true
+                     *       },
+                     *       {
+                     *         "node_id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                     *         "node_title": "Собирать требования еженедельно",
+                     *         "knowledge": [],
+                     *         "skills": [],
+                     *         "abilities": [],
+                     *         "source": "rule",
+                     *         "current_zun": {
+                     *           "knowledge": [
+                     *             "SQL-запросы и реляционные базы данных"
+                     *           ],
+                     *           "skills": [
+                     *             "Анализировать данные и требования"
+                     *           ],
+                     *           "abilities": [
+                     *             "Ответственность за результат"
+                     *           ]
+                     *         },
+                     *         "can_apply": false
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["ZunSuggestion"][];
+                };
+            };
+            /** @description The run id is empty (only possible when the handler is called outside the router). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "run id is required"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    applyZunSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                 *       "knowledge": [
+                 *         "SQL-запросы и реляционные базы данных",
+                 *         "PostgreSQL"
+                 *       ],
+                 *       "skills": [
+                 *         "Анализировать данные и требования"
+                 *       ],
+                 *       "abilities": [
+                 *         "Ответственность за результат"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ZunApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description ZUN saved for the node; the returned suggestion is no longer applicable. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *       "node_title": "Собирать требования",
+                     *       "source": "rule",
+                     *       "applied": true,
+                     *       "can_apply": false,
+                     *       "current_zun": {
+                     *         "knowledge": [
+                     *           "SQL-запросы и реляционные базы данных",
+                     *           "PostgreSQL"
+                     *         ],
+                     *         "skills": [
+                     *           "Анализировать данные и требования"
+                     *         ],
+                     *         "abilities": [
+                     *           "Ответственность за результат"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ZunApplyResponse"];
+                };
+            };
+            /** @description Malformed JSON, unknown fields, trailing data, a missing node_id, an empty ZUN payload, or a list/item over the documented limits. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The run does not exist or the node does not belong to it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "run or node not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The node already has a non-empty ZUN; suggestions never overwrite it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "ZUN_ALREADY_SET",
+                     *       "message": "node already has ZUN; automatic suggestion does not overwrite it"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getEvidenceContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Evidence identifier. It must belong to the run in the path; evidence of another run is indistinguishable from a missing one (404). */
+                evidence_id: components["parameters"]["EvidenceContextId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence item, saved transcript and the best matching message. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "evidence": {
+                     *         "id": "e1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                     *         "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *         "node_title": "Собирать требования",
+                     *         "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *         "source_title": "Интервью с ведущим аналитиком",
+                     *         "source_url": "https://example.com/interviews/42",
+                     *         "ref_id": "answer-2",
+                     *         "quote": "Каждую неделю я собираю требования у заказчика.",
+                     *         "status": "pending"
+                     *       },
+                     *       "messages": [
+                     *         {
+                     *           "id": "msg-4d7d3a8e-1",
+                     *           "role": "agent",
+                     *           "content": "Расскажите, как вы собираете требования?",
+                     *           "sequence": 1,
+                     *           "created_at": "2026-11-18T10:00:05Z"
+                     *         },
+                     *         {
+                     *           "id": "msg-4d7d3a8e-2",
+                     *           "role": "user",
+                     *           "content": "Каждую неделю я собираю требования у заказчика.",
+                     *           "sequence": 2,
+                     *           "created_at": "2026-11-18T10:01:00Z"
+                     *         }
+                     *       ],
+                     *       "match": {
+                     *         "message_id": "msg-4d7d3a8e-2",
+                     *         "sequence": 2,
+                     *         "role": "user",
+                     *         "strategy": "answer_index",
+                     *         "contains_quote": true,
+                     *         "quote": "Каждую неделю я собираю требования у заказчика.",
+                     *         "quote_start": 0,
+                     *         "quote_end": 47
+                     *       },
+                     *       "note": "ref_id указывает на номер ответа (answer-N): выбрана N-я реплика пользователя"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["EvidenceContext"];
+                };
+            };
+            /** @description The run id or evidence id is empty (only possible outside the router). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "run and evidence ids are required"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The evidence does not exist inside the run (evidence of another run is indistinguishable from a missing one). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "evidence not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     exportRun: {
