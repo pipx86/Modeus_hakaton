@@ -12,11 +12,23 @@ import (
 
 const tracerName = "activity-descriptor/agents"
 
-// Setup installs a process-wide tracer provider. Exporters can be attached by
-// tests or by a future OTLP wiring; without one, spans are still sampled and
-// recorded by the SDK but are not sent over the network.
+// Setup installs a process-wide tracer provider and returns its shutdown
+// function.
+//
+// Without OTEL_EXPORTER_OTLP_ENDPOINT the provider records spans locally and
+// attaches no exporter (no network I/O, nothing to shut down over the wire).
+// With an endpoint it attaches a batched OTLP/HTTP exporter; creating that
+// client is local, so startup never waits for the collector. A malformed
+// endpoint makes Setup return an error and leaves the global provider
+// untouched, which lets main log a warning and keep serving without tracing.
+//
+// The returned shutdown function flushes pending spans and is safe to call
+// more than once.
 func Setup() (func(context.Context) error, error) {
-	provider := NewProvider()
+	provider, err := newProvider(context.Background(), ConfigFromEnv())
+	if err != nil {
+		return nil, err
+	}
 	otel.SetTracerProvider(provider)
 	return provider.Shutdown, nil
 }

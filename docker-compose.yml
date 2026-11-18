@@ -31,6 +31,12 @@ services:
       JWT_SECRET: "${JWT_SECRET:-local-dev-jwt-secret-change-me-32-bytes-min}"
       # Optional: path to the OpenRouter key file inside the container.
       OPENROUTER_API_KEY_FILE: "${OPENROUTER_API_KEY_FILE:-}"
+      # OpenTelemetry OTLP/HTTP tracing (see docs/OBSERVABILITY.md). An empty
+      # endpoint keeps spans local; set it to http://jaeger:4318 to export to
+      # the monitoring-profile collector. cmd/api (this service) does not call
+      # observability.Setup yet; the production cmd/server does.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_EXPORTER_OTLP_INSECURE: "${OTEL_EXPORTER_OTLP_INSECURE:-}"
     healthcheck:
       test: ["CMD", "/api", "-healthcheck"]
       interval: 15s
@@ -105,6 +111,18 @@ services:
     depends_on:
       prometheus:
         condition: service_started
+
+  # OTLP trace collector + UI for the OpenTelemetry spans exported by the
+  # backend. Enable it with the monitoring profile:
+  #   docker compose --profile monitoring up -d jaeger
+  # UI http://localhost:16686, OTLP/HTTP http://localhost:4318 (in-network:
+  # http://jaeger:4318). See docs/OBSERVABILITY.md.
+  jaeger:
+    image: jaegertracing/all-in-one:1.60.0
+    profiles: ["monitoring"]
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"
 
   n8n:
     image: n8nio/n8n:1.63.4

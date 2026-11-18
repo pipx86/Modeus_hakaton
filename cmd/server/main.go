@@ -49,6 +49,11 @@ func run(ctx context.Context, c config) error {
 	if err != nil {
 		logging.Logger.Warn("tracing_setup_failed", "error", err)
 	} else {
+		if endpoint := observability.ConfigFromEnv().Endpoint; endpoint != "" {
+			logging.Logger.Info("tracing_export_enabled", "exporter", "otlp-http", "endpoint", endpoint)
+		} else {
+			logging.Logger.Info("tracing_export_disabled", "reason", "OTEL_EXPORTER_OTLP_ENDPOINT is not set; spans stay local")
+		}
 		defer func() { _ = shutdownTracing(context.Background()) }()
 	} // === NEW: Инициализация логгера ===
 
