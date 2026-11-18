@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { AlertCircleIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { frontendLog } from "@/lib/frontend-log"
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -23,6 +24,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    frontendLog.error("render error", {
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack,
+    })
     console.error("Необработанная ошибка интерфейса", error, info)
   }
 

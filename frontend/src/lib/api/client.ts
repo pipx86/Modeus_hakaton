@@ -1,4 +1,5 @@
 import createClient from "openapi-fetch"
+import { frontendLog } from "@/lib/frontend-log"
 import type { paths, components } from "./schema"
 
 // В dev запросы идут на тот же origin через Vite-прокси (он добавляет Authorization).
@@ -20,6 +21,28 @@ apiClient.use({
   onRequest({ request }) {
     if (apiToken) request.headers.set("Authorization", `Bearer ${apiToken}`)
     return request
+  },
+  onResponse({ request, response }) {
+    if (response.status >= 500) {
+      frontendLog.error("API 5xx", {
+        method: request.method,
+        url: request.url,
+        status: response.status,
+      })
+    } else if (response.status >= 400) {
+      frontendLog.warn("API 4xx", {
+        method: request.method,
+        url: request.url,
+        status: response.status,
+      })
+    }
+  },
+  onError({ request, error }) {
+    frontendLog.error("API request failed", {
+      method: request.method,
+      url: request.url,
+      error: String(error),
+    })
   },
 })
 
