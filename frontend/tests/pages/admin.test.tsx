@@ -21,7 +21,11 @@ function renderAdmin() {
 }
 
 function stubAdminData() {
-  setFetchHandler(async (url) => {
+  setFetchHandler(async (url, init) => {
+    const method = init?.method ?? "GET"
+    if (url.includes("/api/v1/sources/s-1/index") && method === "POST") {
+      return { status: 204, body: undefined }
+    }
     if (url.endsWith("/api/v1/users")) {
       return {
         status: 200,
@@ -115,6 +119,18 @@ describe("админка", () => {
     expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
     expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Проиндексировать материал Профстандарт аналитика" }),
+    )
+    await waitFor(() =>
+      expect(
+        fetchCalls().some(
+          (call) =>
+            call.url.includes("/api/v1/sources/s-1/index") && call.init.method === "POST",
+        ),
+      ).toBe(true),
+    )
   })
 
   it("загружает файл материала и удаляет его", async () => {

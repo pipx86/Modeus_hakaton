@@ -69,6 +69,16 @@ function stubRun(
     if (url.includes("/api/v1/reviews/evidence") && method === "GET") {
       return { status: 200, body: overrides.reviewQueue ?? [] }
     }
+    if (url.includes("/api/v1/runs/7/export")) {
+      return {
+        status: 200,
+        body: url.includes("format=json") ? '{"schema":"run-export/v1"}' : "# Экспорт интервью\n",
+      }
+    }
+    if (url.endsWith("/api/v1/evidences/bulk-approve") && method === "POST") {
+      const body = JSON.parse(String(init.body)) as { ids: string[] }
+      return { status: 200, body: { approved: body.ids.length, skipped: 0 } }
+    }
     if (url.includes("/api/v1/runs/7/conflicts") && method === "GET") {
       return { status: 200, body: overrides.conflicts ?? [] }
     }
@@ -655,8 +665,14 @@ describe("Research", () => {
     fireEvent.click(screen.getByRole("button", { name: "Markdown" }))
     fireEvent.click(screen.getByRole("button", { name: "JSON" }))
 
+    await waitFor(() => expect(downloads).toEqual(["run.md", "run.json"]))
     expect(createObjectURL).toHaveBeenCalledTimes(2)
-    expect(downloads).toEqual(["tree.md", "tree.json"])
+    expect(
+      fetchCalls().some((call) => call.url.includes("/runs/7/export?format=md")),
+    ).toBe(true)
+    expect(
+      fetchCalls().some((call) => call.url.includes("/runs/7/export?format=json")),
+    ).toBe(true)
     click.mockRestore()
   })
 
@@ -747,11 +763,14 @@ describe("Research", () => {
     fireEvent.click(screen.getByRole("button", { name: "Подтвердить все" }))
 
     await waitFor(() => {
-      const approvals = fetchCalls().filter(
-        (call) => call.url.includes("/approve") && call.init.method === "POST",
+      const bulk = fetchCalls().find(
+        (call) =>
+          call.url.endsWith("/api/v1/evidences/bulk-approve") && call.init.method === "POST",
       )
-      expect(approvals).toHaveLength(2)
+      expect(bulk).toBeDefined()
+      expect(JSON.parse(String(bulk!.init.body))).toEqual({ ids: ["e1", "e2"] })
     })
+    expect(screen.getAllByText("Подтверждено").length).toBeGreaterThanOrEqual(2)
   })
 
   it("фильтрует цитаты по статусу", async () => {

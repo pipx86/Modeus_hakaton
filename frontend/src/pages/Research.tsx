@@ -39,6 +39,7 @@ import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
+  apiBaseUrl,
   apiClient,
   type ActivityNode,
   type Evidence,
@@ -46,7 +47,8 @@ import {
   type Source,
   type SourceType,
 } from "@/lib/api/client"
-import { downloadText, treeToJson, treeToMarkdown } from "@/lib/export-tree"
+import { getValidToken } from "@/lib/auth"
+import { downloadText } from "@/lib/export-tree"
 import {
   CheckIcon,
   DownloadIcon,
@@ -169,9 +171,26 @@ function SourcesTab() {
       : quotes.filter((quote) => (quote.status ?? "pending") === quoteFilter)
   const pendingQuotes = quotes.filter((quote) => (quote.status ?? "pending") === "pending")
   const bulkSetStatus = async (action: "approve" | "reject") => {
-    for (const quote of pendingQuotes) {
-      await setQuoteStatus(quote.id, action)
+    if (pendingQuotes.length === 0) return
+    if (action === "reject") {
+      for (const quote of pendingQuotes) {
+        await setQuoteStatus(quote.id, "reject")
+      }
+      return
     }
+    const ids = pendingQuotes.map((quote) => quote.id)
+    const { data, error } = await apiClient.POST("/evidences/bulk-approve", {
+      body: { ids },
+    })
+    if (error) {
+      toast.error("Не удалось подтвердить цитаты", { description: error.message })
+      return
+    }
+    const approvedIds = new Set(ids)
+    setQuotes((prev) =>
+      prev.map((quote) => (approvedIds.has(quote.id) ? { ...quote, status: "approved" } : quote)),
+    )
+    toast.success(`Подтверждено цитат: ${data?.approved ?? ids.length}`)
   }
 
   useEffect(() => {
@@ -927,6 +946,33 @@ function TreeTab({
     return () => clearInterval(timer)
   }, [active, load])
 
+  // Экспорт отдаёт бэкенд: в файл попадают evidence, конфликты и финальное сообщение,
+  // которых нет в клиентской сборке дерева.
+  const downloadExport = async (format: "md" | "json") => {
+    const token = getValidToken()
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/runs/${encodeURIComponent(id)}/export?format=${format}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+      )
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null
+        toast.error("Не удалось скачать экспорт", {
+          description: payload?.message ?? `HTTP ${response.status}`,
+        })
+        return
+      }
+      const text = await response.text()
+      downloadText(
+        format === "md" ? "run.md" : "run.json",
+        text,
+        format === "md" ? "text/markdown;charset=utf-8" : "application/json;charset=utf-8",
+      )
+    } catch {
+      toast.error("Сервер недоступен", { description: "Экспорт не скачан." })
+    }
+  }
+
   /**
    * Подтверждение цитаты с optimistic‑rollback: id сначала добавляется в `approvedIds`
    * (мгновенная реакция UI), затем уходит `POST /evidences/{id}/approve`; при ошибке id
@@ -1014,7 +1060,7 @@ function TreeTab({
           variant="outline"
           size="sm"
           className="h-7 px-2.5 text-xs"
-          onClick={() => downloadText("tree.md", treeToMarkdown(nodes), "text/markdown;charset=utf-8")}
+          onClick={() => void downloadExport("md")}
         >
           <DownloadIcon className="size-3.5" />
           Markdown
@@ -1023,7 +1069,7 @@ function TreeTab({
           variant="outline"
           size="sm"
           className="h-7 px-2.5 text-xs"
-          onClick={() => downloadText("tree.json", treeToJson(nodes), "application/json;charset=utf-8")}
+          onClick={() => void downloadExport("json")}
         >
           <DownloadIcon className="size-3.5" />
           JSON

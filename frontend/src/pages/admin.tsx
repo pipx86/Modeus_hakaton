@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { Link } from "react-router-dom"
 import {
   ActivityIcon,
+  DatabaseIcon,
   DownloadIcon,
   RefreshCwIcon,
   ShieldAlertIcon,
@@ -126,6 +127,7 @@ export function Admin() {
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [sourceFileKey, setSourceFileKey] = useState(0)
   const [sourceSaving, setSourceSaving] = useState(false)
+  const [indexingId, setIndexingId] = useState<string | null>(null)
 
   const session = (() => {
     const token = getValidToken()
@@ -256,6 +258,24 @@ export function Admin() {
       toast.error("Сервер недоступен", { description: "Файл не загружен." })
     } finally {
       setSourceSaving(false)
+    }
+  }
+
+  const indexSource = async (sourceId: string) => {
+    setIndexingId(sourceId)
+    try {
+      const { error } = await apiClient.POST("/sources/{id}/index", {
+        params: { path: { id: sourceId } },
+      })
+      if (error) {
+        toast.error("Не удалось проиндексировать материал", { description: error.message })
+        return
+      }
+      toast.success("Материал проиндексирован")
+    } catch {
+      toast.error("Сервер недоступен", { description: "Индексация не запущена." })
+    } finally {
+      setIndexingId(null)
     }
   }
 
@@ -718,6 +738,16 @@ export function Admin() {
                 <li key={source.id} className="flex items-center gap-3 py-3 text-sm">
                   <Badge variant="secondary">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</Badge>
                   <span className="min-w-0 flex-1 truncate">{source.title}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Проиндексировать материал ${source.title}`}
+                    className="shrink-0 text-muted-foreground"
+                    disabled={indexingId === source.id}
+                    onClick={() => void indexSource(source.id)}
+                  >
+                    <DatabaseIcon className="size-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
