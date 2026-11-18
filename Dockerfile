@@ -13,6 +13,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY prompts ./prompts
+COPY api-docs ./api-docs
 
 # Static, stripped binaries: no libc, no shell, reproducible paths.
 # /api is the demo entrypoint (in-memory store + chat fallback, /health and
@@ -28,6 +29,8 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /
 COPY --from=build /out/api /api
 COPY --from=build /out/local-token /local-token
+# Swagger UI is served from ./api-docs by the demo API.
+COPY --from=build /src/api-docs /api-docs
 
 USER nonroot:nonroot
 EXPOSE 8080

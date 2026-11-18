@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"activity-descriptor/internal/ingestion"
 
@@ -52,7 +53,19 @@ func run() error {
 	if *file != "" {
 		items, err = ingestion.ReadVacancyFile(*file, *format)
 	} else {
-		items, err = ingestion.FetchHH(ctx, ingestion.DefaultHTTPClient(), "https://api.hh.ru/vacancies", *query, os.Getenv("HH_USER_AGENT"), os.Getenv("HH_ACCESS_TOKEN"), *pages)
+		accessToken := strings.TrimSpace(os.Getenv("HH_ACCESS_TOKEN"))
+		if accessToken == "" {
+			clientID := strings.TrimSpace(os.Getenv("HH_CLIENT_ID"))
+			clientSecret := strings.TrimSpace(os.Getenv("HH_CLIENT_SECRET"))
+			if clientID != "" && clientSecret != "" {
+				token, tokenErr := ingestion.FetchHHApplicationToken(ctx, ingestion.DefaultHTTPClient(), os.Getenv("HH_TOKEN_URL"), clientID, clientSecret, os.Getenv("HH_USER_AGENT"))
+				if tokenErr != nil {
+					return tokenErr
+				}
+				accessToken = token.AccessToken
+			}
+		}
+		items, err = ingestion.FetchHH(ctx, ingestion.DefaultHTTPClient(), "https://api.hh.ru/vacancies", *query, os.Getenv("HH_USER_AGENT"), accessToken, *pages)
 	}
 	if err != nil {
 		return err

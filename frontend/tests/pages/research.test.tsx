@@ -20,6 +20,8 @@ function stubRun(
     tree?: unknown[]
     sources?: unknown[]
     evidences?: unknown[]
+    snapshots?: unknown[]
+    reviewQueue?: unknown[]
     deleteError?: boolean
     nodePatchError?: boolean
   } = {},
@@ -55,6 +57,12 @@ function stubRun(
     }
     if (url.includes("/api/v1/evidences") && method === "GET") {
       return { status: 200, body: overrides.evidences ?? [] }
+    }
+    if (url.includes("/api/v1/reviews/evidence") && method === "GET") {
+      return { status: 200, body: overrides.reviewQueue ?? [] }
+    }
+    if (url.includes("/api/v1/runs/7/snapshots") && method === "GET") {
+      return { status: 200, body: overrides.snapshots ?? [] }
     }
     if (url.includes("/api/v1/runs/7/tree")) {
       return { status: 200, body: overrides.tree ?? [] }
@@ -520,5 +528,36 @@ describe("Research", () => {
     renderPage()
 
     expect(await screen.findByRole("tab", { name: "Чат" })).toBeInTheDocument()
+  })
+
+  it("открывает вкладку «Снимки и проверка» и грузит снимки с очередью", async () => {
+    stubRun({
+      snapshots: [
+        { id: "snap-1", run_id: "7", version: 1, tree: {}, created_at: "2026-11-06T10:00:00Z" },
+        { id: "snap-2", run_id: "7", version: 2, tree: {}, created_at: "2026-11-07T10:00:00Z" },
+      ],
+      reviewQueue: [],
+    })
+
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
+    )
+
+    act(() => {
+      screen.getByRole("tab", { name: "Снимки и проверка" }).focus()
+    })
+
+    expect(await screen.findByText("Сравнение снимков")).toBeInTheDocument()
+    expect(await screen.findByText("Очередь проверки")).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Сравнить снимки" })).toBeEnabled(),
+    )
+    expect(
+      fetchCalls().some((call) => call.url.endsWith("/api/v1/runs/7/snapshots")),
+    ).toBe(true)
+    expect(
+      fetchCalls().some((call) => call.url.includes("/api/v1/reviews/evidence")),
+    ).toBe(true)
   })
 })
