@@ -35,6 +35,7 @@ type Server struct {
 	eventStore   sse.EventStore
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
+	batchPlan    steps.BatchPlan
 }
 
 func NewServer(store Store) *Server {
@@ -61,6 +62,21 @@ func NewServerWithChat(store Store, chatService chatStarter) *Server {
 		server.eventStore = sse.NewPGEventStore(pg.Pool)
 	}
 	return server
+}
+
+// SetBatchPlan wires the batch orchestrator chain built in cmd/server. The
+// create-run handler and the resume processor both read the same plan, so the
+// AI agent pipeline cannot diverge between the two paths.
+func (s *Server) SetBatchPlan(plan steps.BatchPlan) { s.batchPlan = plan }
+
+// batchPipeline returns the configured batch plan, or the vacancy-only default
+// when the server was built without the cmd/server LLM wiring (tests, demo
+// binaries). The default keeps the historical behaviour for those callers.
+func (s *Server) batchPipeline(store steps.AITreeStore) steps.BatchPlan {
+	if len(s.batchPlan.AI) > 0 || len(s.batchPlan.Fallback) > 0 {
+		return s.batchPlan
+	}
+	return steps.NewBatchPlan(steps.BatchOptions{Store: store, VacancyTopK: 10})
 }
 
 func (s *Server) Routes() http.Handler {
@@ -117,6 +133,14 @@ func (s *Server) Routes() http.Handler {
 
 type createRunRequest struct {
 	Profession string `json:"profession"`
+	// Type selects chat or batch. Empty preserves the historical behaviour:
+	// chat when a chat service is configured, otherwise batch.
+	Type string `json:"type,omitempty"`
+	// Transcript optionally supplies the interview transcript of a batch run.
+	// With an LLM-backed batch plan the analyst consumes it and the resulting
+	// tree goes through the same synthesizer/review stages as the vacancy
+	// pipeline. Chat runs ignore it (the chat service collects the dialog).
+	Transcript string `json:"transcript,omitempty"`
 }
 
 type errorBody struct {
@@ -163,7 +187,7 @@ func mapStoreError(w http.ResponseWriter, err error) bool {
 // @Tags         runs
 // @Accept       json
 // @Produce      json
-// @Param        body  body      object{profession=string,type=string}  true  "Run parameters"
+// @Param        body  body      object{profession=string,transcript=string}  true  "Run parameters"
 // @Success      201   {object}  domain.Run
 // @Failure      400   {object}  errorBody
 // @Security     BearerAuth
@@ -189,6 +213,25 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	runType := domain.RunTypeBatch
+	switch strings.ToLower(strings.TrimSpace(req.Type)) {
+	case "":
+		if s.chat != nil {
+			runType = domain.RunTypeChat
+		}
+	case string(domain.RunTypeChat):
+		runType = domain.RunTypeChat
+	case string(domain.RunTypeBatch):
+		runType = domain.RunTypeBatch
+	default:
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat or batch")
+		return
+	}
+	if runType == domain.RunTypeChat && s.chat == nil {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "chat pipeline is not available")
+		return
+	}
+
 	run, err := s.store.CreateRun(req.Profession)
 	if err != nil {
 		logging.Logger.Error("create_run_store_error", "error", err)
@@ -209,7 +252,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		logging.Logger.Error("event_append_failed", "run_id", run.ID, "error", appendErr)
 	}
 
-	if s.chat != nil {
+	if runType == domain.RunTypeChat {
 		if pgStore, ok := s.store.(*PGStore); ok {
 			if err := pgStore.SetRunType(run.ID, domain.RunTypeChat); err != nil {
 				logging.Logger.Error("chat_run_type_store_failed", "run_id", run.ID, "error", err)
@@ -241,15 +284,20 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	run.Type = runType
+	if pgStore, ok := s.store.(*PGStore); runType == domain.RunTypeBatch && ok {
+		if err := pgStore.SetRunType(run.ID, domain.RunTypeBatch); err != nil {
+			logging.Logger.Error("batch_run_type_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+	}
+
 	if pgStore, ok := s.store.(*PGStore); s.autoStart && ok && pgStore.Pool != nil {
 		st := store.New(pgStore.Pool)
 		reader := store.NewVacancyAdapter(st)
-		realSteps := []domain.Step{
-			&steps.InterviewStep{},
-			&steps.AnalysisStep{},
-			&steps.SynthesisStep{},
-			&steps.ReviewStep{TopK: 10, Store: pgStore},
-		}
+		plan := s.batchPipeline(pgStore)
+		providedTranscript := strings.TrimSpace(req.Transcript)
 
 		go func(id string) {
 			bgCtx := context.Background()
@@ -259,11 +307,32 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			logging.Logger.Info("orchestrator_started", "run_id", id)
-			if err := domain.Orchestrate(bgCtx, workerRun, realSteps, eventRunStore{pgStore, s.eventStore}, reader, 2, 30*time.Second); err != nil {
-				logging.Logger.Error("orchestrator_pipeline_failed", "run_id", id, "error", err)
+			// The batch create API has no interviewer, so the only real
+			// transcript input is the one supplied with the request. Persist it
+			// as the run's interview source before the AI steps run, which makes
+			// the same transcript recoverable by the resume processor. A failed
+			// persist does not abort the live run: the review step creates the
+			// source itself, only restarability is lost.
+			hasTranscript := false
+			if providedTranscript != "" && plan.HasAI() {
+				sourceID, persistErr := steps.PersistInterviewTranscript(bgCtx, pgStore, id, providedTranscript)
+				if persistErr != nil {
+					logging.Logger.Error("batch_transcript_persist_failed", "run_id", id, "error", persistErr)
+				}
+				steps.SetTranscript(workerRun, providedTranscript, sourceID)
+				hasTranscript = true
+			}
+			runSteps, stepTimeout := plan.For(hasTranscript)
+			pipeline := "vacancy"
+			if plan.HasAI() && hasTranscript {
+				pipeline = "ai"
+			}
+
+			logging.Logger.Info("orchestrator_started", "run_id", id, "pipeline", pipeline)
+			if err := domain.Orchestrate(bgCtx, workerRun, runSteps, eventRunStore{pgStore, s.eventStore}, reader, plan.MaxRetries, stepTimeout); err != nil {
+				logging.Logger.Error("orchestrator_pipeline_failed", "run_id", id, "pipeline", pipeline, "error", err)
 			} else {
-				logging.Logger.Info("orchestrator_completed_successfully", "run_id", id)
+				logging.Logger.Info("orchestrator_completed_successfully", "run_id", id, "pipeline", pipeline)
 			}
 		}(run.ID)
 	}

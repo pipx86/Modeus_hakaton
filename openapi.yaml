@@ -641,8 +641,21 @@ paths:
                 profession:
                   type: string
                   minLength: 1
+                type:
+                  type: string
+                  enum: [chat, batch]
+                  description: >-
+                    chat starts the interactive interviewer; batch runs the
+                    domain.Orchestrate pipeline. Omitted means chat when the
+                    chat service is configured, otherwise batch.
+                transcript:
+                  type: string
+                  description: >-
+                    Optional interview transcript for a batch run. Chat runs
+                    ignore it.
             example:
               profession: Аналитик данных
+              type: batch
       responses:
         "201":
           description: Created run (status pending).

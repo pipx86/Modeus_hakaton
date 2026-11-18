@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"activity-descriptor/internal/agent/synthesizer"
 	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
@@ -25,6 +26,7 @@ import (
 	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/metrics"
 	"activity-descriptor/internal/observability"
+	"activity-descriptor/internal/steps"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -125,6 +127,30 @@ func run(ctx context.Context, c config) error {
 	interviewerVersion := activePromptVersion(ctx, llmStore, "interviewer")
 	analystVersion := activePromptVersion(ctx, llmStore, "analyst")
 	synthesizerVersion := activePromptVersion(ctx, llmStore, "synthesizer")
+	// The batch orchestrator (domain.Orchestrate) runs the same analyst and
+	// synthesizer agents as the chat finalizer. The plan is built once here and
+	// handed to both the create-run handler and the resume processor.
+	var batchSynth steps.Synthesizer
+	if analystClient != nil {
+		if synthAgent, synthErr := synthesizer.New(synthesizer.WithPromptVersion(synthesizerVersion)); synthErr != nil {
+			logging.Logger.Error("batch synthesizer setup failed; batch runs keep the vacancy pipeline", "error", synthErr)
+		} else {
+			batchSynth = synthAgent
+		}
+	}
+	batchPlan := steps.NewBatchPlan(steps.BatchOptions{
+		Analyst:              analystClient,
+		AnalystPromptVersion: analystVersion,
+		Synthesizer:          batchSynth,
+		Store:                pgStore,
+		VacancyTopK:          10,
+	})
+	logging.Logger.Info("batch pipeline configured",
+		"ai", batchPlan.HasAI(),
+		"analyst_prompt_version", analystVersion,
+		"synthesizer_prompt_version", synthesizerVersion,
+		"ai_step_timeout", batchPlan.AITimeout,
+		"vacancy_step_timeout", batchPlan.FallbackTimeout)
 	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
 		metricsRegistry.ObserveRun(string(status), 0)
 		if err := pgStore.SetStatus(runID, status); err != nil {
@@ -145,6 +171,7 @@ func run(ctx context.Context, c config) error {
 		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
+	app.SetBatchPlan(batchPlan)
 	rawHandler := app.Routes()
 	rootMux := http.NewServeMux()
 	rootMux.Handle("/api/v1/llm/", auth.Middleware(llmobs.NewHandler(llmobs.NewStore(pool))))
@@ -165,6 +192,7 @@ func run(ctx context.Context, c config) error {
 	st := store.New(pool)
 	reader := store.NewVacancyAdapter(st)
 	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
+	resumer.SetBatchPlan(batchPlan)
 	app.BindResumeProcessor(resumer)
 	go func() {
 		bgCtx := context.Background()

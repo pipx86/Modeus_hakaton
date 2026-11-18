@@ -180,6 +180,71 @@
         }
       }
     },
+    "/sources/upload": {
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Upload a document as a source",
+        "description": "Extracts text from PDF, DOCX, TXT, MD, CSV or JSON and stores it as a global source that the analyst can use in new runs. The title defaults to the file name; the type defaults to `document`.",
+        "operationId": "uploadSource",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Document to extract text from (max 20 MB)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Optional display title; defaults to the file name."
+                  },
+                  "type": {
+                    "$ref": "#/components/schemas/SourceType"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created source with extracted text.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "description": "File is larger than 20 MB."
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/sources/{id}": {
       "get": {
         "tags": [
@@ -496,6 +561,66 @@
           },
           "501": {
             "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Edit an evidence quote",
+        "description": "Replaces the quote text while keeping the evidence status and node link.",
+        "operationId": "updateEvidence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EvidenceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quote"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "quote": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated evidence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Evidence"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
       }
@@ -861,11 +986,24 @@
                   "profession": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "chat",
+                      "batch"
+                    ],
+                    "description": "chat starts the interactive interviewer; batch runs the domain.Orchestrate pipeline. Omitted means chat when the chat service is configured, otherwise batch."
+                  },
+                  "transcript": {
+                    "type": "string",
+                    "description": "Optional interview transcript for a batch run. Chat runs ignore it."
                   }
                 }
               },
               "example": {
-                "profession": "Аналитик данных"
+                "profession": "Аналитик данных",
+                "type": "batch"
               }
             }
           }
@@ -3359,6 +3497,42 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "citations": {
+            "type": "array",
+            "description": "Sources the agent used when composing the message.",
+            "items": {
+              "$ref": "#/components/schemas/ChatCitation"
+            }
+          }
+        }
+      },
+      "ChatCitation": {
+        "type": "object",
+        "required": [
+          "title",
+          "quote"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        }
+      },
+      "RunEvent": {
+        "type": "object",
+        "description": "Payload of one server-sent event of a run stream.",
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/ChatMessage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
           }
         }
       },
