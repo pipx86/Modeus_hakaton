@@ -184,7 +184,11 @@ func saveInterviewTree(ctx context.Context, pgStore *api.PGStore, runID, profess
 		return fmt.Errorf("create interview source: %w", err)
 	}
 
-	converted := assignUUIDs(nodes, sourceID)
+	repaired, err := domain.RepairTree(nodes)
+	if err != nil {
+		return fmt.Errorf("repair tree: %w", err)
+	}
+	converted := assignUUIDs(repaired, sourceID)
 	rootCount := 0
 	for _, node := range converted {
 		if node.ParentID == nil {
