@@ -12,9 +12,30 @@ function App() {
       <ErrorBoundary>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="research/new" element={<NewResearch />} />
-            <Route path="research/:id" element={<Research />} />
+            <Route
+              index
+              element={
+                <ErrorBoundary key="dashboard" variant="inline">
+                  <Dashboard />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="research/new"
+              element={
+                <ErrorBoundary key="new-research" variant="inline">
+                  <NewResearch />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="research/:id"
+              element={
+                <ErrorBoundary key="research" variant="inline">
+                  <Research />
+                </ErrorBoundary>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

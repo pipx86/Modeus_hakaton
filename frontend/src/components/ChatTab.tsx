@@ -23,6 +23,7 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
   const [streamState, setStreamState] = useState<StreamState>("open")
   const bottomRef = useRef<HTMLDivElement>(null)
   const knownIds = useRef<Set<string>>(new Set())
+  const previousStreamState = useRef<StreamState>("open")
 
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
     // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
@@ -77,9 +78,24 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
         if (status === "done" || status === "failed") setThinking(false)
       },
       onStateChange: (state) => {
+        const previous = previousStreamState.current
+        previousStreamState.current = state
         setStreamState(state)
-        if (state === "open") void loadHistory()
+        if (state === "open") {
+          if (previous !== "open") toast.success("Соединение восстановлено")
+          void loadHistory()
+        }
+        if (state === "reconnecting" && previous === "open") {
+          toast.warning("Соединение потеряно", {
+            description: "Пробую переподключиться к серверу.",
+          })
+        }
         if (state === "failed") {
+          if (previous !== "failed") {
+            toast.error("Соединение с сервером потеряно", {
+              description: "Новые сообщения приходят опросом раз в 5 секунд.",
+            })
+          }
           pollTimer = window.setInterval(async () => {
             const { data } = await apiClient.GET("/runs/{id}/messages", {
               params: { path: { id: runId } },

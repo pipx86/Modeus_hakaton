@@ -4,6 +4,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { ChatTab } from "@/components/ChatTab"
 
@@ -339,6 +340,27 @@ describe("ChatTab", () => {
     renderTab()
 
     expect(await screen.findByText(/Чат ещё не открыт/)).toBeInTheDocument()
+  })
+
+  it("показывает тосты при обрыве и восстановлении соединения", async () => {
+    stubChat()
+    renderTab()
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+    const source = FakeEventSource.instances[0]
+    const warning = vi.spyOn(toast, "warning")
+    const error = vi.spyOn(toast, "error")
+    const success = vi.spyOn(toast, "success")
+
+    act(() => {
+      source.onerror?.()
+    })
+    expect(warning).toHaveBeenCalled()
+
+    act(() => {
+      source.onopen?.()
+    })
+    expect(success).toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
   })
 
   it("ошибка загрузки истории показывает баннер с кнопкой повтора", async () => {

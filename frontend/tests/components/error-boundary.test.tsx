@@ -29,6 +29,18 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("button", { name: "Обновить страницу" })).toBeInTheDocument()
   })
 
+  it("inline-вариант не занимает весь экран", () => {
+    render(
+      <ErrorBoundary variant="inline">
+        <Bomb shouldThrow />
+      </ErrorBoundary>,
+    )
+
+    const title = screen.getByText("Что-то пошло не так")
+    expect(title).toBeInTheDocument()
+    expect(title.closest(".min-h-dvh")).toBeNull()
+  })
+
   it("после сброса рендерит рабочее содержимое", () => {
     const { rerender } = render(
       <ErrorBoundary>

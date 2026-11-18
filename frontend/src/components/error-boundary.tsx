@@ -5,6 +5,8 @@ import { frontendLog } from "@/lib/frontend-log"
 
 interface ErrorBoundaryProps {
   children: ReactNode
+  /** `page` — на весь экран, `inline` — внутри Layout вокруг маршрута. */
+  variant?: "page" | "inline"
 }
 
 interface ErrorBoundaryState {
@@ -35,8 +37,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render() {
     if (!this.state.error) return this.props.children
 
+    const inline = this.props.variant === "inline"
+
     return (
-      <div className="flex min-h-dvh items-center justify-center p-6">
+      <div className={inline ? "" : "flex min-h-dvh items-center justify-center p-6"}>
         <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border border-destructive/50 p-8 text-center">
           <AlertCircleIcon className="size-8 text-destructive" />
           <div className="space-y-1">
