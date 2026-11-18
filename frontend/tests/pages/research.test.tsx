@@ -22,6 +22,7 @@ function stubRun(
     evidences?: unknown[]
     snapshots?: unknown[]
     reviewQueue?: unknown[]
+    conflicts?: unknown[]
     deleteError?: boolean
     nodePatchError?: boolean
     approveError?: boolean
@@ -67,6 +68,9 @@ function stubRun(
     }
     if (url.includes("/api/v1/reviews/evidence") && method === "GET") {
       return { status: 200, body: overrides.reviewQueue ?? [] }
+    }
+    if (url.includes("/api/v1/runs/7/conflicts") && method === "GET") {
+      return { status: 200, body: overrides.conflicts ?? [] }
     }
     if (url.includes("/api/v1/runs/7/snapshots") && method === "GET") {
       return { status: 200, body: overrides.snapshots ?? [] }
@@ -828,5 +832,45 @@ describe("Research", () => {
       ).toBe(true),
     )
     expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("открывает вкладку «Конфликты» и показывает разрешённый конфликт", async () => {
+    stubRun({
+      conflicts: [
+        {
+          id: "c1",
+          node_id: "f1",
+          field: "title",
+          values: [
+            { source_id: "s1", source_type: "vacancy", value: "Аналитик", priority: 100 },
+            {
+              source_id: "s2",
+              source_type: "interview",
+              value: "Data Scientist",
+              priority: 300,
+            },
+          ],
+          winner: {
+            source_id: "s2",
+            source_type: "interview",
+            value: "Data Scientist",
+            priority: 300,
+          },
+          reason: "higher source priority wins: interview (300)",
+        },
+      ],
+    })
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+    act(() => {
+      screen.getByRole("tab", { name: "Конфликты" }).focus()
+    })
+
+    expect(await screen.findByText("Выбрано")).toBeInTheDocument()
+    expect(screen.getByText("Аналитик")).toBeInTheDocument()
+    expect(
+      fetchCalls().some((call) => call.url.includes("/runs/7/conflicts")),
+    ).toBe(true)
   })
 })

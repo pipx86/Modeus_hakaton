@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
+import { ConflictsTab } from "@/components/conflicts-tab"
 import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -1223,6 +1224,9 @@ export function Research() {
           <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
             Снимки и проверка
           </TabsTrigger>
+          <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
+            Конфликты
+          </TabsTrigger>
           <TabsTrigger value="chat" className={TAB_TRIGGER_CLASS}>
             Чат
           </TabsTrigger>
@@ -1235,6 +1239,9 @@ export function Research() {
         </TabsContent>
         <TabsContent value="snapshots">
           <SnapshotReviewTab runId={id} onFocusNode={focusNode} />
+        </TabsContent>
+        <TabsContent value="conflicts">
+          <ConflictsTab runId={id} onFocusNode={focusNode} />
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab runId={id} active={!loading && !error} runStatus={run?.status} stage={run?.stage} />

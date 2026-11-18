@@ -63,6 +63,7 @@ export type ActivityNode = components["schemas"]["Node"]
 export type Source = components["schemas"]["Source"]
 export type Run = components["schemas"]["Run"]
 export type ChatMessage = components["schemas"]["ChatMessage"]
+export type Conflict = components["schemas"]["Conflict"]
 export type RunEvent = components["schemas"]["RunEvent"]
 
 // ---------------------------------------------------------------------------
