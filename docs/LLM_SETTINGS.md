@@ -188,3 +188,13 @@ reasoning-моделей ставьте `-timeout 180s` и больше; тай�
 - Живой прогон требует `LLM_API_KEY` и тратит деньги. Не коммитьте ключи и
   `.secrets/`; отчёт `-out` ключ не содержит, но превью ответов модели могут
   быть чувствительными — проверяйте перед публикацией.
+
+
+## Результаты живых замеров
+
+См. [LLM_TEMPERATURE_REPORT.md](LLM_TEMPERATURE_REPORT.md): interviewer и analyst, температуры 0.0/0.5/1.0, token budget и полные pipeline по трём профессиям.
+
+
+## Выбор модели analyst
+
+См. [LLM_MODEL_BAKEOFF.md](LLM_MODEL_BAKEOFF.md): сравнение DeepSeek Flash/Pro, GLM, MiniMax, Qwen и Gemini.

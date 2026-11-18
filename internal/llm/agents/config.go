@@ -180,7 +180,7 @@ func specFromEnv(name AgentName, defaultModel string, defaultTimeout time.Durati
 		spec.ReasoningEffort = "low"
 	case Analyst:
 		spec.Temperature = 0.2
-		spec.MaxTokens = 5000
+		spec.MaxTokens = 8000
 		spec.ReasoningEffort = "low"
 	case Synthesizer:
 		spec.Temperature = 0.1
