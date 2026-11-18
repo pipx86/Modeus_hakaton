@@ -48,6 +48,24 @@ func TestIssueRejectsUnknownRole(t *testing.T) {
 	}
 }
 
+func TestGuestRoleIsValidAndRoundTrips(t *testing.T) {
+	SetSecretForTests("test-secret-for-ci")
+	if !ValidRole(string(RoleGuest)) {
+		t.Fatal("guest должен быть допустимой ролью")
+	}
+	tok, err := Issue("demo-guest", RoleGuest, time.Hour)
+	if err != nil {
+		t.Fatalf("не удалось выпустить guest-токен: %v", err)
+	}
+	claims, err := Parse(tok)
+	if err != nil {
+		t.Fatalf("guest-токен не разобрался: %v", err)
+	}
+	if claims.Sub != "demo-guest" || claims.Role != string(RoleGuest) {
+		t.Fatalf("неверные claims: %+v", claims)
+	}
+}
+
 func TestParseRejectsWrongSecret(t *testing.T) {
 	SetSecretForTests("secret-A")
 	tok, _ := Issue("u-4", RoleROP, time.Hour)

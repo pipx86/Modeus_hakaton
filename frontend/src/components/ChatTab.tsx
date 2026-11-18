@@ -62,6 +62,8 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
   useEffect(() => {
     // Новый прогон — новый чат: старые id не должны блокировать загрузку истории.
     knownIds.current = new Set()
+    // Сброс при смене runId — это синхронизация с внешним run, а не каскадный рендер.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([])
   }, [runId])
 

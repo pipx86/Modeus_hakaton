@@ -15,11 +15,13 @@ const (
 	RoleTeacher Role = "teacher"
 	RoleROP     Role = "rop"
 	RoleStudent Role = "student"
+	// RoleGuest — гостевой доступ к демонстрационному стенду: только чтение.
+	RoleGuest Role = "guest"
 )
 
 func ValidRole(s string) bool {
 	switch Role(s) {
-	case RoleAdmin, RoleTeacher, RoleROP, RoleStudent:
+	case RoleAdmin, RoleTeacher, RoleROP, RoleStudent, RoleGuest:
 		return true
 	}
 	return false

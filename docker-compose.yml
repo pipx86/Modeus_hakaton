@@ -129,6 +129,13 @@ services:
       # Used by deploy/n8n/workflows/nightly_ingestion.json.
       INGESTION_URL: "${INGESTION_URL:-http://api:8080/api/v1/ingest}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      # Used by deploy/n8n/workflows/notion_email_notifications.json.
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      MAIL_FROM: "${MAIL_FROM:-}"
+      MAIL_TO: "${MAIL_TO:-}"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./deploy/n8n/workflows:/workflows:ro

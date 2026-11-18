@@ -1,0 +1,413 @@
+{
+  "name": "Notion notifications to email",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "3cc58315-2302-533b-b08d-3d314639e46b",
+      "name": "Manual test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notion-notify",
+        "authentication": "none",
+        "responseMode": "onReceived",
+        "options": {
+          "responseData": "accepted"
+        }
+      },
+      "id": "275af036-098e-5f6a-ada7-f92d2f22a764",
+      "name": "Webhook: notion-notify",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        -180
+      ],
+      "webhookId": "5e8b3321-734c-52a3-b989-52cc2e23133f"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Normalize a Notion (or any other service) webhook payload into one item.\n// Webhook trigger input: { headers, params, query, body }.\n// Manual trigger input: {} - the code then produces a demo notification so the\n// SMTP settings can be verified end to end from the n8n UI.\nconst incoming = $input.first()?.json ?? {};\nconst isWebhook =\n  Object.prototype.hasOwnProperty.call(incoming, 'body') ||\n  Object.prototype.hasOwnProperty.call(incoming, 'headers');\nconst body =\n  isWebhook && incoming.body && typeof incoming.body === 'object' && !Array.isArray(incoming.body)\n    ? incoming.body\n    : {};\nconst hasBody = Object.keys(body).length > 0;\nconst pick = (...values) =>\n  values.find((value) => value !== undefined && value !== null && String(value).trim() !== '') ?? '';\n\n// Required deployment configuration (see deploy/n8n/workflows/README.md).\n// SMTP_HOST/PORT/USER/PASS are validated here so a misconfigured deployment\n// fails loudly; the actual SMTP transport lives in the n8n 'smtp' credential.\nconst smtpHost = $env.SMTP_HOST ?? '';\nconst smtpPort = $env.SMTP_PORT ?? '';\nconst smtpUser = $env.SMTP_USER ?? '';\nconst smtpPass = $env.SMTP_PASS ?? '';\nconst mailFrom = $env.MAIL_FROM ?? '';\nconst mailTo = $env.MAIL_TO ?? '';\n\nconst missingEnv = [];\nif (!smtpHost) missingEnv.push('SMTP_HOST');\nif (!smtpPort) missingEnv.push('SMTP_PORT');\nif (!smtpUser) missingEnv.push('SMTP_USER');\nif (!smtpPass) missingEnv.push('SMTP_PASS');\nif (!mailFrom) missingEnv.push('MAIL_FROM');\nif (!mailTo) missingEnv.push('MAIL_TO');\n\nconst problems = [];\nif (missingEnv.length > 0) {\n  problems.push('Missing environment variable(s): ' + missingEnv.join(', '));\n}\n\n// Generic field mapping: Notion automation/webhook payloads can be adapted by\n// adding aliases to these pick() lists.\nlet title = pick(body.title, body.page_title, body.pageTitle, body.name, body.subject);\nlet url = pick(body.url, body.page_url, body.pageUrl, body.link, body.public_url);\nlet event = pick(body.event, body.event_type, body.type, body.action, body.trigger);\nlet pageId = pick(body.page_id, body.pageId, body.id);\nlet actor = pick(body.actor, body.edited_by, body.last_edited_by, body.user);\nlet timestamp = pick(body.timestamp, body.occurred_at, body.created_at, body.last_edited_time);\nlet isDemo = false;\n\nif (isWebhook && !hasBody) {\n  problems.push('Webhook body is empty or not a JSON object (send Content-Type: application/json)');\n} else if (!isWebhook) {\n  isDemo = true;\n  title = title || 'Manual test of the Notion notification workflow';\n  event = event || 'workflow.test';\n  actor = actor || 'n8n manual run';\n  timestamp = timestamp || $now.toISO();\n} else if (!title && !url && !event && !pageId) {\n  problems.push('Payload has no recognizable title/url/event/page_id fields (check the field mapping)');\n}\n\nreturn [\n  {\n    json: {\n      title: title || '(untitled page)',\n      url,\n      event: event || 'page.updated',\n      page_id: pageId,\n      actor: actor || 'unknown',\n      timestamp: timestamp || $now.toISO(),\n      received_at: $now.toISO(),\n      is_webhook: isWebhook,\n      is_demo: isDemo,\n      config_error: problems.join('; '),\n      mail_from: mailFrom,\n      mail_to: mailTo,\n      smtp_host: smtpHost,\n      smtp_port: smtpPort,\n    },\n  },\n];\n"
+      },
+      "id": "bc599e0d-71f5-51e2-b31b-1869bf0e9c03",
+      "name": "Normalize payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3867258b-fd60-56f7-bb09-4a85984dbad9",
+              "leftValue": "={{ $json.config_error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "76efedec-21cd-5f2d-8523-d20df3268ff0",
+      "name": "Config missing?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -120,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.MAIL_FROM }}",
+        "toEmail": "={{ $env.MAIL_TO }}",
+        "subject": "=[Notion] {{ $json.event }}: {{ $json.title }}",
+        "emailFormat": "text",
+        "text": "=Notion notification\n===================\nEvent:    {{ $json.event }}\nTitle:    {{ $json.title }}\nURL:      {{ $json.url || '(not provided)' }}\nPage ID:  {{ $json.page_id || '(not provided)' }}\nActor:    {{ $json.actor || 'unknown' }}\nTime:     {{ $json.timestamp }}\nReceived: {{ $json.received_at }}\n\nManual test: {{ $json.is_demo ? 'yes' : 'no' }}\nn8n execution: {{ $execution.id }}\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput",
+      "id": "3b8877a2-7b72-5e82-ad77-e5adfebe3b12",
+      "name": "Send email via SMTP",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9ac2ec39-1f33-55ab-8376-a296cc5659bd",
+              "name": "status",
+              "value": "sent",
+              "type": "string"
+            },
+            {
+              "id": "ceea50e1-f9ee-5dd6-98f3-a91dbe3f3a7c",
+              "name": "title",
+              "value": "={{ $('Normalize payload').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "f0b68d63-02aa-5a0c-b245-9d26ee8a709c",
+              "name": "event",
+              "value": "={{ $('Normalize payload').item.json.event }}",
+              "type": "string"
+            },
+            {
+              "id": "e8f26666-d430-5d79-99e9-867d0b29ba5d",
+              "name": "mail_to",
+              "value": "={{ $('Normalize payload').item.json.mail_to }}",
+              "type": "string"
+            },
+            {
+              "id": "d7153050-66c2-5bca-a3e1-c1bfbc2945bf",
+              "name": "message_id",
+              "value": "={{ $json.messageId ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "f571caa2-a5a5-51d8-9cf2-2004614f305d",
+              "name": "sent_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "d14dfcb2-d72c-5fbc-bc3f-a3d01dae02ee",
+              "name": "execution_id",
+              "value": "={{ String($execution.id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "adc4a915-9c10-5888-a2e1-9f9dfd5a5267",
+      "name": "Summary: email sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "361a9cce-3198-5be9-8535-786249c7ea43",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "b9d6e708-647b-5c6b-a853-1d51e4bdf5a6",
+              "name": "error",
+              "value": "={{ $json.error ?? $json.message ?? 'Email send failed' }}",
+              "type": "string"
+            },
+            {
+              "id": "0b3e93fe-71af-5a42-83ab-aad0dfebf35f",
+              "name": "title",
+              "value": "={{ $('Normalize payload').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "46c72fa6-3934-5922-8bcc-c5567990fdc2",
+              "name": "event",
+              "value": "={{ $('Normalize payload').item.json.event }}",
+              "type": "string"
+            },
+            {
+              "id": "7a088652-b6bb-5835-9170-3c28b6b7a7b1",
+              "name": "failed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a7b54899-812c-5202-a9ba-7d7c6d97b6f9",
+              "name": "execution_id",
+              "value": "={{ String($execution.id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "424d3f98-919e-596d-a253-1bb63453bd00",
+      "name": "Log email failure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3a66fe1b-c3ae-5fca-95c5-5e7e77b3c28a",
+              "name": "status",
+              "value": "skipped",
+              "type": "string"
+            },
+            {
+              "id": "6b14f9e1-9664-5d76-9f8e-651e24d59352",
+              "name": "reason",
+              "value": "={{ $json.config_error ?? 'unknown configuration problem' }}",
+              "type": "string"
+            },
+            {
+              "id": "69b79b93-1950-542c-836c-6a14bb44786c",
+              "name": "title",
+              "value": "={{ $json.title ?? '(unknown)' }}",
+              "type": "string"
+            },
+            {
+              "id": "47432f6b-b6ed-570d-aa31-45198635d266",
+              "name": "event",
+              "value": "={{ $json.event ?? '(unknown)' }}",
+              "type": "string"
+            },
+            {
+              "id": "50815392-63b8-5f99-a250-64a068842414",
+              "name": "logged_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "308f1a7c-d6b5-5aa3-8264-e1fb363a4273",
+              "name": "execution_id",
+              "value": "={{ String($execution.id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "01e614b6-30e6-5ceb-a68f-bd58ea19db42",
+      "name": "Log skipped notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        140,
+        140
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b1866028-7d96-56c7-9dc2-6952637377a1",
+      "name": "Done (no-op)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -40
+      ]
+    }
+  ],
+  "connections": {
+    "Manual test": {
+      "main": [
+        [
+          {
+            "node": "Normalize payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: notion-notify": {
+      "main": [
+        [
+          {
+            "node": "Normalize payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize payload": {
+      "main": [
+        [
+          {
+            "node": "Config missing?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config missing?": {
+      "main": [
+        [
+          {
+            "node": "Log skipped notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send email via SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email via SMTP": {
+      "main": [
+        [
+          {
+            "node": "Summary: email sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log email failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary: email sent": {
+      "main": [
+        [
+          {
+            "node": "Done (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log email failure": {
+      "main": [
+        [
+          {
+            "node": "Done (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log skipped notification": {
+      "main": [
+        [
+          {
+            "node": "Done (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Europe/Moscow"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "3589b6ab-096a-544d-a4fe-972d6b888883",
+  "id": null,
+  "tags": []
+}
