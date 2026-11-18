@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { afterEach, describe, expect, it } from "vitest"
 import { Login } from "@/pages/login"
-import { clearToken, getStoredToken } from "@/lib/auth"
+import { clearToken, getStoredToken, storeToken } from "@/lib/auth"
 
 function makeToken(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -9,9 +10,20 @@ function makeToken(payload: Record<string, unknown>): string {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.signature`
 }
 
+function renderLogin() {
+  return render(
+    <MemoryRouter initialEntries={["/login"]}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<div>home-page</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
 function submitToken(token: string) {
-  render(<Login />)
-  fireEvent.change(screen.getByLabelText("Токен"), { target: { value: token } })
+  renderLogin()
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: token } })
   fireEvent.click(screen.getByRole("button", { name: "Войти" }))
 }
 
@@ -20,12 +32,10 @@ describe("страница входа", () => {
     clearToken()
   })
 
-  it("принимает валидный токен и показывает сессию", () => {
+  it("принимает валидный токен и уводит на исходную страницу", async () => {
     submitToken(makeToken({ sub: "local-demo", role: "admin", exp: 4102444800 }))
 
-    expect(screen.getByText("Вы вошли")).toBeInTheDocument()
-    expect(screen.getByText("local-demo")).toBeInTheDocument()
-    expect(screen.getByText("admin")).toBeInTheDocument()
+    expect(await screen.findByText("home-page")).toBeInTheDocument()
     expect(getStoredToken()).not.toBeNull()
   })
 
@@ -43,13 +53,16 @@ describe("страница входа", () => {
     expect(getStoredToken()).toBeNull()
   })
 
-  it("выход очищает сохранённый токен", () => {
-    submitToken(makeToken({ sub: "local-demo", role: "admin", exp: 4102444800 }))
+  it("показывает сессию и очищает токен при выходе", () => {
+    storeToken(makeToken({ sub: "local-demo", role: "admin", exp: 4102444800 }))
+    renderLogin()
+
     expect(screen.getByText("Вы вошли")).toBeInTheDocument()
+    expect(screen.getByText("local-demo")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Выйти" }))
 
-    expect(screen.getByLabelText("Токен")).toBeInTheDocument()
+    expect(screen.getByRole("textbox")).toBeInTheDocument()
     expect(getStoredToken()).toBeNull()
   })
 })

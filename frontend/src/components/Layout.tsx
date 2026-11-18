@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Link, Outlet, useLocation } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
+import { getCurrentRole } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -15,6 +16,7 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PlusIcon,
+  ShieldIcon,
   SunIcon,
 } from "lucide-react"
 
@@ -22,6 +24,8 @@ const NAV_ITEMS = [
   { to: "/", label: "Исследования", icon: FlaskConicalIcon, end: true },
   { to: "/research/new", label: "Новое исследование", icon: PlusIcon, end: false },
 ]
+
+const ADMIN_ITEM = { to: "/admin", label: "Админка", icon: ShieldIcon, end: false }
 
 function useBreadcrumbs() {
   const { pathname } = useLocation()
@@ -61,12 +65,21 @@ function ThemeToggle({ collapsed }: { collapsed: boolean }) {
   )
 }
 
-function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+function SidebarNav({
+  collapsed,
+  onNavigate,
+  isAdmin,
+}: {
+  collapsed: boolean
+  onNavigate?: () => void
+  isAdmin: boolean
+}) {
   const { pathname } = useLocation()
+  const items = isAdmin ? [...NAV_ITEMS, ADMIN_ITEM] : NAV_ITEMS
 
   return (
     <nav className="flex flex-col gap-1 px-3">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const Icon = item.icon
         const active = item.end ? pathname === item.to : pathname.startsWith(item.to)
 
@@ -100,7 +113,15 @@ function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?
   )
 }
 
-function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+function SidebarContent({
+  collapsed,
+  onNavigate,
+  isAdmin,
+}: {
+  collapsed: boolean
+  onNavigate?: () => void
+  isAdmin: boolean
+}) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -120,7 +141,7 @@ function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; onNavig
         )}
       </div>
 
-      <SidebarNav collapsed={collapsed} onNavigate={onNavigate} />
+      <SidebarNav collapsed={collapsed} onNavigate={onNavigate} isAdmin={isAdmin} />
 
       <div className="mt-auto flex flex-col gap-1 border-t p-3">
         <ThemeToggle collapsed={collapsed} />
@@ -144,6 +165,8 @@ export function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const breadcrumbs = useBreadcrumbs()
+  const { pathname } = useLocation()
+  const isAdmin = useMemo(() => getCurrentRole() === "admin", [pathname])
 
   return (
     <TooltipProvider>
@@ -156,7 +179,7 @@ export function Layout() {
               collapsed ? "w-16" : "w-64",
             )}
           >
-            <SidebarContent collapsed={collapsed} />
+            <SidebarContent collapsed={collapsed} isAdmin={isAdmin} />
             <div className="border-t p-2">
               <Button
                 variant="ghost"
@@ -212,7 +235,7 @@ export function Layout() {
 
         <SheetContent side="left" className="w-72 p-0">
           <SheetTitle className="sr-only">Навигация</SheetTitle>
-          <SidebarContent collapsed={false} onNavigate={() => setMobileOpen(false)} />
+          <SidebarContent collapsed={false} isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
         </SheetContent>
       </Sheet>
     </TooltipProvider>

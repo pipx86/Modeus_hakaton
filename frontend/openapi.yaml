@@ -545,8 +545,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /users:
+    get:
+      tags: [users]
+      summary: List demo users
+      operationId: listUsers
+      responses:
+        "200":
+          description: Demo users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DemoUser"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
+    DemoUser:
+      type: object
+      required: [subject, role]
+      properties:
+        subject:
+          type: string
+        role:
+          type: string
+        read_only:
+          type: boolean
     HealthResponse:
       type: object
       required: [status]

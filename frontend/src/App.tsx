@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { RequireAuth } from "@/components/require-auth"
 import { Layout } from "@/components/Layout"
 import { Dashboard } from "@/pages/Dashboard"
+import { Admin } from "@/pages/admin"
 import { Login } from "@/pages/login"
 import { NewResearch } from "@/pages/NewResearch"
 import { NotFound } from "@/pages/not-found"
@@ -16,25 +18,31 @@ function App() {
             <Route
               index
               element={
-                <ErrorBoundary key="dashboard" variant="inline">
-                  <Dashboard />
-                </ErrorBoundary>
+                <RequireAuth>
+                  <ErrorBoundary key="dashboard" variant="inline">
+                    <Dashboard />
+                  </ErrorBoundary>
+                </RequireAuth>
               }
             />
             <Route
               path="research/new"
               element={
-                <ErrorBoundary key="new-research" variant="inline">
-                  <NewResearch />
-                </ErrorBoundary>
+                <RequireAuth>
+                  <ErrorBoundary key="new-research" variant="inline">
+                    <NewResearch />
+                  </ErrorBoundary>
+                </RequireAuth>
               }
             />
             <Route
               path="research/:id"
               element={
-                <ErrorBoundary key="research" variant="inline">
-                  <Research />
-                </ErrorBoundary>
+                <RequireAuth>
+                  <ErrorBoundary key="research" variant="inline">
+                    <Research />
+                  </ErrorBoundary>
+                </RequireAuth>
               }
             />
             <Route
@@ -43,6 +51,16 @@ function App() {
                 <ErrorBoundary key="login" variant="inline">
                   <Login />
                 </ErrorBoundary>
+              }
+            />
+            <Route
+              path="admin"
+              element={
+                <RequireAuth>
+                  <ErrorBoundary key="admin" variant="inline">
+                    <Admin />
+                  </ErrorBoundary>
+                </RequireAuth>
               }
             />
             <Route path="*" element={<NotFound />} />

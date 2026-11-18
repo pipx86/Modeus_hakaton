@@ -61,3 +61,10 @@ export function storeToken(token: string) {
 export function clearToken() {
   window.localStorage.removeItem(STORAGE_KEY)
 }
+
+/** Роль текущей сессии или null, если токена нет/он просрочен. */
+export function getCurrentRole(): string | null {
+  const token = getValidToken()
+  if (!token) return null
+  return decodeToken(token)?.role ?? null
+}

@@ -88,6 +88,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/evidences/bulk-approve", s.handleBulkApprove)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleDeleteSource)
 	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
+	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
