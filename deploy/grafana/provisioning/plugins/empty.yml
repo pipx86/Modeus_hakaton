@@ -1,0 +1,5 @@
+﻿# Placeholder: no Grafana plugins are provisioned for this stack. The file only
+# keeps the provisioning subdirectory present so Grafana does not log a
+# "directory not found" error at startup.
+apps: []
+plugins: []

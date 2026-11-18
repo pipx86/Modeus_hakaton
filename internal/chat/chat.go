@@ -1,5 +1,10 @@
-// Package chat keeps the in-memory interviewer dialog for one run and exposes
-// messages and events to the HTTP API.
+// Package chat keeps the interviewer dialog for one run, mirrors it to durable
+// storage when configured, and exposes messages and events to the HTTP API.
+//
+// The active dialog (SSE events, in-flight interviewer questions) stays in
+// memory, but every message is also written through MessageStore so that
+// GET /api/v1/runs/{id}/messages keeps returning the history after a backend
+// restart, when the in-memory session is gone.
 package chat
 
 import (
@@ -15,12 +20,37 @@ import (
 	"activity-descriptor/internal/llm"
 )
 
+// Citation is an optional reference attached to an agent message. The field is
+// part of the public chat contract; the interviewer does not produce citations
+// yet, so it is normally absent.
+type Citation struct {
+	Title string `json:"title"`
+	Quote string `json:"quote"`
+}
+
 // Message is one chat message. Role is user or agent.
 type Message struct {
-	ID        string    `json:"id"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	CreatedAt time.Time  `json:"created_at"`
+	Citations []Citation `json:"citations,omitempty"`
+	// Sequence is the durable 1-based position inside the run dialog. It is
+	// not part of the HTTP representation: the public ID already embeds it.
+	Sequence int `json:"-"`
+}
+
+// MessageStore persists the dialog of one run outside the process. The chat
+// service writes every message through it and reads the history back when the
+// in-memory session no longer exists (completed run or backend restart).
+//
+// Implementations must be idempotent for the same (run_id, sequence) pair:
+// a retried AppendMessage for an already stored position must succeed without
+// creating a duplicate row. ListMessages returns ErrNotFound when the run
+// itself does not exist. Messages must be ordered by sequence ascending.
+type MessageStore interface {
+	AppendMessage(ctx context.Context, runID string, message Message) error
+	ListMessages(ctx context.Context, runID string) ([]Message, error)
 }
 
 // Event is one server-sent chat event.
@@ -51,6 +81,10 @@ type Finalizer func(ctx context.Context, runID, profession string, session domai
 
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
+// persistTimeout bounds one durable write/read of the chat history. The
+// dialog itself must not hang on a slow database.
+const persistTimeout = 5 * time.Second
+
 // Service owns one interviewer session per run.
 type Service struct {
 	client        llm.ChatClient
@@ -60,6 +94,7 @@ type Service struct {
 
 	mu       sync.Mutex
 	sessions map[string]*session
+	store    MessageStore
 }
 
 type session struct {
@@ -82,6 +117,23 @@ func NewService(client llm.ChatClient, onFinish func(string, domain.RunStatus)) 
 		onFinish: onFinish,
 		sessions: make(map[string]*session),
 	}
+}
+
+// SetMessageStore installs the durable history store. It must be called before
+// the first run is started. Nil (the default) keeps the dialog in memory only,
+// which is the demo/test setup.
+func (s *Service) SetMessageStore(store MessageStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.store = store
+}
+
+// messageStore returns the configured persistence layer. It is read on every
+// write so SetMessageStore is safe with a concurrently running service.
+func (s *Service) messageStore() MessageStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.store
 }
 
 // SetFinalizer installs the post-interview pipeline. It must be called before
@@ -134,14 +186,14 @@ func (s *Service) Start(runID, profession string) error {
 	s.mu.Unlock()
 
 	sess.mu.Lock()
-	sess.seq++
-	welcome := Message{
-		ID:        fmt.Sprintf("msg-%s-%d", runID, sess.seq),
-		Role:      "agent",
-		Content:   welcomeMessage,
-		CreatedAt: time.Now().UTC(),
+	welcome, err := s.appendMessageLocked(runID, sess, "agent", welcomeMessage, true)
+	if err != nil {
+		sess.mu.Unlock()
+		s.mu.Lock()
+		delete(s.sessions, runID)
+		s.mu.Unlock()
+		return fmt.Errorf("chat: persist greeting: %w", err)
 	}
-	sess.messages = append(sess.messages, welcome)
 	sess.asking = true
 	sess.mu.Unlock()
 	s.publish(runID, Event{Type: "agent_message", Message: &welcome})
@@ -150,9 +202,18 @@ func (s *Service) Start(runID, profession string) error {
 	return nil
 }
 
-// Messages returns a copy of the chat history.
+// Messages returns a copy of the chat history. When the active session is not
+// in memory (a completed run, or a run served by a restarted backend) the
+// history is loaded from the durable store. ErrNotFound means the run has no
+// chat history and no active session.
 func (s *Service) Messages(runID string) ([]Message, error) {
+	if runID == "" {
+		return nil, ErrNotFound
+	}
 	sess, err := s.lookup(runID)
+	if errors.Is(err, ErrNotFound) {
+		return s.persistedMessages(runID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +222,24 @@ func (s *Service) Messages(runID string) ([]Message, error) {
 	out := make([]Message, len(sess.messages))
 	copy(out, sess.messages)
 	return out, nil
+}
+
+// persistedMessages reads the history of a run that has no in-memory session.
+func (s *Service) persistedMessages(runID string) ([]Message, error) {
+	store := s.messageStore()
+	if store == nil {
+		return nil, ErrNotFound
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	messages, err := store.ListMessages(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if messages == nil {
+		messages = []Message{}
+	}
+	return messages, nil
 }
 
 // Post records the respondent answer and schedules the next question.
@@ -174,14 +253,11 @@ func (s *Service) Post(runID, content string) (Message, error) {
 	}
 
 	sess.mu.Lock()
-	sess.seq++
-	message := Message{
-		ID:        fmt.Sprintf("msg-%s-%d", runID, sess.seq),
-		Role:      "user",
-		Content:   content,
-		CreatedAt: time.Now().UTC(),
+	message, err := s.appendMessageLocked(runID, sess, "user", content, true)
+	if err != nil {
+		sess.mu.Unlock()
+		return Message{}, fmt.Errorf("chat: persist answer: %w", err)
 	}
-	sess.messages = append(sess.messages, message)
 	if err := sess.session.Answer(content); err != nil {
 		sess.mu.Unlock()
 		return Message{}, fmt.Errorf("chat: answer: %w", err)
@@ -265,15 +341,12 @@ func (s *Service) askNext(runID string, sess *session) {
 	}
 
 	sess.mu.Lock()
-	sess.seq++
-	message := Message{
-		ID:        fmt.Sprintf("msg-%s-%d", runID, sess.seq),
-		Role:      "agent",
-		Content:   question.Text,
-		CreatedAt: time.Now().UTC(),
-	}
-	sess.messages = append(sess.messages, message)
+	message, err := s.appendMessageLocked(runID, sess, "agent", question.Text, false)
 	sess.mu.Unlock()
+	if err != nil {
+		log.Printf("chat: persist question for run %s: %v", runID, err)
+		return
+	}
 
 	s.publish(runID, Event{Type: "agent_message", Message: &message})
 }
@@ -308,16 +381,49 @@ func (s *Service) appendAgentMessage(runID, content string) {
 		return
 	}
 	sess.mu.Lock()
+	message, err := s.appendMessageLocked(runID, sess, "agent", content, false)
+	sess.mu.Unlock()
+	if err != nil {
+		log.Printf("chat: persist agent message for run %s: %v", runID, err)
+		return
+	}
+	s.publish(runID, Event{Type: "agent_message", Message: &message})
+}
+
+// appendMessageLocked appends one message to the in-memory session and mirrors
+// it into the durable store. It must be called with sess.mu held.
+//
+// required decides what a store failure means. For messages the respondent is
+// waiting on (the greeting and user answers) the failure is returned and the
+// sequence counter is rolled back, so memory never answers 201 for a message
+// that was not persisted; the caller can retry with the same ID. Background
+// agent messages are best effort: the error is logged and the message still
+// reaches the active subscriber, so a database hiccup cannot stall the dialog.
+func (s *Service) appendMessageLocked(runID string, sess *session, role, content string, required bool) (Message, error) {
 	sess.seq++
 	message := Message{
-		ID:        fmt.Sprintf("msg-%s-%d", runID, sess.seq),
-		Role:      "agent",
+		ID:   fmt.Sprintf("msg-%s-%d", runID, sess.seq),
+		Role: role,
+		// Microsecond precision matches PostgreSQL TIMESTAMPTZ, so a message
+		// reloaded after a restart has exactly the timestamp it had in memory.
+		CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		Content:   content,
-		CreatedAt: time.Now().UTC(),
+		Sequence:  sess.seq,
+	}
+	if store := s.messageStore(); store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+		err := store.AppendMessage(ctx, runID, message)
+		cancel()
+		if err != nil {
+			if required {
+				sess.seq--
+				return Message{}, err
+			}
+			log.Printf("chat: persist message for run %s: %v", runID, err)
+		}
 	}
 	sess.messages = append(sess.messages, message)
-	sess.mu.Unlock()
-	s.publish(runID, Event{Type: "agent_message", Message: &message})
+	return message, nil
 }
 
 func (s *Service) publish(runID string, event Event) {

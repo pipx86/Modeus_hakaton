@@ -1,0 +1,105 @@
+# Alerting / SLO rules for the activity-descriptor stack.
+#
+# Loaded by both scrape configs (deploy/prometheus/prometheus.yml and
+# prometheus.host.yml) via `rule_files`. Verify with:
+#
+#   docker compose --profile monitoring run --rm --no-deps prometheus \
+#     promtool check rules /etc/prometheus/alerts.yml
+#
+# NOTE: Prometheus evaluates and displays these rules (UI -> Alerts), but it
+# does not deliver notifications by itself. Routing requires an Alertmanager
+# (not part of this local demo); that is a documented production gap, see
+# docs/GRAFANA.md. Rules are written so that "no traffic yet" is NOT an alert:
+# the ratio/latency rules need a non-empty request/agent series to fire.
+groups:
+  - name: activity-descriptor-slo
+    rules:
+      - alert: ActivityDescriptorApiDown
+        expr: up{job=~"activity-descriptor-api.*"} == 0
+        # 6m > Prometheus' 5m instant-query lookback: right after switching
+        # between the compose and host scrape configs, the removed target's
+        # last sample can linger for up to 5 minutes and must not page anyone.
+        for: 6m
+        labels:
+          severity: critical
+          service: activity-descriptor
+          component: api
+        annotations:
+          summary: "API scrape target is DOWN"
+          description: >-
+            Prometheus cannot scrape {{ $labels.instance }} (job {{ $labels.job }},
+            deployment {{ $labels.deployment }}). Check the backend process and
+            `docker compose logs prometheus` for the scrape error.
+
+      - alert: ActivityDescriptorHigh5xxRate
+        expr: |
+          (
+            (sum(rate(activity_descriptor_http_requests_total{status=~"5.."}[5m])) or vector(0))
+            /
+            clamp_min(sum(rate(activity_descriptor_http_requests_total[5m])), 0.000001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: activity-descriptor
+          component: api
+        annotations:
+          summary: "API 5xx ratio above 5%"
+          description: >-
+            The 5xx share of HTTP responses is {{ $value | humanizePercentage }}
+            over the last 5 minutes (SLO target: below 1%).
+
+      - alert: ActivityDescriptorHighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(activity_descriptor_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          service: activity-descriptor
+          component: api
+        annotations:
+          summary: "API HTTP p95 latency above 2s"
+          description: >-
+            The p95 HTTP latency is {{ $value | humanizeDuration }} over the last
+            10 minutes (SLO target: below 2s).
+
+      - alert: ActivityDescriptorLlmErrorRatioHigh
+        expr: |
+          (
+            (sum(rate(activity_descriptor_agent_calls_total{status!="ok"}[10m])) or vector(0))
+            /
+            clamp_min(sum(rate(activity_descriptor_agent_calls_total[10m])), 0.000001)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: activity-descriptor
+          component: llm
+        annotations:
+          summary: "LLM agent error ratio above 5%"
+          description: >-
+            The agent call error ratio is {{ $value | humanizePercentage }} over
+            the last 10 minutes. Check the agent/model labels and the provider
+            status; no alert fires while there is no LLM traffic.
+
+      - alert: ActivityDescriptorRunFailures
+        expr: |
+          (
+            (sum(increase(activity_descriptor_runs_total{status=~"failed|degraded"}[30m])) or vector(0))
+            /
+            clamp_min(sum(increase(activity_descriptor_runs_total[30m])), 0.000001)
+          ) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          service: activity-descriptor
+          component: pipeline
+        annotations:
+          summary: "More than 25% of completed runs failed or degraded"
+          description: >-
+            {{ $value | humanizePercentage }} of runs completed in the last
+            30 minutes ended in failed/degraded state. Inspect run events and
+            agent error metrics; no alert fires while there is no run traffic.

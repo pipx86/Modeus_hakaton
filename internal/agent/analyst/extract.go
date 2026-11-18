@@ -20,20 +20,37 @@ var ErrQuoteMismatch = errors.New("analyst: quote is not verbatim")
 var ErrNoEntities = errors.New("analyst: model returned no entities")
 
 // ValidateEntities enforces the mandatory evidence fields and checks that every
-// quote is a verbatim transcript fragment after whitespace normalization.
+// quote is a verbatim transcript fragment after whitespace normalization. It is
+// the transcript-only form kept for callers that have no extra sources.
 func ValidateEntities(out agent.AnalystOutput, transcript string) error {
+	return ValidateEntitiesWithSources(out, transcript, nil)
+}
+
+// ValidateEntitiesWithSources enforces the mandatory evidence fields and
+// accepts a quote only when it occurs verbatim in the transcript, in the
+// referenced source content, or — as a safe fallback for older model answers —
+// somewhere in the transcript. Unknown references without a matching quote are
+// rejected so the repair loop can ask the model again.
+func ValidateEntitiesWithSources(out agent.AnalystOutput, transcript string, sources []domain.Source) error {
 	if len(out.Entities) == 0 {
 		return ErrNoEntities
 	}
+	contents := sourceContents(agent.AnalystInput{Transcript: transcript, Sources: sources})
 	for i := range out.Entities {
 		entity := &out.Entities[i]
 		if err := entity.Validate(); err != nil {
 			return fmt.Errorf("analyst: entity %q: %w", entity.ID, err)
 		}
 		for _, evidence := range entity.Evidence {
-			if !validate.ContainsQuote(transcript, evidence.Quote) {
-				return fmt.Errorf("%w: entity %q quote %q", ErrQuoteMismatch, entity.ID, evidence.Quote)
+			source, known := evidenceSource(contents, evidence.SourceID)
+			quoteInSource := known && validate.ContainsQuote(source.Content, evidence.Quote)
+			if quoteInSource {
+				continue
 			}
+			if validate.ContainsQuote(transcript, evidence.Quote) {
+				continue
+			}
+			return fmt.Errorf("%w: entity %q quote %q", ErrQuoteMismatch, entity.ID, evidence.Quote)
 		}
 	}
 	return nil

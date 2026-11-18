@@ -39,12 +39,12 @@ on them for access control.
 | -------- | ------- | ------- |
 | `N8N_PORT` | `5678` | host port |
 | `N8N_HOST` | `localhost` | host name used in the editor/webhooks |
-| `N8N_WEBHOOK_URL` | `http://localhost:5678/` | URL n8n advertises for webhooks |
+| `N8N_WEBHOOK_URL` | `http://localhost:5678/` | URL n8n advertises for webhooks (editor display). For a public tunnel set it to the public HTTPS base; the production webhook path is served even if this stays `localhost` (verified) |
 | `N8N_BASIC_AUTH_*` | — | **ignored by n8n 1.63.4** (legacy compose vars); use UI owner setup |
 | `N8N_DB_NAME` / `N8N_DB_USER` / `N8N_DB_PASSWORD` | `n8n` / `n8n` / `n8n_dev_password` | automation Postgres |
 | `INGESTION_URL` | `http://api:8080/api/v1/ingest` | target of the nightly ingestion workflow |
 | `TELEGRAM_CHAT_ID` | empty | target chat for the (disabled by default) error alert |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | empty / `587` | SMTP relay for `notion_email_notifications.json` (pre-flight validation; the transport itself is an n8n *SMTP account* credential) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | empty / `587` | SMTP relay for `notion_email_notifications.json` (pre-flight validation; the transport itself is an n8n *SMTP account* credential). A real STARTTLS + AUTH relay was verified — see Verification |
 | `MAIL_FROM` / `MAIL_TO` | empty | sender/recipient evaluated per execution by the email node |
 
 `N8N_SECURE_COOKIE=false` is required for local plain HTTP access only.
@@ -128,6 +128,16 @@ the public API inside the compose network (`http://api:8080`):
   created in the n8n UI and the error node ships disabled with a placeholder
   credential id. The SMTP credential is stored encrypted in Postgres; never
   commit credential exports (`n8n export:credentials --decrypted` is plaintext).
+* A Cloudflare **quick tunnel** (`cloudflared tunnel --url …`) publishes the
+  entire n8n port, editor included, on a random ephemeral hostname — not just
+  the webhook. Treat it as a short-lived test tool: create the owner account
+  first, add webhook auth, stop the tunnel right after validation, and never
+  hand a quick-tunnel URL to a production integration (it changes on restart).
+  Verified details and the exact commands are in the Verification section.
+* Exposing the webhook publicly is a write path into the integration: with
+  `authentication: none` anyone who learns the URL can trigger emails. Use
+  Header Auth (or proxy-level auth) and a stable HTTPS hostname; the Notion
+  cloud cannot reach `localhost`.
 
 ## Verification
 
@@ -161,14 +171,110 @@ credential id `REPLACE_WITH_SMTP_CREDENTIAL_ID` (disposable test only).
 Full copy-paste recipe (MailHog + credential import + webhook + sink check):
 [`deploy/n8n/workflows/README.md`](../deploy/n8n/workflows/README.md#end-to-end-test-with-a-local-smtp-sink-verified).
 
-**Not covered by the local test** (still needs a real environment):
+The MailHog test proves the workflow wiring and the credential handoff, but not
+TLS/provider authentication or reachability from the internet. Those two gaps
+were closed separately with a real relay and a public tunnel.
 
-* a real SMTP relay with TLS/STARTTLS, provider authentication and
-  `SMTP_PORT=465/587` — MailHog is plaintext and accepts any AUTH;
-* a **public HTTPS** webhook URL that Notion's cloud can reach (reverse
-  proxy/tunnel + Header Auth), and the Notion automation itself;
-* the real ingestion endpoint for `nightly_ingestion.json` (compose default is a
-  placeholder — see above).
+### End-to-end with a real SMTP relay (Ethereal, verified)
+
+MailHog accepts plaintext SMTP and any AUTH. To prove the real transport, the
+same workflow was run against [Ethereal](https://ethereal.email) — a real SMTP
+relay that requires STARTTLS and provider authentication on
+`smtp.ethereal.email:587` and also exposes IMAP (`imap.ethereal.email:993`) for
+checking the mailbox. Ethereal is still a **test sink**: it authenticates and
+stores the message but does not deliver it to the recipient's real mailbox, so
+it proves the transport, not external deliverability.
+
+Verified on 2026-11-18 against `n8nio/n8n:1.63.4` + `postgres:16-alpine`, with
+the committed workflow imported **unchanged**:
+
+| Check | Observed result |
+| ----- | --------------- |
+| throwaway account via `POST https://api.nodemailer.com/user` | created; SMTP `smtp.ethereal.email:587` + IMAP endpoint; no signup, no user secrets |
+| `n8n import:credentials` (real user/password) | `Successfully imported 1 credential.`; Postgres `credentials_entity.data` starts with `U2FsdGVkX1…` (encrypted, not plaintext) |
+| workflow import + activate + restart | production webhook registered; exported workflow unmodified |
+| `POST /webhook/notion-notify` | HTTP `200`, body `accepted` |
+| n8n execution | `status: success`; run data contains `Summary: email sent` and the SMTP `250` response; no `ECONNREFUSED` |
+| Ethereal IMAP inbox | `0 → 3` messages; From `n8n@example.test` → To `notifications@example.test`; subject `[Notion] page.updated: …`; body contains the mapped fields and the n8n execution id |
+| `n8n --version` | `1.63.4` |
+
+The generated account/password were used only at runtime (shell env + a temp
+credential file, never in the repo) and are not reproduced here. Ethereal
+accounts and messages are short-lived; the full copy-paste recipe is in
+[`deploy/n8n/workflows/README.md`](../deploy/n8n/workflows/README.md#end-to-end-test-with-a-real-smtp-relay-ethereal-verified).
+
+### Public HTTPS webhook via a quick tunnel (verified)
+
+The production webhook was exposed with a Cloudflare quick tunnel
+(`cloudflared tunnel --url http://localhost:5678`) and driven from its **public
+HTTPS URL**, not from `127.0.0.1`:
+
+| Check | Observed result |
+| ----- | --------------- |
+| `cloudflared tunnel --url http://localhost:5678` | quick tunnel created; public base `https://<random>.trycloudflare.com` |
+| public `GET /healthz` | HTTP `200`; `Server: cloudflare`, `CF-Ray: …`, valid TLS (`ssl_verify_result=0`) |
+| public DNS name | `104.16.x.x` (Cloudflare anycast), not loopback |
+| public `POST /webhook/notion-notify` | HTTP `200 accepted` through the Cloudflare edge |
+| n8n execution + Ethereal inbox | execution `success`; a new message with the payload values arrived in the Ethereal inbox |
+| `N8N_WEBHOOK_URL` left at `http://localhost:5678/` | public POST still `200 accepted` + email sent — the production path is served regardless of the advertised URL; set `N8N_WEBHOOK_URL`/`N8N_HOST` to the public URL only so the editor displays the right URLs |
+
+The tunnel observed for that run was
+`https://sophisticated-composition-miller-commands.trycloudflare.com` — ephemeral
+and already torn down. Copy-paste procedure, Windows/Linux variants and caveats:
+[`deploy/n8n/workflows/README.md`](../deploy/n8n/workflows/README.md#public-https-webhook-with-a-quick-tunnel-verified).
+
+Security caveats for a quick tunnel (read before repeating this):
+
+* the tunnel exposes the **whole n8n instance**, editor included, not just the
+  webhook. The stack used for the test was disposable and the tunnel was stopped
+  afterwards. Create the owner account first and keep the tunnel short-lived;
+  for anything permanent use a named tunnel (Cloudflare account + token) or a
+  reverse proxy with a stable hostname;
+* the committed webhook has `authentication: none` — anyone with the URL can
+  trigger the email. Add Header Auth on the webhook node (Notion's *Send
+  webhook* action can send a custom header) or enforce auth at the proxy
+  **before** handing the URL to Notion;
+* the quick-tunnel hostname changes on every run. A Notion automation that
+  keeps a stale URL fails and Notion pauses it, so a stable HTTPS hostname is
+  required for production.
+
+### Notion automation (not created: no workspace/token)
+
+The Notion side was **not** tested: this environment has no Notion workspace,
+integration token or paid-plan access, and a Notion automation cannot be created
+without them. Nothing here claims otherwise. The exact procedure to point a
+Notion automation at the verified public webhook (when access exists):
+
+1. The webhook must answer on a **stable public HTTPS URL** (a quick tunnel is
+   acceptable only for a one-off test — see the caveat above).
+2. Notion's *Send webhook* is a paid-plan automation action: in a database open
+   **Automations → New automation**, choose a trigger (e.g. *Page added* /
+   *Page edited*), then **Add action → Send webhook**.
+3. Paste `https://<your-host>/webhook/notion-notify` as the URL. If the webhook
+   node uses Header Auth, use **Add custom header** with the same header
+   name/value as the n8n credential — Notion's webhook action itself has no
+   built-in authentication.
+4. Select the database properties to send. Notion sends only the selected
+   database page **properties** (never page content), supports **POST only**,
+   allows at most five webhook actions per automation and offers no payload
+   preview (Notion's docs suggest capturing it with a service like
+   webhook.site).
+5. The flow's *Normalize payload* node expects the flat aliases described above.
+   Notion's property payload needs either property names matching those aliases
+   (`title`, `url`, …) or a small edit of the `pick(...)` lists / an extra
+   mapping node. This mapping could not be verified without a Notion workspace.
+6. Save the automation, edit a page in the database, then check n8n
+   **Executions** and the recipient mailbox. A failing webhook action makes
+   Notion pause the automation.
+
+Still missing / requires a real environment:
+
+* external deliverability to a real recipient mailbox — Ethereal does not relay
+  externally; use a provider SMTP account (e.g. your mail host) for the final
+  check;
+* the Notion automation itself, as described above;
+* the real ingestion endpoint for `nightly_ingestion.json` (the compose default
+  is a placeholder — see above).
 
 ### Manual checklist for a real deployment
 
@@ -178,10 +284,16 @@ Full copy-paste recipe (MailHog + credential import + webhook + sink check):
    <http://localhost:5678> and create the owner account.
 3. Create the **SMTP account** credential (UI → Credentials, then *Test*) or
    import it via `n8n import:credentials`; select it in **Send email via SMTP**
-   instead of the `REPLACE_WITH_SMTP_CREDENTIAL_ID` placeholder.
+   instead of the `REPLACE_WITH_SMTP_CREDENTIAL_ID` placeholder. For a
+   no-signup dry run against a real STARTTLS/AUTH relay use the Ethereal recipe
+   above; switch the credential to your provider's relay for actual delivery.
 4. Import the workflows with `--separate`, activate them, then
    `docker compose --profile automation restart n8n`.
-5. Smoke-test the webhook with `curl` (expect `accepted`), confirm the email
-   arrives, and check the *Executions* list (`sent` / `skipped` / `error`).
-6. Only then expose the webhook over HTTPS with authentication and point the
-   Notion automation at `https://<host>/webhook/notion-notify`.
+5. Smoke-test the webhook with `curl` (expect `accepted`), confirm the email is
+   really delivered (your mailbox, or the Ethereal inbox during the dry run),
+   and check the *Executions* list (`sent` / `skipped` / `error`).
+6. Add authentication to the webhook (Header Auth on the webhook node or at the
+   reverse proxy), **then** expose it over HTTPS — e.g.
+   `cloudflared tunnel --url http://localhost:5678` for a temporary test, or a
+   stable reverse proxy/named tunnel for real use — and point the Notion
+   automation at `https://<host>/webhook/notion-notify` (steps above).

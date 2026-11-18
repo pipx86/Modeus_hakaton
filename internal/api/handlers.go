@@ -70,6 +70,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./api-docs"))))
 
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
+	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
 	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handlePutTree)
 	mux.HandleFunc("GET /api/v1/runs/{id}/tree", s.handleGetTree)

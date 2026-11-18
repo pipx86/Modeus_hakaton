@@ -735,6 +735,59 @@ paths:
           $ref: "#/components/responses/ServiceUnavailable"
         "504":
           $ref: "#/components/responses/GatewayTimeout"
+  /runs/{id}/sources:
+    post:
+      tags: [runs]
+      summary: Attach a standard or vacancy source to a run
+      description: |
+        Creates a standard/vacancy source and links it to the run through
+        `run_sources`, so the analyst can quote it and the synthesizer can
+        detect cross-source conflicts. The source is available to finalization
+        immediately. Admin and teacher only.
+      operationId: attachRunSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type, title, content]
+              properties:
+                type:
+                  type: string
+                  enum: [standard, vacancy]
+                title:
+                  type: string
+                  minLength: 1
+                content:
+                  type: string
+                  minLength: 1
+                source_url:
+                  type: string
+      responses:
+        "201":
+          description: Source created and linked to the run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Source"
+        "400":
+          description: Invalid JSON
+        "401":
+          description: Missing or invalid token
+        "403":
+          description: Admin/teacher role required
+        "404":
+          description: Run not found
+        "422":
+          description: Source type/title/content validation failed
+        "500":
+          description: Store error
+        "501":
+          description: PostgreSQL store required
+      security:
+        - bearerAuth: []
   /runs/{id}/export:
     get:
       tags: [runs]

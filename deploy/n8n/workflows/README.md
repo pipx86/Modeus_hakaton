@@ -126,16 +126,28 @@ needs only the URL.
 #### Pointing Notion (or another service) at the webhook
 
 1. Activate the workflow (toggle in the editor, or the commands in **Import**).
-2. In the sending service, add a "send webhook"/HTTP POST action on the desired
-   event (in Notion: a database automation such as *Page added/updated* with a
-   *Send webhook* action) and map its variables to `title`, `url`, `event`,
-   `page_id`, `actor`, `timestamp`:
-   * same machine (curl, scripts, another container):
-     `http://localhost:5678/webhook/notion-notify`;
-   * Notion's cloud automation cannot reach `localhost` — expose n8n behind
-     HTTPS (reverse proxy/tunnel) and use
-     `https://<your-host>/webhook/notion-notify`.
-3. Smoke-test with curl (the workflow must be **active** for the production URL):
+2. Publish the webhook on a **stable public HTTPS URL** — Notion's cloud cannot
+   reach `localhost`. For a one-off test a Cloudflare quick tunnel is enough
+   (see [Public HTTPS webhook with a quick tunnel](#public-https-webhook-with-a-quick-tunnel-verified));
+   for anything permanent use a named tunnel or a reverse proxy with your own
+   domain. Add authentication *before* the URL leaves the machine (Header Auth
+   on the webhook node, or auth at the proxy).
+3. In Notion: **Automations → New automation** on a database → choose a trigger
+   (e.g. *Page added*, *Page edited*) → **Add action → Send webhook**, and paste
+   `https://<your-host>/webhook/notion-notify`. *Send webhook* requires a paid
+   plan, sends **POST** only, sends only the selected database page
+   **properties** (never page content), allows at most five webhook actions per
+   automation and offers no payload preview (Notion's docs suggest capturing it
+   with a service such as webhook.site). If the webhook node uses Header Auth,
+   add a matching **custom header** in Notion — its webhook action has no
+   built-in authentication.
+4. The workflow's *Normalize payload* node expects the flat contract above. Name
+   the database properties to match its aliases (`title`, `url`, `event`,
+   `page_id`, `actor`, `timestamp`) or adjust the `pick(...)` alias lists in the
+   Code node to Notion's property names. The exact Notion payload shape could
+   not be verified here (no Notion workspace/token): capture it once with
+   webhook.site and map accordingly.
+5. Smoke-test with curl (the workflow must be **active** for the production URL):
 
 ```bash
 curl -X POST http://localhost:5678/webhook/notion-notify \
@@ -144,7 +156,8 @@ curl -X POST http://localhost:5678/webhook/notion-notify \
 # -> accepted
 ```
 
-While editing, click **Listen for test event** on the webhook node and POST to
+Any other service that can POST JSON works the same way. While editing, click
+**Listen for test event** on the webhook node and POST to
 `http://localhost:5678/webhook-test/notion-notify`; the production URL works
 only when the workflow is active. The local webhook has **no authentication** by
 default — before exposing it publicly set *Authentication → Header Auth* on the
@@ -225,7 +238,9 @@ docker compose --profile automation exec n8n n8n import:credentials --input=/tmp
 
 Never commit that JSON (or an `n8n export:credentials --decrypted` output) — both
 contain secrets in plaintext. The complete throwaway local recipe, which imports
-the committed workflow **unchanged**, is in **End-to-end test** below.
+the committed workflow **unchanged**, is in **End-to-end test** below; the
+MailHog sink is followed by a **real STARTTLS/AUTH relay** test (Ethereal) and a
+**public HTTPS tunnel** test.
 
 `docker-compose.yml` **already** passes these variables to the `n8n` service
 (verified in the running container); set the values in `.env`:
@@ -353,15 +368,211 @@ Notes and limits:
   substituted. Never commit credential exports (`--decrypted` writes plaintext
   secrets).
 * The webhook was reached at `http://localhost:5678` (same machine). A real
-  Notion cloud automation needs a **public HTTPS** URL — see the exposure notes
-  above; a real SMTP relay (TLS/STARTTLS, provider auth, port 465/587) is also
-  **not** covered by the MailHog test, which is plaintext and unauthenticated by
-  design.
+  SMTP relay (TLS/STARTTLS + provider auth) and a public HTTPS URL are covered by
+  the two verified tests below — MailHog itself is plaintext and accepts any
+  AUTH by design.
 * On a fresh stack the editor has no login until an owner is created; the
   `N8N_BASIC_AUTH_*` variables in compose are **ignored by n8n 1.63.4**
   (verified: `/rest/settings` answers `200` unauthenticated and the image
   contains no basic-auth middleware). This affects only UI access, not the
   import/webhook flow.
+
+## End-to-end test with a real SMTP relay (Ethereal, verified)
+
+The MailHog recipe proves the workflow wiring, but MailHog is plaintext and
+accepts any AUTH. To also prove a real **STARTTLS + provider authentication**
+transport without any user secret, the same committed workflow was run against
+[Ethereal](https://ethereal.email): a real SMTP relay on
+`smtp.ethereal.email:587` that requires authentication and also exposes IMAP
+(`imap.ethereal.email:993`) so the delivered message can be checked without
+MailHog. Ethereal is still a **test sink** — it accepts and stores the message
+instead of delivering it to the recipient's mailbox, so it proves the transport,
+not external deliverability.
+
+Account creation is a single unauthenticated API call (no signup, no personal
+data needed); everything below is throwaway. The recipe assumes a disposable
+stack like the MailHog one above.
+
+```bash
+# 0) create a throwaway real SMTP account
+#    -> {"user":"<random>@ethereal.email","pass":"<random>",
+#        "smtp":{"host":"smtp.ethereal.email","port":587,"secure":false},"imap":{...}}
+curl -sS -X POST https://api.nodemailer.com/user \
+  -H 'Content-Type: application/json' \
+  -d '{"requestor":"n8n-e2e@example.invalid","version":"1.0.0"}' > /tmp/ethereal.json
+
+# 1) clean slate (drops the automation volumes)
+docker compose --profile automation down -v
+
+# 2) start n8n with the Ethereal transport values (test values only, never in git)
+export SMTP_HOST=smtp.ethereal.email SMTP_PORT=587
+export SMTP_USER="$(python3 -c 'import json;print(json.load(open("/tmp/ethereal.json"))["user"])')"
+export SMTP_PASS="$(python3 -c 'import json;print(json.load(open("/tmp/ethereal.json"))["pass"])')"
+export MAIL_FROM="n8n <n8n@example.test>" MAIL_TO="notifications@example.test"
+docker compose --profile automation up -d n8n n8n-postgres
+until curl -fsS http://localhost:5678/healthz; do sleep 2; done
+
+# 3) bootstrap the instance owner and import the real SMTP credential
+#    (port 587 => secure:false and STARTTLS negotiated: disableStartTls:false)
+docker compose --profile automation exec n8n n8n user-management:reset
+UID="$SMTP_USER"; PASS="$SMTP_PASS"
+cat > /tmp/smtp-credential.json <<JSON
+[
+  {
+    "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+    "name": "SMTP account",
+    "type": "smtp",
+    "data": {
+      "user": "$UID",
+      "password": "$PASS",
+      "host": "smtp.ethereal.email",
+      "port": 587,
+      "secure": false,
+      "disableStartTls": false
+    }
+  }
+]
+JSON
+CID=$(docker compose --profile automation ps -q n8n)
+docker cp /tmp/smtp-credential.json "$CID":/tmp/smtp-credential.json
+docker compose --profile automation exec n8n n8n import:credentials --input=/tmp/smtp-credential.json
+# -> Successfully imported 1 credential.
+
+# 4) import the committed export unchanged, activate it, restart n8n
+docker compose --profile automation exec n8n sh -c \
+  'mkdir -p /tmp/n8n-import && cp /workflows/notion_email_notifications.json /tmp/n8n-import/ && \
+   n8n import:workflow --separate --input=/tmp/n8n-import'
+docker compose --profile automation exec n8n n8n list:workflow   # copy the workflow id
+docker compose --profile automation exec n8n n8n update:workflow --id=<workflow-id> --active=true
+docker compose --profile automation restart n8n
+
+# 5) trigger the production webhook (body can be a flat JSON file)
+curl -X POST http://localhost:5678/webhook/notion-notify \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Ethereal real-SMTP test","event":"page.updated","page_id":"ethereal-1"}'
+# -> accepted
+
+# 6) verify real delivery through Ethereal IMAP (Ethereal's own interface, no MailHog)
+python3 - <<'PY'
+import email, email.policy, imaplib, json
+cfg = json.load(open('/tmp/ethereal.json'))
+M = imaplib.IMAP4_SSL('imap.ethereal.email', 993)
+M.login(cfg['user'], cfg['pass'])
+M.select('INBOX')
+typ, ids = M.search(None, 'ALL')
+print('messages:', len(ids[0].split()))
+for num in ids[0].split():
+    msg = email.message_from_bytes(M.fetch(num, '(RFC822)')[1][0][1], policy=email.policy.default)
+    print(msg['Date'], '|', msg['From'], '->', msg['To'], '|', msg['Subject'])
+    print(msg.get_body(('plain',)).get_content())
+M.logout()
+PY
+
+# cleanup: drop the disposable stack and the plaintext temp credentials
+docker compose --profile automation down -v
+rm -f /tmp/ethereal.json /tmp/smtp-credential.json
+```
+
+Windows/PowerShell notes: call `curl.exe` explicitly (the `curl` alias maps to
+`Invoke-WebRequest`), write JSON bodies as UTF-8 **without BOM** and send them
+with `--data-binary "@C:\path\payload.json"` (Windows PowerShell mangles the
+embedded double quotes in `-d '{...}'`), and set `$env:SMTP_HOST="..."` instead
+of `export`. Get the account values from the API response into the credential
+file the same way instead of printing them.
+
+Verified results (2026-11-18, `n8nio/n8n:1.63.4` + `postgres:16-alpine`):
+
+| Check | Observed result |
+| ----- | --------------- |
+| Ethereal account via `POST https://api.nodemailer.com/user` | created; SMTP `smtp.ethereal.email:587` + IMAP endpoint; no signup or user secrets |
+| `n8n import:credentials` with the real user/password | `Successfully imported 1 credential.`; Postgres `credentials_entity.data` starts with `U2FsdGVkX1…` (encrypted with the instance key, not plaintext) |
+| workflow import (`--separate`) + activate + restart | imported unchanged; production webhook registered |
+| `POST /webhook/notion-notify` | HTTP `200`, body `accepted` |
+| n8n execution | `status: success`; run data contains `Summary: email sent` and the SMTP `250` response; no `ECONNREFUSED` |
+| Ethereal IMAP inbox | `0 → 3` messages; From `n8n@example.test` → To `notifications@example.test`; subject `[Notion] page.updated: …`; body contains URL, page id, actor, timestamp and the n8n execution id |
+| `n8n --version` | `1.63.4` |
+
+Limits: Ethereal authenticates and stores but does not relay to real mailboxes
+(use a provider SMTP account for the final deliverability check); Ethereal
+accounts and messages are short-lived; the generated password was kept only in
+shell/temp files and is not committed. Never commit `/tmp/ethereal.json`,
+`/tmp/smtp-credential.json` or a `n8n export:credentials --decrypted` output.
+
+## Public HTTPS webhook with a quick tunnel (verified)
+
+Notion's cloud cannot reach `http://localhost:5678`, so the production webhook
+was exposed with a **Cloudflare quick tunnel** — a public HTTPS URL, no account
+or domain needed, at the cost of a random hostname that changes on every start
+and no uptime guarantee.
+
+```bash
+# 1) download cloudflared (Linux/macOS; Windows: the -windows-amd64.exe asset)
+curl -sSL -o /tmp/cloudflared \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+chmod +x /tmp/cloudflared
+
+# 2) start the quick tunnel pointing at the local n8n (leave it running)
+/tmp/cloudflared tunnel --url http://localhost:5678 --no-autoupdate > /tmp/cloudflared.log 2>&1 &
+PUBLIC_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
+echo "$PUBLIC_URL"
+# Windows PowerShell:
+#   .\cloudflared.exe tunnel --url http://localhost:5678 --no-autoupdate
+#   (copy the printed https://<random>.trycloudflare.com URL)
+# If QUIC/UDP 7844 is blocked on the network, add --protocol http2; the preflight
+# block in the log reports DNS/UDP/TCP/API connectivity before the tunnel is up.
+
+# 3) optional: make n8n advertise the public URL in the editor
+#    (display/base URL only in 1.63.4; the production path is served either way)
+export N8N_WEBHOOK_URL="$PUBLIC_URL/" N8N_HOST="${PUBLIC_URL#https://}"
+docker compose --profile automation up -d n8n   # recreate to pick up env
+
+# 4) verify from the public internet path (Cloudflare edge -> tunnel -> n8n),
+#    not from 127.0.0.1
+curl -fsS "$PUBLIC_URL/healthz"                 # {"status":"ok"}
+curl -sS -D - -o /dev/null "$PUBLIC_URL/healthz" | grep -iE 'server|cf-ray'
+# -> Server: cloudflare / CF-Ray: <id>
+curl -X POST "$PUBLIC_URL/webhook/notion-notify" \
+  -H 'Content-Type: application/json' \
+  --data-binary @payload.json
+# -> accepted
+
+# 5) confirm the execution + the email (Ethereal IMAP recipe above), then stop
+#    the tunnel (Ctrl+C / kill %1) — quick-tunnel URLs are disposable.
+```
+
+Verified results (2026-11-18, same Ethereal SMTP setup, `n8nio/n8n:1.63.4`):
+
+| Check | Observed result |
+| ----- | --------------- |
+| `cloudflared tunnel --url http://localhost:5678` | quick tunnel created (cloudflared 2026.11.1, QUIC to the Cloudflare edge); public base `https://<random>.trycloudflare.com` |
+| public `GET /healthz` | HTTP `200`; `Server: cloudflare`, `CF-Ray: …`; TLS verified (`ssl_verify_result=0`) |
+| public DNS | `104.16.x.x` (Cloudflare anycast), i.e. not loopback |
+| external HTTP fetch of the public `/healthz` | HTTP `200`, body `{"status":"ok"}` when fetched through the public URL |
+| public `POST /webhook/notion-notify` | HTTP `200 accepted`; n8n execution `success`; new Ethereal message with the payload values |
+| public POST with `N8N_WEBHOOK_URL=http://localhost:5678/` | still `200 accepted` + email sent — the production path does not depend on the advertised URL in 1.63.4 |
+| `n8n --version` | `1.63.4` |
+
+Observed tunnel for the test:
+`https://sophisticated-composition-miller-commands.trycloudflare.com`
+(ephemeral; torn down and no longer reachable).
+
+Security caveats:
+
+* a quick tunnel publishes the **whole n8n port**, editor included, not just
+  `/webhook/*`. Its URL is unauthenticated and random, but anyone who learns it
+  can claim a fresh instance's owner or use the API. Create the owner account
+  **before** opening the tunnel, keep it short-lived, and stop it right after
+  validation. Use a named tunnel (Cloudflare account + token) or a reverse proxy
+  with a stable hostname for anything permanent;
+* the committed webhook still has `authentication: none`: add Header Auth on
+  the webhook node (Notion's *Send webhook* supports custom headers) or auth at
+  the proxy **before** handing the URL to Notion;
+* the quick-tunnel hostname changes every run, so a Notion automation holding a
+  stale URL fails (Notion then pauses it). A stable HTTPS hostname is required
+  for production;
+* TLS terminates at Cloudflare, which can see request/response bodies — do not
+  put secrets in the webhook payload; use Header Auth rather than a token in the
+  body.
 
 ## Import
 

@@ -211,6 +211,16 @@ type Run struct {
 	DegradedReason pgtype.Text        `json:"degraded_reason"`
 }
 
+type RunChatMessage struct {
+	ID        string             `json:"id"`
+	RunID     pgtype.UUID        `json:"run_id"`
+	Role      string             `json:"role"`
+	Content   string             `json:"content"`
+	Sequence  int32              `json:"sequence"`
+	Citations []byte             `json:"citations"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type RunSource struct {
 	RunID     pgtype.UUID        `json:"run_id"`
 	SourceID  pgtype.UUID        `json:"source_id"`

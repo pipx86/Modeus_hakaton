@@ -65,12 +65,22 @@ Log lines emitted at startup:
 
 ### Optional compose service (monitoring profile)
 
-`docker-compose.yml` includes Jaeger under the existing `monitoring` profile:
+`docker-compose.yml` includes Jaeger under the existing `monitoring` profile.
+Its ports are published on **127.0.0.1 only** (Jaeger has no authentication of
+its own; the local-demo mitigation is host-only binding):
 
 ```bash
-docker compose --profile monitoring up -d jaeger
+docker compose --profile monitoring up -d --no-deps jaeger
 # UI:        http://localhost:16686
 # OTLP/HTTP: http://localhost:4318
+```
+
+When starting the whole monitoring profile for a host backend, include the host
+scrape config so Prometheus does not look for a compose `api` that is not there:
+
+```bash
+PROMETHEUS_CONFIG=prometheus.host.yml \
+  docker compose --profile monitoring up -d --no-deps prometheus grafana jaeger
 ```
 
 The `api` service receives `OTEL_EXPORTER_OTLP_ENDPOINT` /
@@ -79,15 +89,15 @@ the demo `cmd/api`, which does not call `observability.Setup()`; the production
 `cmd/server` is the traced entrypoint. From inside the compose network the
 collector URL is `http://jaeger:4318`.
 
-Prometheus and Grafana are started by the same profile, for example
-`docker compose --profile monitoring up -d --no-deps prometheus grafana jaeger`
-(see [`docs/GRAFANA.md`](GRAFANA.md) for the target and dashboard details).
+Prometheus and Grafana are started by the same profile (see
+[`docs/GRAFANA.md`](GRAFANA.md) for the scrape modes, dashboards and security
+checks).
 
 ### Plain Docker
 
 ```bash
 docker run --rm -d --name activity-jaeger \
-  -p 16686:16686 -p 4318:4318 \
+  -p 127.0.0.1:16686:16686 -p 127.0.0.1:4318:4318 \
   jaegertracing/all-in-one:1.60.0
 ```
 
@@ -105,13 +115,15 @@ OpenTelemetry Collector or hosted OTLP/HTTP receiver instead of Jaeger.
 
 ## Verify spans
 
-1. Open <http://localhost:16686>, pick service `activity-descriptor` and run an
-   interview through the LLM-backed backend so `agent.chat` spans are produced.
+1. Open <http://localhost:16686> (login is not required, but the port is bound
+   to localhost only), pick service `activity-descriptor` and run an interview
+   through the LLM-backed backend so `agent.chat` spans are produced.
 2. Without the UI:
 
    ```bash
    curl -s http://localhost:16686/api/services
-   # {"data":["jaeger-all-in-one","activity-descriptor"],"total":2,"limit":0,"offset":0,"errors":null}
+   # with a traced interview: {"data":["jaeger-all-in-one","activity-descriptor"],...}
+   # without any traced traffic: {"data":["jaeger-all-in-one"],...}
    ```
 
 3. Unit tests (no collector needed – they use an in-memory span recorder and
@@ -123,29 +135,74 @@ OpenTelemetry Collector or hosted OTLP/HTTP receiver instead of Jaeger.
 
 ## Verified in the local demo (2026-11-18)
 
-The compose `monitoring` profile's Jaeger container was running
+The compose `monitoring` profile's Jaeger container is running
 (`activity-descriptor-jaeger-1`, image `jaegertracing/all-in-one:1.60.0`, UI
-<http://localhost:16686>, OTLP/HTTP <http://localhost:4318>) and real spans from
-the instrumented backend were present:
+<http://localhost:16686>, OTLP/HTTP <http://localhost:4318>, both published on
+`127.0.0.1` only and healthy):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:16686/          # 200
+curl -s http://localhost:16686/api/services                                # 200
+curl -s http://localhost:16686/api/services
+# {"data":["jaeger-all-in-one"],"total":1,"limit":0,"offset":0,"errors":null}
+```
+
+The pipeline was verified earlier in the same local demo with **real spans**
+from the instrumented backend: `/api/traces?service=activity-descriptor&limit=5`
+returned 5 traces, each with one `agent.chat` span with
+`otel.library.name=activity-descriptor/agents` and the documented attributes
+`agent`, `model`, `reasoning`, `otel.status_code=OK` — the exporter, collector
+and UI pipeline work end to end.
+
+Caveat, stated honestly: Jaeger all-in-one stores traces **in memory**, so the
+container recreate performed while hardening the monitoring profile cleared the
+earlier store. During the final verification pass of this session new **fresh,
+real spans** arrived from the instrumented backend — 12 traces between 00:03 and
+00:07 on 2026-11-19 (7 `interviewer` spans, 5 `analyst` spans; models
+`deepseek-v4.1-flash-1017` / `minimax-m3.1-flash`; each one `agent.chat` with
+`otel.library.name=activity-descriptor/agents` and `otel.status_code=OK`):
 
 ```bash
 curl -s http://localhost:16686/api/services
-# {"data":["jaeger-all-in-one","activity-descriptor"],"total":2,"limit":0,"offset":0,"errors":null}
+# {"data":["jaeger-all-in-one","activity-descriptor"],"total":2,...}
 
-curl -s "http://localhost:16686/api/traces?service=activity-descriptor&limit=5"
-# returns 5 traces; each trace has one agent.chat span with the tags below
+curl -s "http://localhost:16686/api/traces?service=activity-descriptor&limit=50"
+# 12 traces; each span: agent.chat, otel.library.name=activity-descriptor/agents,
+# agent=interviewer|analyst, model=deepseek-v4.1-flash-1017|minimax-m3.1-flash,
+# otel.status_code=OK
 ```
 
-Each returned trace contained one `agent.chat` span with
-`otel.library.name=activity-descriptor/agents` and the documented attributes
-`agent`, `model`, `reasoning`, `otel.status_code=OK` — the exporter, collector
-and UI pipeline all work end to end. The spans were produced by an earlier run
-of the instrumented backend (`cmd/server`); as noted above, the demo `cmd/api`
-does not call `observability.Setup()`, so its process emits no spans.
+The exporter → collector → UI pipeline is therefore live end to end; new spans
+appear as soon as the instrumented `cmd/server` (the traced entrypoint — the
+demo `cmd/api` does not call `observability.Setup()`) handles an LLM-backed agent
+call with `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` set. Because the
+demo collector is in-memory, recreating (not just restarting) the Jaeger
+container clears the history — a storage property of the demo, not a tracing
+regression.
 
 The metrics counterpart of this verification (Prometheus scraping the local
-backend, Grafana provisioning and dashboards) is in
-[`docs/GRAFANA.md`](GRAFANA.md).
+backend, no expected-DOWN target, Grafana authentication, provisioning and
+dashboards) is in [`docs/GRAFANA.md`](GRAFANA.md).
+
+## Security and production caveats
+
+* **No authentication on Jaeger all-in-one.** The UI and OTLP endpoint are
+  therefore published on `127.0.0.1` only. For anything beyond a local demo,
+  terminate TLS and authenticate at a collector/reverse proxy, and never expose
+  `16686` or `4318` publicly.
+* **In-memory, non-durable trace storage.** Jaeger all-in-one loses traces on
+  restart and has no retention/HA story. Production: an OpenTelemetry Collector
+  (TLS, auth, sampling) exporting to a persistent backend such as Grafana Tempo,
+  Jaeger with Elasticsearch/Cassandra, or a managed tracing service, with
+  retention and sampling policies.
+* **PII and prompts.** Spans carry only `agent`, `model`, `reasoning` and the
+  status; no prompts, answers or credentials are recorded. Keep it that way when
+  adding attributes (no raw transcript text, no provider keys).
+* **Sampling and volume.** A production deployment should enable head/tail
+  sampling and export batching limits; the demo exports every `agent.chat` span.
+* **Exporter TLS.** For a collector that requires TLS/auth, use an `https://`
+  endpoint and the standard `OTEL_EXPORTER_OTLP_HEADERS` variable for an auth
+  token; keep header values out of the repository.
 
 ## Troubleshooting
 

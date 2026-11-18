@@ -64,6 +64,7 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 | `GET /users` | Демо-пользователи и роли | admin | 200, 403 |
 | `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin, teacher, rop | 200, 404, 501 |
 | `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin, teacher, rop | 200, 404, 501 |
+| `POST /runs/{id}/sources` | Привязать standard/vacancy источник к прогону для live multi-source анализа; admin/teacher | 201, 400, 401, 403, 404, 422, 501 |
 | `GET /runs/{id}/export?format=json\|md` | Экспорт завершённого исследования: legacy-массив узлов по умолчанию, JSON-документ через `?format=json`, Markdown через `?format=md` | admin, teacher, rop, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
 
 Детали контрактов: [`snapshot_diff.go`](../internal/api/snapshot_diff.go),

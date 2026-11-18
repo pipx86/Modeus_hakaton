@@ -1,0 +1,36 @@
+# Prometheus configuration: backend on the Docker host (local demo).
+#
+# Use this file when the Go backend runs OUTSIDE compose, for example
+# `make run` (cmd/api on 127.0.0.1:8080) or `go run ./cmd/server`. Start the
+# monitoring profile with --no-deps so compose does not try to start its own
+# `api` service and steal port 8080:
+#
+#   PROMETHEUS_CONFIG=prometheus.host.yml \
+#     docker compose --profile monitoring up -d --no-deps prometheus grafana jaeger
+#
+# `host.docker.internal` is added to the prometheus service through
+# `extra_hosts: host.docker.internal:host-gateway` in docker-compose.yml, so the
+# target resolves on Docker Desktop AND on Linux Docker Engine (the backend must
+# listen on 0.0.0.0:8080 on Linux; Docker Desktop forwards to host loopback).
+#
+# This file intentionally has NO `api:8080` job: in host mode that name cannot
+# resolve and would show an expected-DOWN target. The compose variant is
+# deploy/prometheus/prometheus.yml.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: activity-descriptor-api-host
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          deployment: host
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
