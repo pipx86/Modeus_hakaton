@@ -26,7 +26,8 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
   const knownIds = useRef<Set<string>>(new Set())
   const previousStreamState = useRef<StreamState>("open")
   const interviewFinished =
-    stage === "analysis" || stage === "synthesis" || stage === "review"
+    stage === "analysis" || stage === "synthesis" || stage === "review" || stage === "done"
+  const chatClosed = runStatus === "done" || stage === "done"
 
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
     // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
@@ -190,6 +191,11 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
           <WifiOffIcon className="size-3.5 shrink-0" />
           Прогон завершился ошибкой - чат закрыт.
         </div>
+      ) : chatClosed ? (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <InfoIcon className="size-3.5 shrink-0" />
+          Интервью завершено - чат закрыт.
+        </div>
       ) : interviewFinished ? (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <InfoIcon className="size-3.5 shrink-0" />
@@ -273,9 +279,18 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           rows={2}
-          placeholder="Ответ на вопрос агента… Enter - отправить, Shift+Enter - новая строка"
+          disabled={chatClosed}
+          placeholder={
+            chatClosed
+              ? "Интервью завершено - новые ответы не отправляются"
+              : "Ответ на вопрос агента… Enter - отправить, Shift+Enter - новая строка"
+          }
         />
-        <Button onClick={() => void send()} disabled={!draft.trim() || sending} className="shrink-0">
+        <Button
+          onClick={() => void send()}
+          disabled={!draft.trim() || sending || chatClosed}
+          className="shrink-0"
+        >
           {sending ? <Loader2Icon className="size-4 animate-spin" /> : <SendIcon className="size-4" />}
           Отправить
         </Button>

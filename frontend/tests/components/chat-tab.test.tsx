@@ -399,4 +399,14 @@ describe("ChatTab", () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/Соединение потеряно/)).not.toBeInTheDocument()
   })
+
+  it("после завершения прогона показывает закрытый чат", async () => {
+    stubChat()
+    render(<ChatTab runId="7" active stage="done" runStatus="done" />)
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+
+    expect(screen.getByText(/Интервью завершено - чат закрыт/)).toBeInTheDocument()
+    expect(screen.queryByText(/Соединение потеряно/)).not.toBeInTheDocument()
+    expect(screen.getByRole("textbox")).toBeDisabled()
+  })
 })
