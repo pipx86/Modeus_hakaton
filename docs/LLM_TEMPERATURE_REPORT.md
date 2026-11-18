@@ -55,9 +55,12 @@ Prompt contract: `agent.io/v1`
 
 ## 4. Модели
 
-- `deepseek-v4.1-flash-1017` — рабочая модель для interviewer и analyst.
-- `deepseek-v4-pro` на analyst-входе вернул пустой ответ (HTTP 200, empty content) и в текущей конфигурации не подходит.
-- Модель `Auto`/`deepseek-chat` не тестировались в этом прогоне.
+Подробный bakeoff: [LLM_MODEL_BAKEOFF.md](LLM_MODEL_BAKEOFF.md).
+
+- interviewer: `deepseek-v4.1-flash-1017` — стабильно работает.
+- analyst: рекомендуется `minimax-m3.1-flash` — быстрее и дешевле DeepSeek Flash при большем evidence coverage; fallback — `deepseek-v4.1-flash-1017`.
+- `deepseek-v4-pro`: медленный (84 с) и нестабильный на analyst; не используем.
+- `qwen3.8-flash`: пустой content; `google/gemini-3.6-flash`: 403 у провайдера.
 
 ## 5. Рекомендуемые настройки
 
