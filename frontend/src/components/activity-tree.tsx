@@ -121,17 +121,19 @@ function EvidenceList({
           statuses?.get(item.id) ??
           item.status ??
           (approvedIds.has(item.id) ? "approved" : "pending")
+        // confidence приходит только из legacy-моков; контракт API его не гарантирует.
+        const confidence = (item as Evidence & { confidence?: number }).confidence
         return (
           <li
             key={item.id}
             className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
           >
             <span className="min-w-0 flex-1 text-muted-foreground">{item.quote}</span>
-            {typeof item.confidence === "number" && (
+            {typeof confidence === "number" && (
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceTone(item.confidence)}`}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceTone(confidence)}`}
               >
-                {Math.round(item.confidence * 100)}%
+                {Math.round(confidence * 100)}%
               </span>
             )}
             <span

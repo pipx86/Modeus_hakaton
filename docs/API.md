@@ -133,13 +133,14 @@ npx --no-install openapi-typescript ../openapi.yaml -o schema-check.d.ts
 
 ## Известные расхождения (для владельца кода)
 
-- [`frontend/openapi.yaml`](../frontend/openapi.yaml) и сгенерированный
-  `frontend/src/lib/api/schema.d.ts` — отдельная копия контракта; она расходится с
-  корневой спецификацией: содержит `PATCH /evidences/{id}` (в Go-роутере не
-  зарегистрирован — вернётся 405), поля `Evidence.confidence`,
-  `ChatMessage.citations`, `Run.degraded_reason/error_message`, которых Go-модели
-  не отдают, и `type`/`parent_id` в `PATCH /nodes/{id}`, которые бэкенд
-  принимает, но игнорирует. Синхронизацию нужно проводить отдельно (см. README).
+- Типы frontend генерируются из корневого `openapi.yaml` командой
+  `npm run generate-api`; отдельная копия `frontend/openapi.yaml` удалена.
+- `PATCH /evidences/{id}` зарегистрирован в Go-роутере и описан в контракте.
+- `ChatMessage.citations` и `RunEvent` описаны в контракте и приходят из API.
+- `Evidence.confidence` и `Run.degraded_reason/error_message` в API отсутствуют:
+  `confidence` поддерживается только моками, UI показывает его опционально.
+- `PATCH /nodes/{id}` принимает только `title`/`description`; `type` и `parent_id`
+  бэкенд игнорирует.
 - `postman/specs/Activity Descriptor API/swagger.json` — устаревшая Swagger 2.0
   копия, не обновлялась вместе с контрактом.
 - `internal/api/contract_routes_test.go` (`demoContractRoutes`) перечисляет не все

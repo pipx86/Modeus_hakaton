@@ -143,7 +143,9 @@ describe("ActivityTree", () => {
           title: "Анализ метрик",
           parent_id: "r1",
           evidence: [
-            { id: "e1", source_id: "s-1", quote: "Цитата e1", status: "pending", confidence: 0.82 },
+            { id: "e1", source_id: "s-1", quote: "Цитата e1", status: "pending", confidence: 0.82 } as Evidence & {
+              confidence?: number
+            },
           ],
         },
       ],

@@ -312,6 +312,42 @@ paths:
           $ref: "#/components/responses/InternalError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+    patch:
+      tags: [evidences]
+      summary: Edit an evidence quote
+      description: Replaces the quote text while keeping the evidence status and node link.
+      operationId: updateEvidence
+      parameters:
+        - $ref: "#/components/parameters/EvidenceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quote]
+              additionalProperties: false
+              properties:
+                quote:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: Updated evidence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Evidence"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /evidences/{id}/approve:
     post:
       tags: [evidences]
@@ -2185,6 +2221,29 @@ components:
         created_at:
           type: string
           format: date-time
+        citations:
+          type: array
+          description: Sources the agent used when composing the message.
+          items:
+            $ref: "#/components/schemas/ChatCitation"
+    ChatCitation:
+      type: object
+      required: [title, quote]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+        quote:
+          type: string
+    RunEvent:
+      type: object
+      description: Payload of one server-sent event of a run stream.
+      additionalProperties: false
+      properties:
+        message:
+          $ref: "#/components/schemas/ChatMessage"
+        status:
+          $ref: "#/components/schemas/RunStatus"
     DemoUser:
       type: object
       required: [subject, role]

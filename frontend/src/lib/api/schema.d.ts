@@ -11,7 +11,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Service liveness probe */
+        /**
+         * Service liveness probe
+         * @description Public endpoint; no bearer token is required.
+         */
         get: operations["getHealth"];
         put?: never;
         post?: never;
@@ -28,7 +31,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List sources */
+        /**
+         * List sources
+         * @description Returns sources ordered by creation time, newest first (at most 1000).
+         */
         get: operations["listSources"];
         put?: never;
         /** Create a source */
@@ -50,8 +56,28 @@ export interface paths {
         get: operations["getSource"];
         put?: never;
         post?: never;
-        /** Delete a source */
+        /**
+         * Delete a source
+         * @description A source is deleted only when no evidence references it; otherwise the server returns 409.
+         */
         delete: operations["deleteSource"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sources/{id}/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build source fragments and their vectors */
+        post: operations["indexSourceFragments"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -64,7 +90,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List evidences (filter by node_id or source_id) */
+        /**
+         * List evidences
+         * @description Optionally filtered by node_id and/or source_id; at most 1000 rows.
+         */
         get: operations["listEvidences"];
         put?: never;
         /** Attach an evidence to a node */
@@ -73,6 +102,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/evidences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one evidence
+         * @description Returns the evidence with the legacy `approved` flag in addition to `status`.
+         */
+        get: operations["getEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit an evidence quote
+         * @description Replaces the quote text while keeping the evidence status and node link.
+         */
+        patch: operations["updateEvidence"];
         trace?: never;
     };
     "/evidences/{id}/approve": {
@@ -86,7 +139,7 @@ export interface paths {
         put?: never;
         /**
          * Approve an evidence
-         * @description Confirmation status is stored server-side; no body returned.
+         * @description Confirmation status is stored server-side; no body is returned. Only pending evidence can be approved.
          */
         post: operations["approveEvidence"];
         delete?: never;
@@ -106,7 +159,7 @@ export interface paths {
         put?: never;
         /**
          * Reject an evidence
-         * @description Rejection is stored server-side; no body returned.
+         * @description Marks a quote as rejected; only pending evidence can be rejected. Rejected evidence appears in the expert review queue with `status=rejected` (`GET /reviews/evidence`), where an expert can then approve it.
          */
         post: operations["rejectEvidence"];
         delete?: never;
@@ -115,7 +168,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/evidences/{id}": {
+    "/evidences/bulk-approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -124,12 +177,35 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /**
+         * Bulk approve evidences
+         * @description Approves several quotes at once; ids that are missing or not pending are counted as skipped.
+         */
+        post: operations["bulkApproveEvidences"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviews/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expert review queue for disputed evidence
+         * @description Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url, ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`, never `null`. Only the expert roles admin, teacher and rop may call this operation; student and guest receive 403.
+         */
+        get: operations["listReviewQueue"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit an evidence quote or confidence */
-        patch: operations["patchEvidence"];
+        patch?: never;
         trace?: never;
     };
     "/runs": {
@@ -139,10 +215,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List runs */
+        /** List research runs */
         get: operations["listRuns"];
         put?: never;
-        /** Start a run (triggers agents) */
+        /**
+         * Start a run
+         * @description Starts an analysis run for the given profession. When the chat interviewer is configured, the run is created in the interview stage and the interviewer starts immediately; otherwise the batch pipeline is triggered for the PostgreSQL store.
+         */
         post: operations["createRun"];
         delete?: never;
         options?: never;
@@ -161,7 +240,10 @@ export interface paths {
         get: operations["getRun"];
         put?: never;
         post?: never;
-        /** Delete a research run */
+        /**
+         * Delete a research run
+         * @description Deletes the run together with its tree, evidences and messages (cascade).
+         */
         delete: operations["deleteRun"];
         options?: never;
         head?: never;
@@ -176,10 +258,97 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get activity tree produced by a run
-         * @description Flat array of nodes; client rebuilds hierarchy via parent_id.
+         * Get the activity tree of a run
+         * @description Flat array of nodes; clients rebuild the hierarchy via `parent_id`.
          */
         get: operations["getRunTree"];
+        /**
+         * Save a new activity tree in one transaction
+         * @description Requires the admin, teacher or rop role. Validates the flat node list and saves it atomically. An existing tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.
+         */
+        put: operations["saveRunTree"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List evidence answers collected by a run
+         * @description Flat array of evidences gathered across the run's nodes.
+         */
+        get: operations["getRunAnswers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a standard or vacancy source to a run
+         * @description Creates a standard/vacancy source and links it to the run through
+         *     `run_sources`, so the analyst can quote it and the synthesizer can
+         *     detect cross-source conflicts. The source is available to finalization
+         *     immediately. Admin and teacher only.
+         */
+        post: operations["attachRunSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a completed run as Markdown or JSON
+         * @description Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, teacher, rop and guest; student receives 403. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.
+         */
+        get: operations["exportRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream run progress (SSE)
+         * @description `text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`, `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously delivered events are skipped, and the stream closes when the run reaches done or failed.
+         */
+        get: operations["streamRunEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -195,10 +364,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List chat messages of a run (history) */
+        /**
+         * List chat messages of a run
+         * @description Returns the interview chat history, oldest first. Available while the chat service is configured.
+         */
         get: operations["listMessages"];
         put?: never;
-        /** Send user answer to the agent */
+        /**
+         * Send a user message to the interviewer
+         * @description Records the respondent answer and schedules the next question. Guest role cannot post messages.
+         */
         post: operations["sendMessage"];
         delete?: never;
         options?: never;
@@ -206,7 +381,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs/{id}/events": {
+    "/runs/{id}/conflicts": {
         parameters: {
             query?: never;
             header?: never;
@@ -214,10 +389,124 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Subscribe to run progress events (SSE, text/event-stream)
-         * @description Server pushes named events: agent_thinking (no data), agent_message (RunEvent with message), run_status (RunEvent with status), ping (no data). Client reconnects with backoff and resyncs history via GET /runs/{id}/messages after each reconnect.
+         * Resolved synthesizer conflicts for a run
+         * @description Returns title/description conflicts detected and deterministically resolved by the synthesizer during finalization. Every conflict keeps the competing values and the winner (interview > standard > vacancy > document). The list is empty when the run has no stored conflicts.
          */
-        get: operations["streamRunEvents"];
+        get: operations["getRunConflicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/agent-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Synthesizer agent-memory messages for a run
+         * @description Returns agent-memory messages emitted by the deterministic synthesizer during finalization. Messages of kind `conflict` carry the resolved conflict object in `payload`. The list is empty when the run has no stored messages.
+         */
+        get: operations["getRunAgentMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search fragments in the run's sources
+         * @description Vector search by default; `strategy=hybrid` combines vector and BM25 hits. Requires the PostgreSQL store and a configured embedding model.
+         */
+        get: operations["searchRunFragments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List run snapshots
+         * @description Snapshots ordered by version. Requires the PostgreSQL store.
+         */
+        get: operations["listSnapshots"];
+        put?: never;
+        /**
+         * Create a snapshot of the saved tree
+         * @description Captures the currently saved activity tree as the next snapshot version.
+         */
+        post: operations["createSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Snapshot identifier (UUID). The path snapshot is the head of a diff comparison. */
+                snapshot_id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        /** Get a run snapshot */
+        get: operations["getSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/snapshots/{snapshot_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Snapshot identifier (UUID). The path snapshot is the head of a diff comparison. */
+                snapshot_id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Diff two snapshots of a run
+         * @description Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros).
+         */
+        get: operations["diffRunSnapshots"];
         put?: never;
         post?: never;
         delete?: never;
@@ -239,7 +528,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit a node (rename / move / describe) */
+        /**
+         * Edit a node (rename or describe)
+         * @description Updates title, description and/or the full evidence list of a node. Only these fields are applied; retyping or moving a node (type, parent_id) is not supported by the backend and such fields are ignored.
+         */
         patch: operations["patchNode"];
         trace?: never;
     };
@@ -250,7 +542,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List demo users */
+        /**
+         * List demo users
+         * @description List of demo accounts and their roles; available to the admin role only.
+         */
         get: operations["listUsers"];
         put?: never;
         post?: never;
@@ -264,45 +559,73 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        DemoUser: {
-            subject: string;
-            role: string;
-            read_only?: boolean;
-        };
         HealthResponse: {
             status: string;
         };
         Error: {
+            /** @description Stable machine-readable error code. */
             code: string;
+            /** @description Human-readable message; may be localized. */
             message: string;
+        };
+        TreeValidationError: {
+            /** @description Stable validation code (for example MISSING_EVIDENCE or INVALID_EVIDENCE). */
+            code: string;
+            /** @description Node the validation error points at, when known. */
+            node_id?: string;
+            /** @description Human-readable validation details. */
+            details: string;
         };
         /** @enum {string} */
         NodeType: "role" | "function" | "task" | "action";
         /** @enum {string} */
         SourceType: "vacancy" | "interview" | "standard" | "document";
         /** @enum {string} */
-        RunStatus: "pending" | "running" | "done" | "failed" | "degraded";
+        RunStatus: "pending" | "running" | "done" | "degraded" | "failed";
+        /**
+         * @description chat runs are driven by the interview chat; batch runs by the batch pipeline.
+         * @enum {string}
+         */
+        RunType: "batch" | "chat";
+        /**
+         * @description Review state of an evidence quote. An empty status is treated as pending on legacy records.
+         * @enum {string}
+         */
+        EvidenceStatus: "pending" | "approved" | "rejected";
         Evidence: {
+            id: string;
+            node_id?: string;
+            source_id: string;
+            /** @description Anchor of the quoted fragment inside the source. */
+            ref_id?: string;
+            quote: string;
+            status?: components["schemas"]["EvidenceStatus"];
+        };
+        /** @description Evidence plus the legacy `approved` flag. */
+        EvidenceDetails: {
             id: string;
             node_id?: string;
             source_id: string;
             ref_id?: string;
             quote: string;
-            /** @enum {string} */
-            status?: "pending" | "approved" | "rejected";
-            confidence?: number;
+            status?: components["schemas"]["EvidenceStatus"];
+            /** @description True when status is approved. */
+            approved: boolean;
+        };
+        /** @description Knowledge, skills and abilities attached to a tree node. */
+        Zun: {
+            knowledge?: string[];
+            skills?: string[];
+            abilities?: string[];
         };
         Node: {
             id: string;
             type: components["schemas"]["NodeType"];
             title: string;
             description?: string;
-            zun?: {
-                knowledge: string[];
-                skills: string[];
-                abilities: string[];
-            };
+            /** @description Absent for the root node. */
             parent_id?: string;
+            zun?: components["schemas"]["Zun"];
             evidence: components["schemas"]["Evidence"][];
         };
         Source: {
@@ -310,24 +633,208 @@ export interface components {
             type: components["schemas"]["SourceType"];
             title: string;
             content?: string;
+            source_url?: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        /** @description One node of the flat `nodes` list of a JSON run export. */
+        ExportNode: {
+            id: string;
+            type: components["schemas"]["NodeType"];
+            title: string;
+            description?: string;
+            /** @description Absent for the root node. */
+            parent_id?: string;
+            zun?: components["schemas"]["Zun"];
+            evidence: components["schemas"]["Evidence"][];
+        };
+        /** @description Node of the nested `tree` of a JSON run export; children repeat the same shape. */
+        ExportTreeNode: {
+            id: string;
+            type: components["schemas"]["NodeType"];
+            title: string;
+            description?: string;
+            /** @description Absent for the root node. */
+            parent_id?: string;
+            zun?: components["schemas"]["Zun"];
+            evidence: components["schemas"]["Evidence"][];
+            children: components["schemas"]["ExportTreeNode"][];
+        };
+        /**
+         * @description Structured JSON export of a completed run (`GET /runs/{id}/export?format=json`).
+         * @example {
+         *       "schema": "run-export/v1",
+         *       "generated_at": "2026-11-18T10:12:00Z",
+         *       "run": {
+         *         "id": "run-export-1",
+         *         "status": "done",
+         *         "profession": "Аналитик данных",
+         *         "stage": "done",
+         *         "type": "chat"
+         *       },
+         *       "tree": [
+         *         {
+         *           "id": "node-role",
+         *           "type": "role",
+         *           "title": "Аналитик данных",
+         *           "evidence": [],
+         *           "children": []
+         *         }
+         *       ],
+         *       "nodes": [
+         *         {
+         *           "id": "node-role",
+         *           "type": "role",
+         *           "title": "Аналитик данных",
+         *           "evidence": []
+         *         }
+         *       ],
+         *       "evidence": [],
+         *       "conflicts": [],
+         *       "final_message": "Интервью завершено. Курсы Stepik: SQL с нуля"
+         *     }
+         */
+        ExportRun: {
+            /**
+             * @description Export document schema version.
+             * @enum {string}
+             */
+            schema: "run-export/v1";
+            /**
+             * Format: date-time
+             * @description Time the export was generated (UTC).
+             */
+            generated_at: string;
+            run: components["schemas"]["Run"];
+            /** @description Nested role → function → task → action hierarchy. */
+            tree: components["schemas"]["ExportTreeNode"][];
+            /** @description Flat node list in storage order. */
+            nodes: components["schemas"]["ExportNode"][];
+            /** @description All evidence quotes of the tree; `node_id` is always filled. */
+            evidence: components["schemas"]["Evidence"][];
+            /** @description Resolved synthesizer conflicts; empty when none or when the store cannot provide them. */
+            conflicts: components["schemas"]["Conflict"][];
+            /** @description Last agent chat message with recommendations/courses. Empty for batch runs and after a server restart because the chat session lives in memory. */
+            final_message: string;
+            /** @description Metadata of sources linked to the run (best-effort, PostgreSQL only). The full source content is intentionally not exported. */
+            sources?: components["schemas"]["Source"][];
         };
         Run: {
             id: string;
             status: components["schemas"]["RunStatus"];
             profession: string;
+            type?: components["schemas"]["RunType"];
             root_node_id?: string;
             /** Format: date-time */
             started_at?: string;
             /** Format: date-time */
             finished_at?: string;
             /** @enum {string} */
-            type?: "batch" | "chat";
-            /** @enum {string} */
             stage?: "created" | "interview" | "analysis" | "synthesis" | "review" | "done" | "failed";
-            degraded_reason?: string;
-            error_message?: string;
+        };
+        Snapshot: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            run_id: string;
+            version: number;
+            /** @description Stored snapshot document (`schema_version`, `root_node_id`, `nodes`); the server compares it internally and returns nodes in domain form. */
+            tree: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Reference to one snapshot version in a diff response. */
+        SnapshotVersionRef: {
+            /** Format: uuid */
+            id: string;
+            version: number;
+        };
+        /** @description A node present in both snapshots whose fields changed. */
+        SnapshotNodeChange: {
+            id: string;
+            before: components["schemas"]["Node"];
+            after: components["schemas"]["Node"];
+            /** @description Changed fields in the fixed contract order. */
+            fields: ("title" | "description" | "type" | "parent_id" | "evidence")[];
+        };
+        SnapshotDiffSummary: {
+            added: number;
+            removed: number;
+            changed: number;
+        };
+        /** @description Response of GET /runs/{id}/snapshots/{snapshot_id}/diff?against={base_snapshot_id}. */
+        SnapshotDiff: {
+            /** Format: uuid */
+            run_id: string;
+            base: components["schemas"]["SnapshotVersionRef"];
+            head: components["schemas"]["SnapshotVersionRef"];
+            /** @description Nodes that exist only in head, sorted by id. */
+            added: components["schemas"]["Node"][];
+            /** @description Nodes that exist only in base, sorted by id. */
+            removed: components["schemas"]["Node"][];
+            /** @description Nodes present in both snapshots whose fields changed, sorted by id. */
+            changed: components["schemas"]["SnapshotNodeChange"][];
+            summary: components["schemas"]["SnapshotDiffSummary"];
+        };
+        /** @description One disputed-evidence row of the expert review queue. */
+        ReviewQueueItem: {
+            /** @description Evidence id. */
+            id: string;
+            /** @description Run the evidence belongs to. */
+            run_id: string;
+            /** @description Tree node the evidence is attached to. */
+            node_id: string;
+            /** @description Node title for reviewer context. */
+            node_title?: string;
+            source_id: string;
+            /** @description Source title for reviewer context. */
+            source_title?: string;
+            /** @description Source URL for reviewer context, when the source has one. */
+            source_url?: string;
+            /** @description Anchor of the quoted fragment inside the source. */
+            ref_id?: string;
+            quote: string;
+            /**
+             * @description The queue never returns approved evidence.
+             * @enum {string}
+             */
+            status: "pending" | "rejected";
+        };
+        /** @description One competing value for a conflicting node field. */
+        ConflictValue: {
+            source_id: string;
+            source_type: components["schemas"]["SourceType"];
+            value: string;
+            /** @description Source trust priority (interview 300, standard 200, vacancy 100, document 50). */
+            priority: number;
+        };
+        /** @description A disagreement between sources and its deterministic resolution. */
+        Conflict: {
+            id: string;
+            node_id: string;
+            /** @description Node field that conflicted (for example title or description). */
+            field: string;
+            values: components["schemas"]["ConflictValue"][];
+            winner: components["schemas"]["ConflictValue"];
+            reason: string;
+        };
+        /** @description One synthesizer agent-memory message. Messages of kind `conflict` carry the resolved conflict object in payload. */
+        AgentMessage: {
+            id: string;
+            /** @description Message kind; the synthesizer emits kind=conflict for resolved conflicts. */
+            kind: string;
+            text: string;
+            /** @description Arbitrary JSON payload; for kind=conflict it is a domain.Conflict object. */
+            payload?: unknown;
+        };
+        BulkApproveRequest: {
+            ids: string[];
+        };
+        BulkApproveResponse: {
+            approved: number;
+            skipped: number;
         };
         ChatMessage: {
             id: string;
@@ -336,20 +843,175 @@ export interface components {
             content: string;
             /** Format: date-time */
             created_at: string;
-            citations?: {
-                title: string;
-                quote: string;
-            }[];
+            /** @description Sources the agent used when composing the message. */
+            citations?: components["schemas"]["ChatCitation"][];
         };
+        ChatCitation: {
+            title: string;
+            quote: string;
+        };
+        /** @description Payload of one server-sent event of a run stream. */
         RunEvent: {
-            /** @enum {string} */
-            type: "agent_thinking" | "agent_message" | "run_status" | "ping";
             message?: components["schemas"]["ChatMessage"];
             status?: components["schemas"]["RunStatus"];
         };
+        DemoUser: {
+            subject: string;
+            /** @enum {string} */
+            role: "admin" | "teacher" | "rop" | "student" | "guest";
+            read_only?: boolean;
+        };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description Malformed request body, path or query parameter. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "BAD_REQUEST",
+                 *       "message": "invalid JSON body"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Missing or invalid bearer token. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "UNAUTHORIZED",
+                 *       "message": "missing or invalid token"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The authenticated role is not allowed to call this operation. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "FORBIDDEN",
+                 *       "message": "insufficient permissions for this action"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The requested run, snapshot, source, node or evidence does not exist. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "NOT_FOUND",
+                 *       "message": "not found"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Tree or evidence validation failed. `code` is a stable machine-readable value such as MISSING_EVIDENCE, INVALID_EVIDENCE, DUPLICATE_NODE_ID, DUPLICATE_SIBLING_TITLE, CYCLE_DETECTED, INVALID_TREE_DEPTH, ORPHAN_NODE or INVALID_REFERENCE. */
+        UnprocessableTree: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "MISSING_EVIDENCE",
+                 *       "node_id": "n1",
+                 *       "details": "node must reference at least one evidence quote"
+                 *     }
+                 */
+                "application/json": components["schemas"]["TreeValidationError"];
+            };
+        };
+        /** @description Unexpected server or database error. */
+        InternalError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "INTERNAL",
+                 *       "message": "internal error"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The configured store does not support this operation. The in-memory demo store returns this for PostgreSQL-only features. */
+        NotImplemented: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "NOT_IMPLEMENTED",
+                 *       "message": "requires PostgreSQL store"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The service or an upstream dependency is temporarily unavailable. */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "SERVICE_UNAVAILABLE",
+                 *       "message": "service temporarily unavailable"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The upstream operation timed out. */
+        GatewayTimeout: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "GATEWAY_TIMEOUT",
+                 *       "message": "upstream timeout"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
+    parameters: {
+        /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+        RunId: string;
+        /** @description Source identifier (UUID with PostgreSQL). */
+        SourceId: string;
+        /** @description Evidence identifier. */
+        EvidenceId: string;
+        /** @description Node identifier. */
+        NodeId: string;
+        /** @description Snapshot identifier (UUID). The path snapshot is the head of a diff comparison. */
+        SnapshotId: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -365,12 +1027,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Service is up */
+            /** @description Service is up. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "status": "ok"
+                     *     }
+                     */
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
@@ -385,7 +1052,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Array of sources */
+            /** @description Array of sources. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -394,6 +1061,10 @@ export interface operations {
                     "application/json": components["schemas"]["Source"][];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     createSource: {
@@ -405,15 +1076,23 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "type": "interview",
+                 *       "title": "Интервью с ведущим аналитиком",
+                 *       "content": "Транскрипт интервью о ежедневных задачах аналитика."
+                 *     }
+                 */
                 "application/json": {
                     type: components["schemas"]["SourceType"];
                     title: string;
                     content?: string;
+                    source_url?: string;
                 };
             };
         };
         responses: {
-            /** @description Created source (server-assigned id) */
+            /** @description Created source (server-assigned id). */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -422,24 +1101,10 @@ export interface operations {
                     "application/json": components["schemas"]["Source"];
                 };
             };
-            /** @description Malformed request body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation failed (e.g. missing title or bad type) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getSource: {
@@ -447,13 +1112,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Source identifier (UUID with PostgreSQL). */
+                id: components["parameters"]["SourceId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Source */
+            /** @description Source. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -462,15 +1128,11 @@ export interface operations {
                     "application/json": components["schemas"]["Source"];
                 };
             };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     deleteSource: {
@@ -478,25 +1140,90 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Source identifier (UUID with PostgreSQL). */
+                id: components["parameters"]["SourceId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted, no content */
+            /** @description Deleted, no content. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Not found */
-            404: {
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The source is referenced by evidence and cannot be deleted. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "code": "SOURCE_IN_USE",
+                     *       "message": "source is referenced by evidence"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    indexSourceFragments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Source identifier (UUID with PostgreSQL). */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Index stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The path id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "expected UUID"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            501: components["responses"]["NotImplemented"];
+            /** @description The source or the embedding model is unavailable; the previous index is kept. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "INDEX_FAILED",
+                     *       "message": "unable to obtain vectors; previous index kept"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };
@@ -505,7 +1232,9 @@ export interface operations {
     listEvidences: {
         parameters: {
             query?: {
+                /** @description Only evidence attached to this node (UUID). */
                 node_id?: string;
+                /** @description Only evidence quoting this source (UUID). */
                 source_id?: string;
             };
             header?: never;
@@ -514,7 +1243,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Array of evidences */
+            /** @description Array of evidences. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -523,6 +1252,11 @@ export interface operations {
                     "application/json": components["schemas"]["Evidence"][];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableTree"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     createEvidence: {
@@ -534,14 +1268,26 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                 *       "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                 *       "ref_id": "frag-12",
+                 *       "quote": "Каждую неделю я собираю требования у заказчика."
+                 *     }
+                 */
                 "application/json": {
+                    /** Format: uuid */
+                    node_id: string;
+                    /** Format: uuid */
                     source_id: string;
+                    ref_id?: string;
                     quote: string;
                 };
             };
         };
         responses: {
-            /** @description Created evidence (server-assigned id) */
+            /** @description Created evidence (server-assigned id). */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -550,104 +1296,61 @@ export interface operations {
                     "application/json": components["schemas"]["Evidence"];
                 };
             };
-            /** @description Validation failed */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableTree"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
-    approveEvidence: {
+    getEvidence: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Evidence identifier. */
+                id: components["parameters"]["EvidenceId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Approved, no content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not found */
-            404: {
+            /** @description Evidence details. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["EvidenceDetails"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
-    rejectEvidence: {
+    updateEvidence: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Rejected, no content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Already rejected */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    patchEvidence: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
+                /** @description Evidence identifier. */
+                id: components["parameters"]["EvidenceId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    quote?: string;
-                    ref_id?: string;
-                    confidence?: number;
+                    quote: string;
                 };
             };
         };
         responses: {
-            /** @description Updated evidence */
+            /** @description Updated evidence. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -656,8 +1359,37 @@ export interface operations {
                     "application/json": components["schemas"]["Evidence"];
                 };
             };
-            /** @description Not found */
-            404: {
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    approveEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence identifier. */
+                id: components["parameters"]["EvidenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved, no content. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Evidence is already approved or already rejected. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -665,8 +1397,33 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Validation failed */
-            422: {
+            500: components["responses"]["InternalError"];
+        };
+    };
+    rejectEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence identifier. */
+                id: components["parameters"]["EvidenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected, no content. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Evidence is already rejected or already approved. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -674,6 +1431,103 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    bulkApproveEvidences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "ids": [
+                 *         "8b1a2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+                 *         "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["BulkApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Counts of approved and skipped evidences. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "approved": 2,
+                     *       "skipped": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["BulkApproveResponse"];
+                };
+            };
+            /** @description Invalid JSON body or an empty ids array. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "ids array is required and must not be empty"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listReviewQueue: {
+        parameters: {
+            query?: {
+                /** @description Review state to list. Any value other than pending or rejected is a 400. */
+                status?: "pending" | "rejected";
+                /** @description Page size, 1..200. */
+                limit?: number;
+                /** @description Number of rows to skip, >= 0. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the review queue; an empty page is []. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueueItem"][];
+                };
+            };
+            /** @description status, limit or offset is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     listRuns: {
@@ -685,7 +1539,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Array of runs */
+            /** @description Array of runs. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -694,6 +1548,11 @@ export interface operations {
                     "application/json": components["schemas"]["Run"][];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
         };
     };
     createRun: {
@@ -705,13 +1564,18 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "profession": "Аналитик данных"
+                 *     }
+                 */
                 "application/json": {
                     profession: string;
                 };
             };
         };
         responses: {
-            /** @description Created run (status pending) */
+            /** @description Created run (status pending). */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -720,24 +1584,27 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description Malformed request body */
-            400: {
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            /** @description The interview chat/LLM provider failed to start the run. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_GATEWAY",
+                     *       "message": "llm provider unavailable"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Validation failed (e.g. empty profession) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
         };
     };
     getRun: {
@@ -745,13 +1612,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Run */
+            /** @description Run. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -760,15 +1628,11 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
         };
     };
     deleteRun: {
@@ -776,37 +1640,24 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted, no content */
+            /** @description Deleted, no content. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     getRunTree: {
@@ -814,13 +1665,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Array of nodes */
+            /** @description Array of nodes. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -829,8 +1681,224 @@ export interface operations {
                     "application/json": components["schemas"]["Node"][];
                 };
             };
-            /** @description Not found */
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    saveRunTree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Node"][];
+            };
+        };
+        responses: {
+            /** @description Tree saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The run already has a saved tree. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "TREE_ALREADY_EXISTS",
+                     *       "message": "tree already saved"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["UnprocessableTree"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getRunAnswers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of evidences. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Evidence"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    attachRunSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    type: "standard" | "vacancy";
+                    title: string;
+                    content: string;
+                    source_url?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Source created and linked to the run */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
+            };
+            /** @description Invalid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin/teacher role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Run not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Source type/title/content validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Store error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL store required */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    exportRun: {
+        parameters: {
+            query?: {
+                /** @description Export format: `md`, `json`, or omitted for the legacy bare node array. Any other value returns 400 BAD_REQUEST. Case and surrounding whitespace are normalized. */
+                format?: "md" | "json";
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Legacy bare node array by default; structured JSON or Markdown when requested. */
+            200: {
+                headers: {
+                    /** @description `attachment; filename="run-<sanitized-id>.md"` or `.json`; the id is reduced to ASCII letters, digits, `-` and `_`. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example # Run export: Аналитик данных
+                     *
+                     *     - Run ID: `run-export-1`
+                     *     - Status: done
+                     *     - Generated at: 2026-11-18T10:12:00Z
+                     *
+                     *     ## Competency tree
+                     *
+                     *     - Аналитик данных (role) `node-role`
+                     *       - Аналитика требований (function) `node-function`
+                     *
+                     *     ## Evidence
+                     *
+                     *     | Node | Quote | Source | Ref ID | Status |
+                     *     | --- | --- | --- | --- | --- |
+                     *     | `node-function` — Аналитика требований | Цитата про анализ требований | `src-interview` (interview) | `ref-function` | approved |
+                     *
+                     *     ## Conflicts
+                     *
+                     *     No source conflicts were resolved for this run.
+                     */
+                    "text/markdown": string;
+                    "application/json": components["schemas"]["ExportRun"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The run is not finished (`RUN_NOT_FINISHED`) or is finished but has no saved tree (`RUN_HAS_NO_TREE`); there is nothing to export. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -838,6 +1906,38 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    streamRunEvents: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID of the last received event; the server resumes after it without duplicates. */
+                "Last-Event-ID"?: string;
+            };
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-sent events stream. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     listMessages: {
@@ -845,13 +1945,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Array of messages, oldest first */
+            /** @description Array of chat messages. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -860,12 +1961,35 @@ export interface operations {
                     "application/json": components["schemas"]["ChatMessage"][];
                 };
             };
-            /** @description Not found */
+            401: components["responses"]["Unauthorized"];
+            /** @description The run has no chat session. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "chat session not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            /** @description The chat service is not configured on this server. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "CHAT_DISABLED",
+                     *       "message": "chat is not configured"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };
@@ -876,19 +2000,25 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "content": "Провожу интервью с заказчиком и фиксирую требования."
+                 *     }
+                 */
                 "application/json": {
                     content: string;
                 };
             };
         };
         responses: {
-            /** @description Created user message */
+            /** @description Created user message. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -897,48 +2027,364 @@ export interface operations {
                     "application/json": components["schemas"]["ChatMessage"];
                 };
             };
-            /** @description Not found */
+            /** @description Invalid JSON body or empty content. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "content is required"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The run has no chat session. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "chat session not found"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Run is not accepting answers (done or failed) */
+            /** @description The chat session does not accept this message (for example it is already finished). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "code": "CHAT_CONFLICT",
+                     *       "message": "chat session is closed"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The chat service is not configured on this server. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "CHAT_DISABLED",
+                     *       "message": "chat is not configured"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };
         };
     };
-    streamRunEvents: {
+    getRunConflicts: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Open SSE stream */
+            /** @description Array of resolved conflicts; [] when none were stored. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/event-stream": components["schemas"]["RunEvent"];
+                    /**
+                     * @example [
+                     *       {
+                     *         "id": "conflict-1",
+                     *         "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *         "field": "title",
+                     *         "values": [
+                     *           {
+                     *             "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *             "source_type": "interview",
+                     *             "value": "Собирать требования к интеграции",
+                     *             "priority": 300
+                     *           },
+                     *           {
+                     *             "source_id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
+                     *             "source_type": "vacancy",
+                     *             "value": "Собирать требования",
+                     *             "priority": 100
+                     *           }
+                     *         ],
+                     *         "winner": {
+                     *           "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                     *           "source_type": "interview",
+                     *           "value": "Собирать требования к интеграции",
+                     *           "priority": 300
+                     *         },
+                     *         "reason": "higher source priority wins: interview (300)"
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["Conflict"][];
                 };
             };
-            /** @description Not found */
-            404: {
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    getRunAgentMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of synthesizer messages; [] when none were stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "id": "msg-conflict-1",
+                     *         "kind": "conflict",
+                     *         "text": "Конфликт title: побеждает interview (Собирать требования к интеграции)",
+                     *         "payload": {
+                     *           "id": "conflict-1",
+                     *           "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *           "field": "title"
+                     *         }
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["AgentMessage"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServiceUnavailable"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    searchRunFragments: {
+        parameters: {
+            query: {
+                /** @description Search query. */
+                q: string;
+                /** @description Maximum number of hits, 1..100. */
+                limit?: number;
+                /** @description Search strategy; `vector` by default. */
+                strategy?: "vector" | "hybrid";
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Search mode and the found fragments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        mode: "vector" | "bm25" | "hybrid";
+                        hits: {
+                            /** Format: uuid */
+                            ref_id?: string;
+                            /** Format: uuid */
+                            source_id?: string;
+                            quote?: string;
+                            score?: number;
+                        }[];
+                    };
+                };
+            };
+            /** @description Invalid query, strategy, limit or a failed search request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "limit must be between 1 and 100"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    listSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshots in version order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    createSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The run has no saved tree yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "TREE_MISSING",
+                     *       "message": "the run has no saved tree"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Snapshot identifier (UUID). The path snapshot is the head of a diff comparison. */
+                snapshot_id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored snapshot. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    diffRunSnapshots: {
+        parameters: {
+            query: {
+                /** @description Base snapshot id; the path snapshot is the head of the comparison. */
+                against: string;
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Snapshot identifier (UUID). The path snapshot is the head of a diff comparison. */
+                snapshot_id: components["parameters"]["SnapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot tree diff (added, removed, changed and summary counts). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotDiff"];
+                };
+            };
+            /** @description The against query parameter is missing or is not a UUID. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -946,6 +2392,48 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The run or either snapshot does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_FOUND",
+                     *       "message": "run or snapshot not found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A snapshot exists but belongs to another run. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "SNAPSHOT_RUN_MISMATCH",
+                     *       "message": "snapshot belongs to another run"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A stored snapshot tree could not be parsed, or a database error occurred. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            501: components["responses"]["NotImplemented"];
         };
     };
     patchNode: {
@@ -953,23 +2441,28 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Node identifier. */
+                id: components["parameters"]["NodeId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "title": "Собирать требования к интеграции",
+                 *       "description": "Регулярно уточнять требования у заказчика."
+                 *     }
+                 */
                 "application/json": {
-                    type?: components["schemas"]["NodeType"];
                     title?: string;
                     description?: string;
-                    parent_id?: string;
                     evidence?: components["schemas"]["Evidence"][];
                 };
             };
         };
         responses: {
-            /** @description Updated node */
+            /** @description Updated node. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -978,24 +2471,12 @@ export interface operations {
                     "application/json": components["schemas"]["Node"];
                 };
             };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation failed (e.g. EVIDENCE_REQUIRED) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableTree"];
+            500: components["responses"]["InternalError"];
         };
     };
     listUsers: {
@@ -1007,24 +2488,30 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo users */
+            /** @description Demo users. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "subject": "demo-admin",
+                     *         "role": "admin"
+                     *       },
+                     *       {
+                     *         "subject": "demo-guest",
+                     *         "role": "guest",
+                     *         "read_only": true
+                     *       }
+                     *     ]
+                     */
                     "application/json": components["schemas"]["DemoUser"][];
                 };
             };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
 }

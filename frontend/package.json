@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "generate-api": "openapi-typescript openapi.yaml -o src/lib/api/schema.d.ts",
+    "generate-api": "openapi-typescript ../openapi.yaml -o src/lib/api/schema.d.ts",
     "mock": "node tests/mock-server.mjs"
   },
   "dependencies": {

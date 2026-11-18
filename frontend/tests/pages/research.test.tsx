@@ -305,6 +305,7 @@ describe("Research", () => {
       )
       expect(post).toBeDefined()
       expect(JSON.parse(String(post!.init.body))).toEqual({
+        node_id: "f1",
         source_id: "s-1",
         quote: "Цитата из вакансии",
       })

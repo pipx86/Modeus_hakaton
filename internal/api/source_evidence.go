@@ -84,6 +84,23 @@ type evidenceDetails struct {
 	Approved bool `json:"approved"`
 }
 
+// UpdateEvidenceQuote сохраняет исправленный текст цитаты без изменения статуса проверки.
+func (p *PGStore) UpdateEvidenceQuote(id, quote string) (*domain.Evidence, error) {
+	if !validUUID(id) {
+		return nil, ErrNotFound
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	var item domain.Evidence
+	err := p.Pool.QueryRow(ctx, `UPDATE evidence SET quote=$2 WHERE id=$1
+RETURNING id::text, COALESCE(node_id::text,''), source_id::text, COALESCE(ref_id,''), quote, COALESCE(status,'pending')`,
+		id, quote).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &item.Status)
+	if err != nil {
+		return nil, translate(err)
+	}
+	return &item, nil
+}
+
 func (p *PGStore) getEvidence(ctx context.Context, id string) (evidenceDetails, error) {
 	var item evidenceDetails
 	if !validUUID(id) {
@@ -204,4 +221,27 @@ func (s *Server) handleCreateEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, item)
+}
+
+// handleUpdateEvidence правит текст цитаты, сохраняя её статус и привязку к узлу.
+func (s *Server) handleUpdateEvidence(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+	var req struct {
+		Quote string `json:"quote"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Quote) == "" {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "нужна непустая цитата")
+		return
+	}
+	item, err := s.store.UpdateEvidenceQuote(r.PathValue("id"), strings.TrimSpace(req.Quote))
+	if err != nil {
+		if mapStoreError(w, err) {
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
 }

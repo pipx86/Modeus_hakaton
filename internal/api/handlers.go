@@ -101,6 +101,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/sources/{id}", s.handleGetSource)
 	mux.HandleFunc("GET /api/v1/evidences", s.handleListEvidences)
 	mux.HandleFunc("GET /api/v1/evidences/{id}", s.handleGetEvidence)
+	mux.HandleFunc("PATCH /api/v1/evidences/{id}", s.handleUpdateEvidence)
 	mux.HandleFunc("POST /api/v1/evidences", s.handleCreateEvidence)
 
 	root := http.NewServeMux()

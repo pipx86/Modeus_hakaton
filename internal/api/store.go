@@ -34,6 +34,7 @@ type Store interface {
 	GetAnswers(runID string) ([]domain.Evidence, error)
 	ApproveEvidence(id string) error
 	RejectEvidence(id string) error
+	UpdateEvidenceQuote(id, quote string) (*domain.Evidence, error)
 	SetStage(id string, stage domain.Stage) error
 	SetStatus(id string, status domain.RunStatus) error
 	UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error)
@@ -185,6 +186,22 @@ func (m *memStore) RejectEvidence(id string) error {
 	ev.Status = domain.EvidenceRejected
 	m.evidences[id] = ev
 	return nil
+}
+
+func (m *memStore) UpdateEvidenceQuote(id, quote string) (*domain.Evidence, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	item, ok := m.evidences[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	item.Quote = quote
+	if status := m.status[id]; status != "" {
+		item.Status = status
+	}
+	m.evidences[id] = item
+	return &item, nil
 }
 
 func (m *memStore) SetStage(id string, stage domain.Stage) error {

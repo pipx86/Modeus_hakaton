@@ -79,6 +79,12 @@ const EVIDENCE_STATUS_CLASS: Record<string, string> = {
   rejected: "bg-destructive/15 text-destructive",
 }
 
+function errorMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined
+  const message = (error as { message?: unknown }).message
+  return typeof message === "string" ? message : undefined
+}
+
 function confidenceClass(value: number) {
   if (value >= 0.8) return "bg-success/15 text-success"
   if (value >= 0.5) return "bg-warning/15 text-warning"
@@ -226,7 +232,7 @@ function SourcesTab() {
     })
     setQuoteSaving(false)
     if (error) {
-      toast.error("Не удалось обновить цитату", { description: error.message })
+      toast.error("Не удалось обновить цитату", { description: errorMessage(error) })
       return
     }
     setQuotes((prev) =>
@@ -250,7 +256,7 @@ function SourcesTab() {
             params: { path: { id: evidenceId } },
           })
     if (result.error) {
-      toast.error("Не удалось изменить статус цитаты", { description: result.error.message })
+      toast.error("Не удалось изменить статус цитаты", { description: errorMessage(result.error) })
       return
     }
     setQuotes((prev) =>
@@ -275,7 +281,7 @@ function SourcesTab() {
       return
     }
     if (error) {
-      toast.error("Не удалось удалить источник", { description: error.message })
+      toast.error("Не удалось удалить источник", { description: errorMessage(error) })
       return
     }
     setSources((prev) => prev.filter((source) => source.id !== sourceId))
@@ -401,17 +407,19 @@ function SourcesTab() {
                         Нет цитат с выбранным статусом.
                       </p>
                     ) : (
-                      visibleQuotes.map((quote) => (
+                      visibleQuotes.map((quote) => {
+                        const confidence = (quote as Evidence & { confidence?: number }).confidence
+                        return (
                         <div
                           key={quote.id}
                           className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-sm"
                         >
                           <span className="min-w-0 flex-1 text-muted-foreground">{quote.quote}</span>
-                          {typeof quote.confidence === "number" && (
+                          {typeof confidence === "number" && (
                             <span
-                              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceClass(quote.confidence)}`}
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceClass(confidence)}`}
                             >
-                              {Math.round(quote.confidence * 100)}%
+                              {Math.round(confidence * 100)}%
                             </span>
                           )}
                           <span
@@ -447,7 +455,8 @@ function SourcesTab() {
                             <XIcon className="size-3.5" />
                           </Button>
                         </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
                 )}
@@ -629,7 +638,7 @@ function NodeEditDialog({
     })
     setSaving(false)
     if (error) {
-      toast.error("Не удалось сохранить узел", { description: error.message })
+      toast.error("Не удалось сохранить узел", { description: errorMessage(error) })
       return
     }
     onOpenChange(false)
@@ -764,11 +773,11 @@ function EvidenceAttachDialog({
     if (!node || !sourceId || !quote.trim() || saving) return
     setSaving(true)
     const { data: created, error: createError } = await apiClient.POST("/evidences", {
-      body: { source_id: sourceId, quote: quote.trim() },
+      body: { node_id: node.id, source_id: sourceId, quote: quote.trim() },
     })
     if (createError || !created) {
       setSaving(false)
-      toast.error("Не удалось создать цитату", { description: createError?.message })
+      toast.error("Не удалось создать цитату", { description: errorMessage(createError) })
       return
     }
     const nextEvidence = [...node.evidence, created]
@@ -779,7 +788,7 @@ function EvidenceAttachDialog({
     setSaving(false)
     if (patchError) {
       toast.error("Цитата создана, но не привязана к узлу", {
-        description: patchError.message,
+        description: errorMessage(patchError),
       })
       return
     }
@@ -944,7 +953,7 @@ function TreeTab({
       })
       toast.error(
         action === "approve" ? "Не удалось подтвердить цитату" : "Не удалось отклонить цитату",
-        { description: result.error.message },
+        { description: errorMessage(result.error) },
       )
       return
     }
@@ -1186,13 +1195,14 @@ export function Research() {
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
           </div>
         )}
-        {run?.status === "degraded" && (          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-            Результат неполный: {run.degraded_reason || "агенты работали с ограничениями"}
+        {run?.status === "degraded" && (
+          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Результат неполный: агенты работали с ограничениями.
           </p>
         )}
-        {run?.status === "failed" && run.error_message && (
+        {run?.status === "failed" && (
           <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {run.error_message}
+            Прогон завершился ошибкой. Подробности — в журнале LLM-запросов админки.
           </p>
         )}
       </div>
