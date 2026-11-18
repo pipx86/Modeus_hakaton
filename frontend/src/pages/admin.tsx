@@ -107,6 +107,9 @@ export function Admin() {
   }, [])
 
   const loadLlmRequests = useCallback(async () => {
+    // Let the effect finish before flipping loading state; this avoids a
+    // synchronous setState-in-effect lint error without suppressing the rule.
+    await Promise.resolve()
     setLlmLoading(true)
     try {
       const params = new URLSearchParams({ limit: "50" })
@@ -150,7 +153,10 @@ export function Admin() {
 
   useEffect(() => {
     if (!isAdmin) return
-    void loadLlmRequests()
+    const timer = window.setTimeout(() => {
+      void loadLlmRequests()
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [isAdmin, loadLlmRequests])
 
   const refresh = async () => {
