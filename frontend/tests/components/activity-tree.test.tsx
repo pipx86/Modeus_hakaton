@@ -285,4 +285,48 @@ describe("ActivityTree", () => {
     expect(screen.getByText("Подтверждено")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Подтвердить цитату" })).not.toBeInTheDocument()
   })
+
+  it("копирует паспорт компетенции из диалога ЗУН", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    renderTree({
+      nodes: [
+        { id: "root", type: "role", title: "Роль", evidence: [] },
+        {
+          id: "act",
+          type: "action",
+          title: "Действие с ЗУН",
+          parent_id: "root",
+          evidence: [{ id: "e1", source_id: "s1", quote: "Цитата действия" }],
+          zun: {
+            knowledge: ["Знание"],
+            skills: ["Умение"],
+            abilities: ["Навык"],
+          },
+        },
+      ],
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Развернуть всё" }))
+    fireEvent.click(screen.getByRole("button", { name: "ЗУН узла Действие с ЗУН" }))
+    fireEvent.click(screen.getByRole("button", { name: "Скопировать паспорт" }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    const passport = String(writeText.mock.calls[0][0])
+    expect(passport).toContain("Действие с ЗУН")
+    expect(passport).toContain("Знания:")
+  })
+
+  it("копирует ссылку на узел дерева", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    renderTree()
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Скопировать ссылку" }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(String(writeText.mock.calls[0][0])).toContain("?node=f1")
+  })
 })

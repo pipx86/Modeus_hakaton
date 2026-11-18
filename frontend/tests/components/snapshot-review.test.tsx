@@ -284,4 +284,109 @@ describe("SnapshotReviewTab", () => {
     // Сравнение снимков при этом продолжает работать.
     expect(screen.getByText("Сравнение снимков")).toBeInTheDocument()
   })
+
+  it("показывает ошибку сравнения снимков", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/runs/7/snapshots") && method === "GET") {
+        return { status: 200, body: SNAPSHOTS }
+      }
+      if (url.includes("/snapshots/snap-2/diff")) {
+        return { status: 500, body: { code: "INTERNAL", message: "сравнение упало" } }
+      }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/reviews/evidence")) return { status: 200, body: [] }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderTab()
+
+    const compareButton = await screen.findByRole("button", { name: "Сравнить снимки" })
+    await waitFor(() => expect(compareButton).toBeEnabled())
+    await userEvent.click(compareButton)
+
+    expect(await screen.findByText("сравнение упало")).toBeInTheDocument()
+    expect(screen.queryByTestId("snapshot-diff")).not.toBeInTheDocument()
+  })
+
+  it("обновляет список снимков по кнопке", async () => {
+    stubReviewApi()
+    renderTab()
+    await screen.findByText("Сравнение снимков")
+
+    const before = fetchCalls().filter((call) => call.url.endsWith("/runs/7/snapshots")).length
+    await userEvent.click(screen.getByRole("button", { name: "Обновить список снимков" }))
+
+    await waitFor(() => {
+      const after = fetchCalls().filter((call) => call.url.endsWith("/runs/7/snapshots")).length
+      expect(after).toBeGreaterThan(before)
+    })
+  })
+
+  it("сбрасывает diff при выборе той же версии", async () => {
+    stubReviewApi()
+    renderTab()
+
+    const compareButton = await screen.findByRole("button", { name: "Сравнить снимки" })
+    await waitFor(() => expect(compareButton).toBeEnabled())
+    await userEvent.click(compareButton)
+    expect(await screen.findByTestId("snapshot-diff")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Базовая версия" }))
+    await userEvent.click(await screen.findByRole("option", { name: /^v2/ }))
+
+    expect(await screen.findByText(/Выберите разные версии/)).toBeInTheDocument()
+    expect(screen.queryByTestId("snapshot-diff")).not.toBeInTheDocument()
+  })
+
+  it("показывает ошибку обновления списка снимков", async () => {
+    let snapshotCalls = 0
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/runs/7/snapshots") && method === "GET") {
+        snapshotCalls += 1
+        return snapshotCalls > 1
+          ? { status: 500, body: { code: "INTERNAL", message: "обновление упало" } }
+          : { status: 200, body: SNAPSHOTS }
+      }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/reviews/evidence")) return { status: 200, body: [] }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderTab()
+    await screen.findByText("Сравнение снимков")
+
+    await userEvent.click(screen.getByRole("button", { name: "Обновить список снимков" }))
+
+    expect(await screen.findByText("обновление упало")).toBeInTheDocument()
+  })
+
+  it("отклоняет цитату из очереди", async () => {
+    stubReviewApi({ queue: [PENDING_ITEM] })
+    renderTab()
+
+    await screen.findByText(/Спорная цитата/)
+    await userEvent.click(screen.getByRole("button", { name: "Отклонить" }))
+
+    await waitFor(() => {
+      expect(
+        fetchCalls().some(
+          (call) =>
+            call.url.includes("/api/v1/evidences/ev-1/reject") && call.init.method === "POST",
+        ),
+      ).toBe(true)
+    })
+  })
+
+  it("закрывает диалог исходной цитаты", async () => {
+    stubReviewApi({ queue: [PENDING_ITEM] })
+    renderTab()
+
+    await screen.findByText(/Спорная цитата/)
+    await userEvent.click(screen.getByRole("button", { name: "Открыть цитату узла Анализ метрик" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: "Закрыть" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
 })

@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
-import { afterEach, describe, expect, it } from "vitest"
-import { setFetchHandler } from "@/test/fetch-stub"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { Admin } from "@/pages/admin"
 import { clearToken, storeToken } from "@/lib/auth"
 
@@ -114,5 +115,232 @@ describe("админка", () => {
     expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
     expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
+  })
+
+  it("добавляет и удаляет материал для аналитика", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    let created = false
+    let postedTitle = ""
+
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/runs")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
+      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
+      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
+      if (url.endsWith("/api/v1/sources") && method === "GET") {
+        return {
+          status: 200,
+          body: created ? [{ id: "s-2", type: "document", title: postedTitle }] : [],
+        }
+      }
+      if (url.endsWith("/api/v1/sources") && method === "POST") {
+        const body = JSON.parse(String(init.body)) as { title: string }
+        postedTitle = body.title
+        created = true
+        return { status: 201, body: { id: "s-2", type: "document", title: body.title } }
+      }
+      if (url.includes("/api/v1/sources/s-2") && method === "DELETE") {
+        created = false
+        return { status: 204, body: null }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderAdmin()
+
+    expect(await screen.findByText("Материалов пока нет.")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Название"), {
+      target: { value: "Профстандарт аналитика" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Добавить материал" }))
+
+    expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
+    expect(postedTitle).toBe("Профстандарт аналитика")
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Удалить материал Профстандарт аналитика" }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByText("Профстандарт аналитика")).not.toBeInTheDocument(),
+    )
+  })
+
+  it("фильтрует LLM-запросы по агенту", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    stubAdminData()
+    const user = userEvent.setup()
+
+    renderAdmin()
+    await screen.findByText("demo-admin")
+
+    await user.click(screen.getAllByRole("combobox")[0])
+    await user.click(await screen.findByRole("option", { name: "Аналитик" }))
+
+    await waitFor(() => {
+      expect(
+        fetchCalls().some((call) => call.url.includes("agent=analyst")),
+      ).toBe(true)
+    })
+  })
+
+  it("показывает ошибку, если расход токенов недоступен", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    setFetchHandler(async (url) => {
+      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/runs")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/llm/usage")) {
+        return { status: 500, body: { code: "INTERNAL", message: "нет данных" } }
+      }
+      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderAdmin()
+
+    expect(
+      await screen.findByText(/Не удалось загрузить расход токенов/),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Токенов за 24 часа")).toBeInTheDocument()
+  })
+
+  it("удаляет исследование после подтверждения", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    let deleted = false
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/runs") && method === "GET") {
+        return {
+          status: 200,
+          body: deleted ? [] : [{ id: "run-1", profession: "Data Scientist", status: "done" }],
+        }
+      }
+      if (url.endsWith("/api/v1/runs/run-1") && method === "DELETE") {
+        deleted = true
+        return { status: 204, body: null }
+      }
+      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
+      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderAdmin()
+    await screen.findByText("Data Scientist")
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить исследование Data Scientist" }))
+
+    await waitFor(() => expect(screen.queryByText("Data Scientist")).not.toBeInTheDocument())
+    expect(
+      fetchCalls().some(
+        (call) => call.url.endsWith("/api/v1/runs/run-1") && call.init.method === "DELETE",
+      ),
+    ).toBe(true)
+  })
+
+  it("обновляет данные по кнопке «Обновить»", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    stubAdminData()
+
+    renderAdmin()
+    await screen.findByText("demo-admin")
+    const before = fetchCalls().filter((call) => call.url.includes("/llm/requests")).length
+
+    fireEvent.click(screen.getByRole("button", { name: /Обновить/ }))
+
+    await waitFor(() => {
+      const after = fetchCalls().filter((call) => call.url.includes("/llm/requests")).length
+      expect(after).toBeGreaterThan(before)
+    })
+  })
+
+  it("фильтрует LLM-запросы по статусу", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    stubAdminData()
+    const user = userEvent.setup()
+
+    renderAdmin()
+    await screen.findByText("demo-admin")
+
+    await user.click(screen.getAllByRole("combobox")[1])
+    await user.click(await screen.findByRole("option", { name: "error" }))
+
+    await waitFor(() => {
+      expect(fetchCalls().some((call) => call.url.includes("status=error"))).toBe(true)
+    })
+  })
+
+  it("оставляет исследование при ошибке удаления", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/runs") && method === "GET") {
+        return { status: 200, body: [{ id: "run-1", profession: "Data Scientist", status: "done" }] }
+      }
+      if (url.endsWith("/api/v1/runs/run-1") && method === "DELETE") {
+        return { status: 500, body: { code: "INTERNAL", message: "не удалилось" } }
+      }
+      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
+      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderAdmin()
+    await screen.findByText("Data Scientist")
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить исследование Data Scientist" }))
+
+    await waitFor(() =>
+      expect(fetchCalls().some((call) => call.init.method === "DELETE")).toBe(true),
+    )
+    expect(screen.getByText("Data Scientist")).toBeInTheDocument()
+  })
+
+  it("разбирает Prometheus-метрики и скачивает их", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+    const metrics = [
+      'activity_descriptor_http_requests_total{route="/api/v1/runs",status="200"} 10',
+      'activity_descriptor_http_requests_total{route="/api/v1/runs",status="404"} 2',
+      'activity_descriptor_http_requests_total{route="/api/v1/runs",status="500"} 1',
+      'activity_descriptor_http_request_duration_seconds_sum{route="/api/v1/runs"} 1.5',
+      'activity_descriptor_http_request_duration_seconds_count{route="/api/v1/runs"} 13',
+      'activity_descriptor_llm_requests_total{agent="analyst",status="ok"} 4',
+    ].join("\n")
+
+    setFetchHandler(async (url) => {
+      if (url.endsWith("/metrics")) return { status: 200, body: metrics }
+      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/runs")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
+      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    const createObjectURL = vi.fn(() => "blob:metrics")
+    const revokeObjectURL = vi.fn()
+    Object.assign(URL, { createObjectURL, revokeObjectURL })
+    const downloads: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download)
+    })
+
+    renderAdmin()
+
+    expect(await screen.findByText("/api/v1/runs")).toBeInTheDocument()
+    expect(screen.getAllByText("15.4%").length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole("button", { name: /Скачать \/metrics/ }))
+    expect(downloads).toContain("metrics.prom")
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:metrics")
   })
 })

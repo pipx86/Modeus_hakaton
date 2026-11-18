@@ -161,4 +161,17 @@ describe("NewResearch", () => {
       ),
     ).toBeInTheDocument()
   })
+
+  it("сбрасывает выбранный уровень при выборе другой роли", async () => {
+    setFetchHandler(async () => ({ status: 200, body: [] }))
+    renderPage()
+    await act(async () => {})
+
+    const input = screen.getByLabelText("Профессия / роль")
+    fireEvent.focus(input)
+    fireEvent.click(screen.getByRole("button", { name: "middle" }))
+    fireEvent.click(screen.getByRole("button", { name: "Аналитик данных" }))
+
+    expect(input).toHaveValue("Аналитик данных")
+  })
 })

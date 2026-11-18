@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it } from "vitest"
-import { setFetchHandler } from "@/test/fetch-stub"
+import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { Dashboard } from "@/pages/Dashboard"
 
 function renderPage() {
@@ -127,5 +127,108 @@ describe("Dashboard", () => {
     await waitFor(() => {
       expect(screen.queryByText("Data Scientist")).not.toBeInTheDocument()
     })
+  })
+
+  it("ведёт в пример последнего завершённого прогона", async () => {
+    setFetchHandler(async (url) => {
+      if (url.endsWith("/api/v1/runs")) {
+        return {
+          status: 200,
+          body: [
+            { id: "done-1", profession: "Data Scientist", status: "done" },
+            { id: "run-2", profession: "Backend", status: "running" },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderPage()
+
+    const link = await screen.findByRole("link", { name: /Посмотреть пример/ })
+    expect(link).toHaveAttribute("href", "/research/done-1")
+
+    fireEvent.click(link)
+    expect(await screen.findByText("page-research")).toBeInTheDocument()
+  })
+
+  it("не показывает пример, если завершённых прогонов нет", async () => {
+    setFetchHandler(async () => ({
+      status: 200,
+      body: [{ id: "run-1", profession: "Backend", status: "running" }],
+    }))
+
+    renderPage()
+
+    expect(await screen.findByText("Backend")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: /Посмотреть пример/ })).not.toBeInTheDocument()
+  })
+
+  it("оставляет исследование при отмене удаления", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/runs") && method === "GET") {
+        return {
+          status: 200,
+          body: [{ id: "1", profession: "Data Scientist", status: "done" }],
+        }
+      }
+      if (url.endsWith("/api/v1/runs/1") && method === "DELETE") {
+        return { status: 204, body: null }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderPage()
+    expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить исследование Data Scientist" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Отмена" }))
+
+    await waitFor(() => expect(screen.queryByText("Удалить исследование?")).not.toBeInTheDocument())
+    expect(screen.getByText("Data Scientist")).toBeInTheDocument()
+  })
+
+  it("оставляет исследование при ошибке удаления", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/runs") && method === "GET") {
+        return { status: 200, body: [{ id: "1", profession: "Data Scientist", status: "done" }] }
+      }
+      if (url.endsWith("/api/v1/runs/1") && method === "DELETE") {
+        return { status: 500, body: { code: "INTERNAL", message: "не удалилось" } }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderPage()
+    expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить исследование Data Scientist" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить" }))
+
+    await waitFor(() =>
+      expect(fetchCalls().some((call) => call.init.method === "DELETE")).toBe(true),
+    )
+    expect(screen.getByText("Data Scientist")).toBeInTheDocument()
+  })
+
+  it("форматирует среднюю длительность в минутах", async () => {
+    setFetchHandler(async () => ({
+      status: 200,
+      body: [
+        {
+          id: "1",
+          profession: "Data Scientist",
+          status: "done",
+          started_at: "2026-11-06T10:00:00Z",
+          finished_at: "2026-11-06T10:01:30Z",
+        },
+      ],
+    }))
+
+    renderPage()
+
+    expect(await screen.findByText("1.5 мин")).toBeInTheDocument()
   })
 })

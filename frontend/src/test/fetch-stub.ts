@@ -1,3 +1,8 @@
+/**
+ * @file fetch-stub.ts
+ * @description Подмена fetch в тестах: детерминированные ответы API.
+ */
+
 import { vi } from "vitest"
 
 export interface StubResponse {
@@ -24,7 +29,7 @@ function toResponse({ status, body }: StubResponse) {
         name.toLowerCase() === "content-type" ? "application/json" : null,
     },
     json: async () => body,
-    text: async () => JSON.stringify(body ?? ""),
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body ?? "")),
   } as unknown as Response
 }
 

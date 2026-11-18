@@ -1,13 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { Research } from "@/pages/Research"
 
-function renderPage(runId = "7") {
+function renderPage(runId = "7", search = "") {
   return render(
-    <MemoryRouter initialEntries={[`/research/${runId}`]}>
+    <MemoryRouter initialEntries={[`/research/${runId}${search}`]}>
       <Routes>
         <Route path="/research/:id" element={<Research />} />
       </Routes>
@@ -24,6 +24,8 @@ function stubRun(
     reviewQueue?: unknown[]
     deleteError?: boolean
     nodePatchError?: boolean
+    approveError?: boolean
+    createEvidenceError?: boolean
   } = {},
 ) {
   return setFetchHandler(async (url, init) => {
@@ -34,6 +36,9 @@ function stubRun(
         : { status: 204, body: undefined }
     }
     if (url.endsWith("/api/v1/evidences") && method === "POST") {
+      if (overrides.createEvidenceError) {
+        return { status: 422, body: { code: "VALIDATION", message: "плохая цитата" } }
+      }
       const body = JSON.parse(String(init.body)) as { source_id: string; quote: string }
       return {
         status: 201,
@@ -46,7 +51,9 @@ function stubRun(
         : { status: 200, body: {} }
     }
     if (url.includes("/api/v1/evidences/") && method === "POST") {
-      return { status: 200, body: {} }
+      return overrides.approveError
+        ? { status: 500, body: { code: "INTERNAL", message: "не удалось" } }
+        : { status: 200, body: {} }
     }
     if (url.includes("/api/v1/evidences/") && method === "PATCH") {
       const body = JSON.parse(String(init.body)) as { quote?: string }
@@ -550,5 +557,275 @@ describe("Research", () => {
     expect(
       fetchCalls().some((call) => call.url.includes("/api/v1/reviews/evidence")),
     ).toBe(true)
+  })
+
+  it("в режиме просмотра показывает баннер и не даёт менять данные", async () => {
+    stubRun()
+
+    renderPage("7", "?view=guest")
+
+    expect(
+      await screen.findByText("Режим просмотра: дерево и цитаты доступны без изменений."),
+    ).toBeInTheDocument()
+  })
+
+  it("копирует ссылку для просмотра", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    })
+    stubRun()
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+    fireEvent.click(screen.getByRole("button", { name: "Поделиться ссылкой" }))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    expect(writeText.mock.calls[0][0]).toContain("/research/7?view=guest")
+  })
+
+  it("вызывает печать страницы", async () => {
+    const print = vi.fn()
+    Object.defineProperty(window, "print", { value: print, writable: true })
+    stubRun()
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+    fireEvent.click(screen.getByRole("button", { name: "Печать" }))
+
+    expect(print).toHaveBeenCalledTimes(1)
+  })
+
+  it("показывает ошибку загрузки дерева", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/api/v1/runs/7/tree")) {
+        throw new Error("offline")
+      }
+      if (url.includes("/api/v1/runs/7/snapshots")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/reviews/evidence")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/runs/7/messages")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/runs/7")) {
+        return {
+          status: 200,
+          body: { id: "7", status: "done", profession: "Data Scientist" },
+        }
+      }
+      if (url.endsWith("/api/v1/sources") && method === "GET") return { status: 200, body: [] }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
+
+    expect(await screen.findByText("Дерево недоступно")).toBeInTheDocument()
+  })
+
+  it("скачивает дерево в Markdown и JSON", async () => {
+    stubRun({
+      tree: [{ id: "r", type: "role", title: "Data Scientist", evidence: [] }],
+    })
+    const createObjectURL = vi.fn(() => "blob:tree")
+    const revokeObjectURL = vi.fn()
+    Object.assign(URL, { createObjectURL, revokeObjectURL })
+    const downloads: string[] = []
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloads.push(this.download)
+      })
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
+    await screen.findByRole("button", { name: "Markdown" })
+
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }))
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }))
+
+    expect(createObjectURL).toHaveBeenCalledTimes(2)
+    expect(downloads).toEqual(["tree.md", "tree.json"])
+    click.mockRestore()
+  })
+
+  it("печатает дерево из вкладки", async () => {
+    const print = vi.fn()
+    Object.defineProperty(window, "print", { value: print, writable: true })
+    stubRun({
+      tree: [{ id: "r", type: "role", title: "Data Scientist", evidence: [] }],
+    })
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
+    await screen.findByRole("button", { name: "Печать / PDF" })
+
+    fireEvent.click(screen.getByRole("button", { name: "Печать / PDF" }))
+
+    expect(print).toHaveBeenCalledTimes(1)
+  })
+
+  it("оставляет диалог цитаты открытым при ошибке сохранения", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.includes("/api/v1/evidences/e1") && method === "PATCH") {
+        return { status: 422, body: { code: "VALIDATION", message: "плохая цитата" } }
+      }
+      if (url.includes("/api/v1/evidences") && method === "GET") {
+        return {
+          status: 200,
+          body: [{ id: "e1", source_id: "s-1", quote: "Старая цитата", status: "pending" }],
+        }
+      }
+      if (url.includes("/api/v1/runs/7/tree")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/runs/7/snapshots")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/reviews/evidence")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/runs/7/messages")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/runs/7")) {
+        return { status: 200, body: { id: "7", status: "done", profession: "Data Scientist" } }
+      }
+      if (url.endsWith("/api/v1/sources") && method === "GET") {
+        return {
+          status: 200,
+          body: [{ id: "s-1", type: "vacancy", title: "Вакансия DS", created_at: "2026-11-06T09:00:00Z" }],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Старая цитата")
+
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать цитату" }))
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByLabelText("Цитата"), {
+      target: { value: "Новая цитата" },
+    })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Сохранить" }))
+
+    await waitFor(() => {
+      expect(
+        fetchCalls().some(
+          (call) => call.url.includes("/api/v1/evidences/e1") && call.init.method === "PATCH",
+        ),
+      ).toBe(true)
+    })
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByText("Старая цитата")).toBeInTheDocument()
+  })
+
+  it("подтверждает все цитаты источника", async () => {
+    stubRun({
+      sources: [{ id: "s-1", type: "vacancy", title: "Вакансия DS" }],
+      evidences: [
+        { id: "e1", source_id: "s-1", quote: "Первая", status: "pending" },
+        { id: "e2", source_id: "s-1", quote: "Вторая", status: "pending" },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Первая")
+
+    fireEvent.click(screen.getByRole("button", { name: "Подтвердить все" }))
+
+    await waitFor(() => {
+      const approvals = fetchCalls().filter(
+        (call) => call.url.includes("/approve") && call.init.method === "POST",
+      )
+      expect(approvals).toHaveLength(2)
+    })
+  })
+
+  it("фильтрует цитаты по статусу", async () => {
+    stubRun({
+      sources: [{ id: "s-1", type: "vacancy", title: "Вакансия DS" }],
+      evidences: [
+        { id: "e1", source_id: "s-1", quote: "Ожидает", status: "pending" },
+        { id: "e2", source_id: "s-1", quote: "Уже подтверждена", status: "approved" },
+      ],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Ожидает")
+
+    fireEvent.click(screen.getByRole("button", { name: "Подтверждены" }))
+
+    expect(await screen.findByText("Уже подтверждена")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText("Ожидает")).not.toBeInTheDocument())
+  })
+
+  it("не меняет статус цитаты при ошибке подтверждения", async () => {
+    stubRun({
+      approveError: true,
+      sources: [{ id: "s-1", type: "vacancy", title: "Вакансия DS" }],
+      evidences: [{ id: "e1", source_id: "s-1", quote: "Спорная", status: "pending" }],
+    })
+
+    renderPage()
+    await screen.findByText("Вакансия DS")
+    fireEvent.click(screen.getByRole("button", { name: "Показать цитаты" }))
+    await screen.findByText("Спорная")
+
+    fireEvent.click(screen.getByRole("button", { name: /Подтвердить цитату/ }))
+
+    await waitFor(() =>
+      expect(fetchCalls().some((call) => call.url.includes("/approve"))).toBe(true),
+    )
+    expect(screen.getByText("Спорная")).toBeInTheDocument()
+    expect(screen.getAllByText("На проверке").length).toBeGreaterThan(0)
+  })
+
+  it("оставляет диалог прикрепления при ошибке создания цитаты", async () => {
+    stubRun({
+      createEvidenceError: true,
+      tree: [
+        { id: "r1", type: "role", title: "Data Scientist", evidence: [] },
+        { id: "f1", type: "function", title: "Анализ метрик", parent_id: "r1", evidence: [] },
+      ],
+      sources: [{ id: "s-1", type: "vacancy", title: "Вакансия DS" }],
+    })
+
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Data Scientist" })).toBeInTheDocument(),
+    )
+    act(() => {
+      screen.getByRole("tab", { name: "Дерево" }).focus()
+    })
+    await screen.findByText("Анализ метрик")
+
+    fireEvent.click(screen.getByRole("button", { name: "Добавить обоснование к узлу Анализ метрик" }))
+    const dialog = await screen.findByRole("dialog")
+    const user = userEvent.setup()
+    await user.click(within(dialog).getByLabelText("Источник"))
+    await user.click(await screen.findByRole("option", { name: "Вакансия DS" }))
+    fireEvent.change(within(dialog).getByLabelText("Цитата"), {
+      target: { value: "Цитата из вакансии" },
+    })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Прикрепить" }))
+
+    await waitFor(() =>
+      expect(
+        fetchCalls().some(
+          (call) => call.url.endsWith("/api/v1/evidences") && call.init.method === "POST",
+        ),
+      ).toBe(true),
+    )
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 })

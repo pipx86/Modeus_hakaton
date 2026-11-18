@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import { treeToJson, treeToMarkdown } from "@/lib/export-tree"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { downloadText, treeToJson, treeToMarkdown } from "@/lib/export-tree"
 import type { ActivityNode } from "@/lib/api/client"
 
 const nodes: ActivityNode[] = [
@@ -36,6 +36,33 @@ describe("экспорт дерева", () => {
       knowledge: ["SQL"],
       skills: [],
       abilities: [],
+    })
+  })
+
+  describe("downloadText", () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it("создаёт ссылку на blob и кликает по ней", () => {
+      const createObjectURL = vi.fn(() => "blob:tree")
+      const revokeObjectURL = vi.fn()
+      Object.assign(URL, { createObjectURL, revokeObjectURL })
+
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(function (this: HTMLAnchorElement) {
+          void this
+        })
+
+      downloadText("tree.md", "# Дерево", "text/markdown;charset=utf-8")
+
+      expect(createObjectURL).toHaveBeenCalledTimes(1)
+      expect(click).toHaveBeenCalledTimes(1)
+      const anchor = click.mock.instances[0] as HTMLAnchorElement
+      expect(anchor.download).toBe("tree.md")
+      expect(anchor.href).toContain("blob:tree")
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:tree")
     })
   })
 })
