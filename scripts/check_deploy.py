@@ -65,6 +65,7 @@ REQUIRED_FILES = [
     "deploy/grafana/dashboards/activity-descriptor.json",
     "deploy/n8n/workflows/README.md",
     "deploy/n8n/workflows/nightly_ingestion.json",
+    "deploy/n8n/workflows/notion_email_notifications.json",
     "docs/DOCKER.md",
     "docs/GRAFANA.md",
     "docs/METRICS.md",
@@ -347,7 +348,9 @@ def check_workflows() -> None:
 
     env_text = read(".env.example")
     compose_text = read("docker-compose.yml")
-    used_env = set(re.findall(r"\$env\.([A-Z0-9_]+)", json.dumps(nightly)))
+    used_env = set()
+    for _, workflow in workflows:
+        used_env.update(re.findall(r"\$env\.([A-Z0-9_]+)", json.dumps(workflow)))
     for variable in sorted(used_env):
         if variable not in env_text:
             raise SystemExit(f"FAIL: {variable} used by the n8n workflow is missing from .env.example")

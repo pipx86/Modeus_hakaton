@@ -14,7 +14,7 @@ type postMessageRequest struct {
 }
 
 func (s *Server) handleGetMessages(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
 		return
 	}
 	if s.chat == nil {

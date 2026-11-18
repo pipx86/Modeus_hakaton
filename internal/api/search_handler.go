@@ -27,7 +27,7 @@ func (s *Server) searchService() (search.Service, bool) {
 	return search.Service{Pool: pg.Pool, Model: embeddings.Ollama{BaseURL: address, Model: model}}, true
 }
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
 		return
 	}
 	if _, err := s.store.GetRun(r.PathValue("id")); err != nil {

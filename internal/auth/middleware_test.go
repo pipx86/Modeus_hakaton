@@ -37,6 +37,24 @@ func TestMiddlewareAllowsValidToken(t *testing.T) {
 	}
 }
 
+func TestMiddlewareAllowsGuestToken(t *testing.T) {
+	SetSecretForTests("test-secret-for-ci")
+	tok, _ := Issue("demo-guest", RoleGuest, time.Hour)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rr := httptest.NewRecorder()
+
+	Middleware(echoHandler()).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("ожидали 200 для guest-токена, получили %d", rr.Code)
+	}
+	if rr.Body.String() != string(RoleGuest) {
+		t.Fatalf("ожидали роль guest, получили %q", rr.Body.String())
+	}
+}
+
 func TestMiddlewareRejectsMissingHeader(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
