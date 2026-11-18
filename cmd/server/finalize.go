@@ -117,22 +117,20 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 		return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
 	}
 
-	interviewNodes := make([]domain.Node, 0, len(analysis.Entities))
-	for _, entity := range analysis.Entities {
-		interviewNodes = append(interviewNodes, entity.Node)
-	}
-
-	// The real sources linked to this run are the only non-interview data that
-	// exists at finalization time. Loading them is best-effort: without extra
-	// sources the already supported interview-only path must keep working.
+	// The sources linked to this run are the only source metadata available at
+	// finalization time, and they are what recovers the provenance of the
+	// analyst's entities: every evidence item references a source by id. Loading
+	// them is best-effort: without metadata the already supported interview-only
+	// path must keep working.
 	runSources, err := deps.store.ListRunSources(ctx, runID)
 	if err != nil {
 		log.Printf("finalizer: load run sources for %s: %v", runID, err)
 		runSources = nil
 	}
+	interviewNodes, standardNodes, vacancyNodes := partitionEntitiesByProvenance(analysis.Entities, runSources)
 
 	setFinalizeStage(deps.store, runID, domain.StageSynthesis)
-	synthesis, err := deps.synthesizer.Synthesize(ctx, buildSynthesizerInput(profession, runSources, interviewNodes))
+	synthesis, err := deps.synthesizer.Synthesize(ctx, buildSynthesizerInput(profession, runSources, interviewNodes, standardNodes, vacancyNodes))
 	if err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: synthesize: %w", err)
 	}
@@ -154,21 +152,73 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 	return domain.RunDone, nil
 }
 
-// buildSynthesizerInput assembles the deterministic merge input.
+// partitionEntitiesByProvenance routes the analyst entities into the three
+// synthesizer inputs using the declared type of the run sources their evidence
+// references.
 //
-// Only interview nodes exist in production today: there is no extraction
-// pipeline that turns raw vacancy/standard sources into domain.Node records, so
-// Vacancy and Standard are deliberately left empty instead of inventing nodes.
-// The run's real sources are still passed as metadata so the merge resolves
-// source ids and trust priorities for any future non-interview nodes.
-//
-// TODO(synthesis): when standard/vacancy entity extraction exists, pass those
-// real nodes into SynthesizerInput.Standard/Vacancy instead of leaving them empty.
-func buildSynthesizerInput(profession string, sources []domain.Source, interviewNodes []domain.Node) agent.SynthesizerInput {
+// An entity belongs to Standard (or Vacancy) only when every evidence item is
+// backed by a source of that type. Mixed provenance, interview or document
+// sources, missing source metadata, unknown ids and evidence-less nodes all fall
+// back to the Interview list, which keeps the already supported interview-only
+// path working when provenance cannot be established. Node ids, hierarchy and
+// evidence are passed through unchanged: partitioning only chooses a slot.
+func partitionEntitiesByProvenance(entities []agent.ExtractedEntity, sources []domain.Source) (interview, standard, vacancy []domain.Node) {
+	sourceTypes := make(map[string]domain.SourceType, len(sources))
+	for _, source := range sources {
+		sourceTypes[source.ID] = source.Type
+	}
+	for _, entity := range entities {
+		node := entity.Node
+		switch classifyEntityProvenance(node, sourceTypes) {
+		case domain.SourceStandard:
+			standard = append(standard, node)
+		case domain.SourceVacancy:
+			vacancy = append(vacancy, node)
+		default:
+			interview = append(interview, node)
+		}
+	}
+	return interview, standard, vacancy
+}
+
+// classifyEntityProvenance reports the single non-interview source type shared
+// by all evidence of the node. Anything mixed, unknown or interview-backed is
+// reported as interview so the caller keeps the safe default.
+func classifyEntityProvenance(node domain.Node, sourceTypes map[string]domain.SourceType) domain.SourceType {
+	if len(node.Evidence) == 0 {
+		return domain.SourceInterview
+	}
+	provenance := domain.SourceType("")
+	for _, evidence := range node.Evidence {
+		sourceType, ok := sourceTypes[evidence.SourceID]
+		if !ok {
+			return domain.SourceInterview
+		}
+		if sourceType != domain.SourceStandard && sourceType != domain.SourceVacancy {
+			return domain.SourceInterview
+		}
+		if provenance == "" {
+			provenance = sourceType
+			continue
+		}
+		if provenance != sourceType {
+			return domain.SourceInterview
+		}
+	}
+	return provenance
+}
+
+// buildSynthesizerInput assembles the deterministic merge input. The analyst
+// nodes keep the source slot their evidence proves (interview, standard or
+// vacancy) so the merge can resolve priorities and actually detect cross-source
+// conflicts; the run sources provide the ids, types and priorities for that.
+func buildSynthesizerInput(profession string, sources []domain.Source, interviewNodes, standardNodes, vacancyNodes []domain.Node) agent.SynthesizerInput {
 	return agent.SynthesizerInput{
 		Profession: profession,
 		Sources:    sources,
 		Interview:  interviewNodes,
+		Standard:   standardNodes,
+		Vacancy:    vacancyNodes,
 	}
 }
 
