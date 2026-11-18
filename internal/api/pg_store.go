@@ -511,6 +511,31 @@ func (p *PGStore) ListRuns() ([]*domain.Run, error) {
 	return result, rows.Err()
 }
 
+// ListGlobalSources возвращает материалы, загруженные в админке (run_id IS NULL).
+func (p *PGStore) ListGlobalSources(limit int) ([]domain.Source, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 5
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	rows, err := p.Pool.Query(ctx, `SELECT id::text,type,title,COALESCE(content,''),COALESCE(source_url,''),created_at
+FROM sources WHERE run_id IS NULL ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, translate(err)
+	}
+	defer rows.Close()
+
+	out := []domain.Source{}
+	for rows.Next() {
+		var src domain.Source
+		if err := rows.Scan(&src.ID, &src.Type, &src.Title, &src.Content, &src.SourceURL, &src.CreatedAt); err != nil {
+			return nil, translate(err)
+		}
+		out = append(out, src)
+	}
+	return out, rows.Err()
+}
+
 func (p *PGStore) CreateSource(src domain.Source) (*domain.Source, error) {
 	ctx, cancel := operation()
 	defer cancel()

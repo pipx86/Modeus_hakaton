@@ -112,6 +112,19 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 			input.Sources = sources
 		}
 	}
+	// Материалы, загруженные администратором, доступны всем прогонам.
+	if len(input.Sources) == 0 {
+		if lister, ok := deps.store.(interface {
+			ListGlobalSources(int) ([]domain.Source, error)
+		}); ok {
+			if global, globalErr := lister.ListGlobalSources(5); globalErr == nil {
+				for index := range global {
+					global[index].Content = truncateRunes(global[index].Content, 4000)
+				}
+				input.Sources = global
+			}
+		}
+	}
 	analysis, err := deps.analyst.Analyze(ctx, input)
 	if err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
