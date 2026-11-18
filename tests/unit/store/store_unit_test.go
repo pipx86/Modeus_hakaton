@@ -53,8 +53,8 @@ func anyArgs(count int) []any {
 
 func expectNode(pool pgxmock.PgxPoolIface, id, runID, parentID pgtype.UUID, level int16, kind, title string) {
 	pool.ExpectQuery("INSERT INTO nodes").WithArgs(anyArgs(7)...).WillReturnRows(pgxmock.NewRows([]string{
-		"id", "run_id", "parent_id", "level", "type", "title", "description", "created_at", "updated_at",
-	}).AddRow(id, runID, parentID, level, kind, title, pgtype.Text{}, time.Now(), time.Now()))
+		"id", "run_id", "parent_id", "level", "type", "title", "description", "created_at", "updated_at", "zun",
+	}).AddRow(id, runID, parentID, level, kind, title, pgtype.Text{}, time.Now(), time.Now(), []byte(nil)))
 }
 
 func expectEvidence(pool pgxmock.PgxPoolIface, e store.TreeEvidence, nodeID, runID pgtype.UUID) {

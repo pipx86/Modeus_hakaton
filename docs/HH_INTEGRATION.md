@@ -38,7 +38,7 @@ the hh.ru API. It is never logged or persisted.
 ## Usage
 
 ```powershell
-$env:HH_USER_AGENT = 'MyApp/1.0 (developer@example.com)'
+$env:HH_USER_AGENT = 'MyApp/1.0 (your-contact@your-domain.ru)'
 # HH_CLIENT_ID / HH_CLIENT_SECRET are loaded from local .env or environment
 go run ./cmd/ingest vacancies -query 'аналитик данных' -pages 1
 ```

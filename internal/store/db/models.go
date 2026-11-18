@@ -136,6 +136,7 @@ type Node struct {
 	Description pgtype.Text        `json:"description"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Zun         []byte             `json:"zun"`
 }
 
 type PiiFinding struct {
