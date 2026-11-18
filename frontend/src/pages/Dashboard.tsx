@@ -34,6 +34,18 @@ const STAGE_LABEL: Record<string, string> = {
   failed: "Ошибка",
 }
 
+// Цвета этапов согласованы со статусами: ошибка - красный, готово - зелёный,
+// текущая работа - янтарный, промежуточные шаги - свои оттенки.
+const STAGE_COLOR: Record<string, string> = {
+  created: "bg-muted-foreground/40",
+  interview: "bg-warning",
+  analysis: "bg-sky-500",
+  synthesis: "bg-primary",
+  review: "bg-cyan-500",
+  done: "bg-success",
+  failed: "bg-destructive",
+}
+
 function formatDate(value?: string) {
   if (!value) return "Дата не указана"
   const date = new Date(value)
@@ -310,11 +322,18 @@ export function Dashboard() {
                 const percent = runs.length > 0 ? (item.count / runs.length) * 100 : 0
                 return (
                   <div key={item.stage} className="flex items-center gap-3 text-sm">
-                    <span className="w-28 shrink-0 text-muted-foreground">
+                    <span className="flex w-28 shrink-0 items-center gap-2 text-muted-foreground">
+                      <span
+                        aria-hidden
+                        className={`size-2 shrink-0 rounded-full ${STAGE_COLOR[item.stage] ?? "bg-muted-foreground/40"}`}
+                      />
                       {STAGE_LABEL[item.stage] ?? item.stage}
                     </span>
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
+                      <div
+                        className={`h-full rounded-full ${STAGE_COLOR[item.stage] ?? "bg-muted-foreground/40"}`}
+                        style={{ width: `${percent}%` }}
+                      />
                     </div>
                     <span className="w-8 shrink-0 text-right">{item.count}</span>
                   </div>
