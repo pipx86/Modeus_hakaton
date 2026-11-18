@@ -53,6 +53,8 @@ import {
   FileTextIcon,
   Loader2Icon,
   NetworkIcon,
+  PrinterIcon,
+  Share2Icon,
   PencilIcon,
   Trash2Icon,
   XIcon,
@@ -997,7 +999,7 @@ function TreeTab({
 
   return (
     <>
-      <div className="mb-3 flex justify-end gap-2">
+      <div className="mb-3 flex justify-end gap-2" data-print-hide>
         <Button
           variant="outline"
           size="sm"
@@ -1015,6 +1017,15 @@ function TreeTab({
         >
           <DownloadIcon className="size-3.5" />
           JSON
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          onClick={() => window.print()}
+        >
+          <PrinterIcon className="size-3.5" />
+          Печать / PDF
         </Button>
       </div>
       <ActivityTree
@@ -1059,6 +1070,18 @@ export function Research() {
   const { id = "" } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const focusNodeId = searchParams.get("node")
+  const guestView = searchParams.get("view") === "guest"
+  const copyShareLink = async () => {
+    const link = `${window.location.origin}/research/${id}?view=guest`
+    try {
+      await navigator.clipboard.writeText(link)
+      toast.success("Ссылка для просмотра скопирована", {
+        description: "Гость увидит дерево и цитаты без права изменений.",
+      })
+    } catch {
+      toast.error("Не удалось скопировать ссылку")
+    }
+  }
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
   /**
    * Переход из вкладки «Снимки и проверка» к узлу дерева: переключаем вкладку и
@@ -1130,13 +1153,28 @@ export function Research() {
           {loading ? (
             <Skeleton className="h-8 w-64" />
           ) : (
-            <h1 className="truncate text-3xl font-semibold tracking-tight">
+            <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
               {run?.profession ?? "Исследование"}
             </h1>
           )}
           <span className="inline-flex translate-y-[6px]">
             <StatusBadge status={run?.status} />
           </span>
+          <div className="ml-auto flex items-center gap-2" data-print-hide>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Поделиться ссылкой"
+              onClick={() => void copyShareLink()}
+            >
+              <Share2Icon className="size-3.5" />
+              <span className="hidden sm:inline">Поделиться</span>
+            </Button>
+            <Button variant="outline" size="sm" aria-label="Печать" onClick={() => window.print()}>
+              <PrinterIcon className="size-3.5" />
+              <span className="hidden sm:inline">Печать</span>
+            </Button>
+          </div>
         </div>
         {run?.started_at && (
           <p className="mt-6 text-sm text-muted-foreground">
@@ -1148,8 +1186,7 @@ export function Research() {
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
           </div>
         )}
-        {run?.status === "degraded" && (
-          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+        {run?.status === "degraded" && (          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
             Результат неполный: {run.degraded_reason || "агенты работали с ограничениями"}
           </p>
         )}
@@ -1176,8 +1213,23 @@ export function Research() {
           Агенты работают - страница обновляется автоматически
         </p>
       )}
+      {guestView && (
+        <p className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+          <EyeIcon className="size-4 text-primary" />
+          Режим просмотра: дерево и цитаты доступны без изменений.
+        </p>
+      )}
+      <div className="hidden print:block">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Activity Descriptor</p>
+        <p className="text-xl font-semibold" aria-hidden="true">
+          {run?.profession ?? "Исследование"}
+        </p>
+        {run?.started_at && (
+          <p className="text-sm text-muted-foreground">Старт: {formatDate(run.started_at)}</p>
+        )}
+      </div>
       <Tabs value={tab} onValueChange={setTab} className="flex-col">
-        <TabsList className="h-9 items-center">
+        <TabsList className="h-9 items-center" data-print-hide>
           <TabsTrigger value="sources" className={TAB_TRIGGER_CLASS}>
             Источники
           </TabsTrigger>

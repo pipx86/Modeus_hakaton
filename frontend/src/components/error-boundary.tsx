@@ -1,3 +1,8 @@
+/**
+ * @file error-boundary.tsx
+ * @description Граница ошибок рендера: понятный экран вместо белого полотна и повторный рендер.
+ */
+
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { AlertCircleIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,7 +45,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const inline = this.props.variant === "inline"
 
     return (
-      <div className={inline ? "" : "flex min-h-dvh items-center justify-center p-6"}>
+      <div
+        className={
+          inline
+            ? "flex min-h-[calc(100vh-7rem)] w-full items-center justify-center p-6"
+            : "flex min-h-dvh items-center justify-center p-6"
+        }
+      >
         <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border border-destructive/50 p-8 text-center">
           <AlertCircleIcon className="size-8 text-destructive" />
           <div className="space-y-1">

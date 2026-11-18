@@ -47,7 +47,14 @@ export function StackedBars({ data, className }: { data: BarDatum[]; className?:
                 )}
               </div>
             </div>
-            <span className="truncate text-[10px] text-muted-foreground">{item.label}</span>
+            <span
+              className={cn(
+                "truncate text-[9px] text-muted-foreground sm:text-[10px]",
+                index % 3 === 0 ? "" : "hidden sm:block",
+              )}
+            >
+              {item.label}
+            </span>
           </div>
         )
       })}

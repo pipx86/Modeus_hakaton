@@ -1,3 +1,8 @@
+/**
+ * @file run-stage.tsx
+ * @description Полоса этапов прогона и подсказка о том, что делает агент сейчас.
+ */
+
 import { CheckIcon } from "lucide-react"
 import type { Run } from "@/lib/api/client"
 
@@ -20,12 +25,23 @@ function stageIndex(stage?: Run["stage"]): number {
  * Полоса этапов прогона. Показывает, где сейчас находится исследование,
  * чтобы ожидание не выглядело «вечным»: видно, что прогон на интервью или синтезе.
  */
+const STAGE_HINT: Record<string, string> = {
+  created: "Прогон создан, ждём старта интервью",
+  interview: "Агент-интервьюер задаёт вопросы эксперту",
+  analysis: "Аналитик разбирает ответы и ищет подтверждения",
+  synthesis: "Собирается дерево: роли, функции, задачи, действия",
+  review: "Проверка цитат, ЗУН и целостности дерева",
+  done: "Готово: дерево и цитаты сохранены",
+}
+
 export function RunStageStepper({ stage, failed }: { stage?: Run["stage"]; failed?: boolean }) {
   const current = stageIndex(stage)
   const isDone = stage === "done"
+  const hint = stage && !failed ? STAGE_HINT[stage] : undefined
 
   return (
-    <ol
+    <div>
+      <ol
       className="flex flex-wrap items-center gap-x-1 gap-y-1.5 text-xs"
       aria-label="Этапы исследования"
     >
@@ -68,6 +84,13 @@ export function RunStageStepper({ stage, failed }: { stage?: Run["stage"]; faile
         )
       })}
       {failed && <li className="ml-1 font-medium text-destructive">Ошибка</li>}
-    </ol>
+      </ol>
+      {hint && !isDone && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="stage-pulse size-1.5 rounded-full bg-primary" aria-hidden />
+          {hint}
+        </p>
+      )}
+    </div>
   )
 }

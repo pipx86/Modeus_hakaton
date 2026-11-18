@@ -1,3 +1,8 @@
+/**
+ * @file admin.tsx
+ * @description Админка: пользователи, исследования, LLM-метрики, расход токенов и материалы для аналитика.
+ */
+
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import {

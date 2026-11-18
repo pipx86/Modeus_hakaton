@@ -1,3 +1,8 @@
+/**
+ * @file Dashboard.tsx
+ * @description Главный экран: список исследований, KPI, графики активности и демо-прогон.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
@@ -93,6 +98,7 @@ export function Dashboard() {
   }, [load])
 
   const active = runs.filter((run) => run.status === "running").length
+  const demoRun = runs.find((run) => run.status === "done")
 
   const stats = useMemo(() => {
     const done = runs.filter((run) => run.status === "done").length
@@ -203,17 +209,27 @@ export function Dashboard() {
             {loading ? "Загрузка…" : `${runs.length} исследований, ${active} в работе`}
           </p>
         </div>
-        <Button asChild>
-          <Link to="/research/new">
-            <PlusIcon className="size-4" />
-            Новое исследование
-          </Link>
-        </Button>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          {demoRun && (
+            <Button variant="outline" asChild className="w-full sm:w-auto">
+              <Link to={`/research/${demoRun.id}`}>
+                <FlaskConicalIcon className="size-4" />
+                Посмотреть пример
+              </Link>
+            </Button>
+          )}
+          <Button asChild className="w-full sm:w-auto">
+            <Link to="/research/new">
+              <PlusIcon className="size-4" />
+              Новое исследование
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {!loading && !error && runs.length > 0 && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <Card size="sm">
               <CardContent className="space-y-1">
                 <p className="text-xs text-muted-foreground">Всего исследований</p>

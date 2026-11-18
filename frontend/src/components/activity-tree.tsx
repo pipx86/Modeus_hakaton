@@ -225,10 +225,10 @@ const Row = memo(function Row({
       aria-posinset={position}
       aria-setsize={total}
       aria-expanded={hasChildren ? isOpen : undefined}
-      className={`group relative flex h-11 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-muted/50 ${
+      className={`tree-node-enter group relative flex h-11 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-muted/50 ${
         selected ? "bg-muted/70 ring-1 ring-border" : ""
       }`}
-      style={{ paddingLeft: Math.min(depth * 24, 96) }}
+      style={{ paddingLeft: Math.min(depth * 24, 96), animationDelay: `${Math.min(depth, 6) * 45}ms` }}
     >
       {Array.from({ length: depth }).map((_, index) => (
         <span
@@ -559,7 +559,7 @@ export function ActivityTree({
   const select = useCallback((node: TreeNode) => setSelected(node), [])
 
   const toolbar = (
-    <div className="space-y-3">
+    <div className="space-y-3" data-print-hide>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-40 flex-1">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -651,6 +651,7 @@ export function ActivityTree({
         tabIndex={0}
         onKeyDown={handleTreeKeyDown}
         data-virtualized={virtualized ? "true" : "false"}
+        data-tree-scroll
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
         {start > 0 && <div style={{ height: start * ROW_HEIGHT }} aria-hidden />}
@@ -755,6 +756,30 @@ export function ActivityTree({
                   )}
                 </div>
               ))}
+            </div>
+          )}
+          {zunNode && (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const lines = [
+                    `${zunNode.title} (${NODE_TYPE_LABELS[zunNode.type]})`,
+                    "",
+                    `Знания: ${(zunNode.zun?.knowledge ?? []).join("; ") || "нет"}`,
+                    `Умения: ${(zunNode.zun?.skills ?? []).join("; ") || "нет"}`,
+                    `Навыки: ${(zunNode.zun?.abilities ?? []).join("; ") || "нет"}`,
+                  ]
+                  if (zunNode.evidence.length > 0) {
+                    lines.push("", `Цитата: «${zunNode.evidence[0].quote}»`)
+                  }
+                  void navigator.clipboard?.writeText(lines.join("\n"))
+                  toast.success("Паспорт компетенции скопирован")
+                }}
+              >
+                Скопировать паспорт
+              </Button>
             </div>
           )}
         </DialogContent>
