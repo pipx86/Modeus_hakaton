@@ -150,7 +150,7 @@ export function Dashboard() {
       label: day.label,
       segments: [
         { value: day.done, className: "bg-emerald-500" },
-        { value: day.running, className: "bg-sky-500" },
+        { value: day.running, className: "bg-warning" },
         { value: day.failed, className: "bg-destructive" },
         { value: day.other, className: "bg-muted-foreground/40" },
       ],
@@ -170,7 +170,7 @@ export function Dashboard() {
 
   const statusSegments = [
     { label: "done", value: stats.done, className: "text-emerald-500" },
-    { label: "running", value: active, className: "text-sky-500" },
+    { label: "running", value: active, className: "text-warning" },
     { label: "failed", value: stats.failed, className: "text-destructive" },
     {
       label: "other",
@@ -276,7 +276,7 @@ export function Dashboard() {
                     <span className="size-2 rounded-full bg-emerald-500" /> успешные
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="size-2 rounded-full bg-sky-500" /> активные
+                    <span className="size-2 rounded-full bg-warning" /> в работе
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-destructive" /> с ошибкой
