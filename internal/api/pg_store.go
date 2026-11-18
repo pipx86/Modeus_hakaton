@@ -71,7 +71,8 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT n.id::text,n.type,n.title,COALESCE(n.description,''),n.parent_id::text,
- COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote,'status',COALESCE(e.status,'pending')) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote,'status',COALESCE(e.status,'pending')) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb),
+ COALESCE(n.zun,'null'::jsonb)
  FROM nodes n WHERE n.run_id=$1 ORDER BY n.level,n.id`, id)
 	if err != nil {
 		return nil, err
@@ -81,11 +82,18 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	for rows.Next() {
 		var n domain.Node
 		var data []byte
-		if err = rows.Scan(&n.ID, &n.Type, &n.Title, &n.Description, &n.ParentID, &data); err != nil {
+		var zun []byte
+		if err = rows.Scan(&n.ID, &n.Type, &n.Title, &n.Description, &n.ParentID, &data, &zun); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(data, &n.Evidence); err != nil {
 			return nil, err
+		}
+		if len(zun) > 0 && string(zun) != "null" {
+			var parsed domain.Zun
+			if err = json.Unmarshal(zun, &parsed); err == nil {
+				n.Zun = &parsed
+			}
 		}
 		out = append(out, n)
 	}
@@ -297,6 +305,19 @@ func (p *PGStore) SaveTree(ctx context.Context, id string, nodes []domain.Node) 
 		}
 		if current, e := p.GetRun(id); e == nil && current.RootNodeID != nil {
 			return ErrTreeExists
+		}
+	}
+	if err == nil {
+		// ЗУН не входит в sqlc-вставку узлов, сохраняем отдельным UPDATE.
+		for _, n := range nodes {
+			if n.Zun == nil {
+				continue
+			}
+			payload, marshalErr := json.Marshal(n.Zun)
+			if marshalErr != nil {
+				continue
+			}
+			_, _ = p.Pool.Exec(ctx, `UPDATE nodes SET zun=$1 WHERE id=$2`, payload, n.ID)
 		}
 	}
 	return translate(err)

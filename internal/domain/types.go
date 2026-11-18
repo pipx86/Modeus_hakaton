@@ -138,6 +138,14 @@ type Node struct {
 	Description string     `json:"description,omitempty"`
 	ParentID    *string    `json:"parent_id,omitempty"`
 	Evidence    []Evidence `json:"evidence"`
+	Zun         *Zun       `json:"zun,omitempty"`
+}
+
+// Zun — знания, умения и навыки, необходимые для выполнения узла дерева.
+type Zun struct {
+	Knowledge []string `json:"knowledge"`
+	Skills    []string `json:"skills"`
+	Abilities []string `json:"abilities"`
 }
 
 func (n Node) Validate() error {

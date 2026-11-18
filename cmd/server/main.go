@@ -88,10 +88,11 @@ func run(ctx context.Context, c config) error {
 	var agentMetrics *agentmetrics.Registry
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
-	var llmProvider, llmModel string
+	var llmProvider, llmModel, llmAnalystModel string
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
 		llmProvider = "openai-compatible"
 		llmModel = cfg.Agents[agents.Interviewer].Model
+		llmAnalystModel = cfg.Agents[agents.Analyst].Model
 		logging.Logger.Info("LLM provider configured",
 			"base_url", cfg.BaseURL,
 			"interviewer_model", cfg.Agents[agents.Interviewer].Model,
@@ -113,7 +114,11 @@ func run(ctx context.Context, c config) error {
 		model := llmModel
 		chatClient = llmobs.NewRecorder(chatClient, llmStore, "interviewer", provider, model)
 		if analystClient != nil {
-			analystClient = llmobs.NewRecorder(analystClient, llmStore, "analyst", provider, model)
+			analystModel := model
+			if llmAnalystModel != "" {
+				analystModel = llmAnalystModel
+			}
+			analystClient = llmobs.NewRecorder(analystClient, llmStore, "analyst", provider, analystModel)
 		}
 		chatClient = llm.NewCachedClient(chatClient, 128)
 		if analystClient != nil {

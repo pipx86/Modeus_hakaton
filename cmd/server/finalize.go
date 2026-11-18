@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ func newTreeFinalizer(pgStore *api.PGStore, analystClient llm.ChatClient, retrie
 func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
 	return func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
 		transcript := transcriptFromSession(session)
+		setFinalizeStage(pgStore, runID, domain.StageAnalysis)
 		analystOptions := []analyst.Option{}
 		if analystVersion != "" {
 			analystOptions = append(analystOptions, analyst.WithPromptVersion(analystVersion))
@@ -73,6 +75,7 @@ func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatCl
 		if err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: synthesizer: %w", err)
 		}
+		setFinalizeStage(pgStore, runID, domain.StageSynthesis)
 		synthesis, err := synthesizerAgent.Synthesize(ctx, agent.SynthesizerInput{
 			Profession: profession,
 			Interview:  interviewNodes,
@@ -81,11 +84,22 @@ func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatCl
 			return domain.RunFailed, fmt.Errorf("finalizer: synthesize: %w", err)
 		}
 
-		if err := saveInterviewTree(ctx, pgStore, runID, profession, transcript, synthesis.Tree); err != nil {
+		setFinalizeStage(pgStore, runID, domain.StageReview)
+		nodes := enrichZun(ctx, analystClient, profession, synthesis.Tree)
+		if err := saveInterviewTree(ctx, pgStore, runID, profession, transcript, nodes); err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
 		}
+		setFinalizeStage(pgStore, runID, domain.StageDone)
 		return domain.RunDone, nil
 	}
+}
+
+// setFinalizeStage обновляет этап прогона, чтобы UI видел прогресс пайплайна.
+func setFinalizeStage(pgStore *api.PGStore, runID string, stage domain.Stage) {
+	if pgStore == nil || pgStore.Pool == nil {
+		return
+	}
+	_ = pgStore.SetStage(runID, stage)
 }
 
 func truncateRunes(value string, limit int) string {
@@ -200,6 +214,11 @@ func saveInterviewTree(ctx context.Context, pgStore *api.PGStore, runID, profess
 	}
 	if err := pgStore.SaveTree(ctx, runID, converted); err != nil {
 		return fmt.Errorf("store tree: %w", err)
+	}
+	// Автоснимок дерева: вкладка «Снимки и проверка» получает базовую точку
+	// для diff, без ручного POST /snapshots.
+	if _, snapErr := store.New(pgStore.Pool).SaveSnapshot(ctx, runUUID); snapErr != nil {
+		log.Printf("chat: snapshot failed for run %s: %v", runID, snapErr)
 	}
 	return nil
 }
