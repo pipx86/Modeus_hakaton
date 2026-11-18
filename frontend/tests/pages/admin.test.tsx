@@ -39,6 +39,22 @@ function stubAdminData() {
     if (url.endsWith("/api/v1/health")) {
       return { status: 200, body: { status: "ok" } }
     }
+    if (url.includes("/api/v1/llm/usage")) {
+      return {
+        status: 200,
+        body: {
+          items: [
+            {
+              model: "minimax-test",
+              requests: 3,
+              prompt_tokens: 1200,
+              completion_tokens: 800,
+              total_tokens: 2000,
+            },
+          ],
+        },
+      }
+    }
     if (url.includes("/api/v1/llm/requests")) {
       return {
         status: 200,
@@ -86,6 +102,9 @@ describe("админка", () => {
     ).toBeInTheDocument()
     expect((await screen.findAllByText("ok")).length).toBeGreaterThan(0)
     expect(screen.getByText("HTTP 5xx")).toBeInTheDocument()
+    expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
+    expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
+    expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
   })
 })

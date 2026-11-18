@@ -44,6 +44,14 @@ interface LlmRequest {
   created_at?: string
 }
 
+interface ModelUsage {
+  model: string
+  requests: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
 const ROLE_LABEL: Record<string, string> = {
   admin: "Администратор",
   guest: "Гость",
@@ -87,6 +95,7 @@ export function Admin() {
   const [refreshing, setRefreshing] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [llmRequests, setLlmRequests] = useState<LlmRequest[]>([])
+  const [llmUsage, setLlmUsage] = useState<ModelUsage[]>([])
   const [llmLoading, setLlmLoading] = useState(false)
   const [agentFilter, setAgentFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -116,14 +125,28 @@ export function Admin() {
       if (agentFilter !== "all") params.set("agent", agentFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
       const token = getValidToken() ?? apiToken
-      const response = await fetch(`${apiBaseUrl}/llm/requests?${params.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
-      if (!response.ok) throw new Error(String(response.status))
-      const payload = (await response.json()) as { items?: LlmRequest[] }
-      setLlmRequests(payload.items ?? [])
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+      const [requestsResponse, usageResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/llm/requests?${params.toString()}`, { headers }),
+        fetch(`${apiBaseUrl}/llm/usage?since=24h`, { headers }),
+      ])
+
+      if (requestsResponse.ok) {
+        const payload = (await requestsResponse.json()) as { items?: LlmRequest[] }
+        setLlmRequests(payload.items ?? [])
+      } else {
+        setLlmRequests([])
+      }
+
+      if (usageResponse.ok) {
+        const payload = (await usageResponse.json()) as { items?: ModelUsage[] }
+        setLlmUsage(payload.items ?? [])
+      } else {
+        setLlmUsage([])
+      }
     } catch {
       setLlmRequests([])
+      setLlmUsage([])
     } finally {
       setLlmLoading(false)
     }
@@ -190,6 +213,11 @@ export function Admin() {
     const failed = runs.filter((run) => run.status === "failed").length
 
     const httpTotal = sumWhere(metrics, "activity_descriptor_http_requests_total")
+    const http4xx = sumWhere(
+      metrics,
+      "activity_descriptor_http_requests_total",
+      (sample) => (sample.labels.status ?? "").startsWith("4"),
+    )
     const http5xx = sumWhere(
       metrics,
       "activity_descriptor_http_requests_total",
@@ -202,7 +230,7 @@ export function Admin() {
     )
     const runLatency = averageHistogramMs(metrics, "activity_descriptor_run_duration_seconds")
 
-    return { total, running, done, failed, httpTotal, http5xx, apiLatency, runLatency }
+    return { total, running, done, failed, httpTotal, http4xx, http5xx, apiLatency, runLatency }
   }, [runs, metrics])
 
   const agents = useMemo(() => {
@@ -250,15 +278,19 @@ export function Admin() {
   }, [llmLatencies])
 
   const routeStats = useMemo(() => {
-    const map = new Map<string, { route: string; requests: number; errors: number; sum: number; count: number }>()
+    const map = new Map<
+      string,
+      { route: string; requests: number; errors4xx: number; errors5xx: number; sum: number; count: number }
+    >()
     for (const sample of metrics) {
       const route = sample.labels.route
       if (!route) continue
       const entry =
-        map.get(route) ?? { route, requests: 0, errors: 0, sum: 0, count: 0 }
+        map.get(route) ?? { route, requests: 0, errors4xx: 0, errors5xx: 0, sum: 0, count: 0 }
       if (sample.name === "activity_descriptor_http_requests_total") {
         entry.requests += sample.value
-        if ((sample.labels.status ?? "").startsWith("5")) entry.errors += sample.value
+        if ((sample.labels.status ?? "").startsWith("5")) entry.errors5xx += sample.value
+        if ((sample.labels.status ?? "").startsWith("4")) entry.errors4xx += sample.value
       } else if (sample.name === "activity_descriptor_http_request_duration_seconds_sum") {
         entry.sum += sample.value
       } else if (sample.name === "activity_descriptor_http_request_duration_seconds_count") {
@@ -326,9 +358,14 @@ export function Admin() {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi label="Исследования" value={String(stats.total)} hint={`в работе: ${stats.running}`} />
         <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
+        <Kpi
+          label="HTTP 4xx"
+          value={stats.httpTotal > 0 ? formatPercent((stats.http4xx / stats.httpTotal) * 100) : "—"}
+          hint={`${stats.http4xx} из ${stats.httpTotal} запросов`}
+        />
         <Kpi
           label="HTTP 5xx"
           value={stats.httpTotal > 0 ? formatPercent((stats.http5xx / stats.httpTotal) * 100) : "—"}
@@ -534,7 +571,7 @@ export function Admin() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">HTTP по маршрутам</CardTitle>
-          <CardDescription>Запросы, ошибки 5xx и средняя латентность.</CardDescription>
+          <CardDescription>Запросы, ошибки 4xx/5xx и средняя латентность.</CardDescription>
         </CardHeader>
         <CardContent>
           {routeStats.length === 0 ? (
@@ -546,6 +583,7 @@ export function Admin() {
                   <tr className="border-b">
                     <th className="py-2 pr-3 font-medium">Маршрут</th>
                     <th className="py-2 pr-3 font-medium">Запросы</th>
+                    <th className="py-2 pr-3 font-medium">4xx</th>
                     <th className="py-2 pr-3 font-medium">5xx</th>
                     <th className="py-2 font-medium">Средняя латентность</th>
                   </tr>
@@ -555,8 +593,46 @@ export function Admin() {
                     <tr key={entry.route} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 font-mono text-xs">{entry.route}</td>
                       <td className="py-2 pr-3">{entry.requests}</td>
-                      <td className="py-2 pr-3">{entry.errors}</td>
+                      <td className="py-2 pr-3">{entry.errors4xx}</td>
+                      <td className="py-2 pr-3">{entry.errors5xx}</td>
                       <td className="py-2">{formatMs(entry.avgMs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Токены по моделям</CardTitle>
+          <CardDescription>Расход за последние 24 часа: запросы и токены.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {llmUsage.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Данных о расходе пока нет.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Модель</th>
+                    <th className="py-2 pr-3 font-medium">Запросы</th>
+                    <th className="py-2 pr-3 font-medium">Промпт</th>
+                    <th className="py-2 pr-3 font-medium">Ответ</th>
+                    <th className="py-2 font-medium">Всего токенов</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {llmUsage.map((usage) => (
+                    <tr key={usage.model} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3 font-mono text-xs">{usage.model}</td>
+                      <td className="py-2 pr-3">{usage.requests}</td>
+                      <td className="py-2 pr-3">{usage.prompt_tokens.toLocaleString("ru-RU")}</td>
+                      <td className="py-2 pr-3">{usage.completion_tokens.toLocaleString("ru-RU")}</td>
+                      <td className="py-2 font-medium">{usage.total_tokens.toLocaleString("ru-RU")}</td>
                     </tr>
                   ))}
                 </tbody>
