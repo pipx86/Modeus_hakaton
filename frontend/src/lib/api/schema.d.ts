@@ -1630,11 +1630,19 @@ export interface operations {
             content: {
                 /**
                  * @example {
-                 *       "profession": "Аналитик данных"
+                 *       "profession": "Аналитик данных",
+                 *       "type": "batch"
                  *     }
                  */
                 "application/json": {
                     profession: string;
+                    /**
+                     * @description chat starts the interactive interviewer; batch runs the domain.Orchestrate pipeline. Omitted means chat when the chat service is configured, otherwise batch.
+                     * @enum {string}
+                     */
+                    type?: "chat" | "batch";
+                    /** @description Optional interview transcript for a batch run. Chat runs ignore it. */
+                    transcript?: string;
                 };
             };
         };
