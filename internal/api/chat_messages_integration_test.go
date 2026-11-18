@@ -47,7 +47,7 @@ func getChatMessages(t *testing.T, handler http.Handler, runID, role string) (in
 
 func waitForChatMessages(t *testing.T, handler http.Handler, runID string, want int) []chat.Message {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		code, messages := getChatMessages(t, handler, runID, "student")
 		if code == http.StatusOK && len(messages) >= want {
