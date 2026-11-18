@@ -14,7 +14,7 @@
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -35,13 +35,13 @@ import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { RunStageStepper } from "@/components/run-stage"
+import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
   apiClient,
   type ActivityNode,
   type Evidence,
   type NodeType,
-  type Run,
   type Source,
   type SourceType,
 } from "@/lib/api/client"
@@ -1109,51 +1109,25 @@ export function Research() {
     },
     [setSearchParams],
   )
-  const [run, setRun] = useState<Run | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const previousStatus = useRef<Run["status"] | undefined>(undefined)
-
-  const loadRun = useCallback(async () => {
-    try {
-      const { data } = await apiClient.GET("/runs/{id}", {
-        params: { path: { id } },
-      })
-      if (data) setRun(data)
-      setError(null)
-    } catch {
-      setError("Бэкенд недоступен по адресу из VITE_API_URL")
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
-
-  useEffect(() => {
-    // Первичная загрузка прогона выполняется асинхронно; состояние обновит ответ API.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadRun()
-  }, [loadRun])
-
-  const isActive = run?.status === "pending" || run?.status === "running"
-  useEffect(() => {
-    if (!isActive) return
-    const timer = setInterval(() => void loadRun(), 5000)
-    return () => clearInterval(timer)
-  }, [isActive, loadRun])
-
-  useEffect(() => {
-    const previous = previousStatus.current
-    previousStatus.current = run?.status
-    if (!previous || previous === run?.status) return
-    if (run?.status === "done") {
-      toast.success("Запуск завершён", { description: "Дерево деятельности готово." })
-    }
-    if (run?.status === "failed") {
-      toast.error("Запуск завершился ошибкой", {
-        description: "Попробуйте запустить исследование ещё раз.",
-      })
-    }
-  }, [run?.status])
+  const {
+    run,
+    loading,
+    error,
+    isActive,
+    reload: loadRun,
+  } = useRunPolling(id, {
+    onStatusChange: (previous, next) => {
+      if (previous === next) return
+      if (next === "done") {
+        toast.success("Запуск завершён", { description: "Дерево деятельности готово." })
+      }
+      if (next === "failed") {
+        toast.error("Запуск завершился ошибкой", {
+          description: "Попробуйте запустить исследование ещё раз.",
+        })
+      }
+    },
+  })
 
   return (
     <div className="space-y-6">

@@ -409,4 +409,22 @@ describe("ChatTab", () => {
     expect(screen.queryByText(/Соединение потеряно/)).not.toBeInTheDocument()
     expect(screen.getByRole("textbox")).toBeDisabled()
   })
+
+  it("оставляет историю после завершения и даёт скачать транскрипт", async () => {
+    stubChat()
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => "blob:transcript"),
+      revokeObjectURL: vi.fn(),
+    })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+
+    render(<ChatTab runId="7" active stage="done" runStatus="done" />)
+    expect(await screen.findByText("Какие задачи вы решаете чаще всего?")).toBeInTheDocument()
+
+    const download = screen.getByRole("button", { name: /Скачать транскрипт/ })
+    fireEvent.click(download)
+
+    expect(click).toHaveBeenCalledTimes(1)
+    click.mockRestore()
+  })
 })

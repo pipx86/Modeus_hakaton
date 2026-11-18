@@ -1,16 +1,24 @@
 /**
  * @file ChatTab.tsx
- * @description Вкладка чата: SSE-поток интервью, отправка ответов и состояние завершённого диалога.
+ * @description Вкладка чата: история интервью, отправка ответов и просмотр после завершения.
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react"
-import { toast } from "sonner"
+import { useEffect, useRef, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { apiClient, type ChatMessage, type Run, type RunStatus } from "@/lib/api/client"
-import { connectRunEvents, type StreamState } from "@/lib/api/chat-stream"
-import { InfoIcon, Loader2Icon, RefreshCwIcon, SendIcon, WifiOffIcon } from "lucide-react"
+import { type Run, type RunStatus } from "@/lib/api/client"
+import { downloadText } from "@/lib/export-tree"
+import { chatTranscriptToMarkdown } from "@/lib/export-chat"
+import { useChatStream } from "@/hooks/use-chat-stream"
+import {
+  DownloadIcon,
+  InfoIcon,
+  Loader2Icon,
+  RefreshCwIcon,
+  SendIcon,
+  WifiOffIcon,
+} from "lucide-react"
 
 interface ChatTabProps {
   runId: string
@@ -20,139 +28,25 @@ interface ChatTabProps {
 }
 
 export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [draft, setDraft] = useState("")
-  const [sending, setSending] = useState(false)
-  const [thinking, setThinking] = useState(false)
-  const [streamState, setStreamState] = useState<StreamState>("open")
+  const {
+    messages,
+    loading,
+    loadError,
+    draft,
+    setDraft,
+    sending,
+    thinking,
+    streamState,
+    chatClosed,
+    interviewFinished,
+    send,
+    retry,
+  } = useChatStream({ runId, active, runStatus, stage })
   const bottomRef = useRef<HTMLDivElement>(null)
-  const knownIds = useRef<Set<string>>(new Set())
-  const previousStreamState = useRef<StreamState>("open")
-  const interviewFinished =
-    stage === "analysis" || stage === "synthesis" || stage === "review" || stage === "done"
-  const chatClosed = runStatus === "done" || stage === "done"
-
-  const appendMessages = useCallback((incoming: ChatMessage[]) => {
-    // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
-    if (!Array.isArray(incoming)) return
-    const fresh = incoming.filter((message) => !knownIds.current.has(message.id))
-    if (fresh.length === 0) return
-    for (const message of fresh) knownIds.current.add(message.id)
-    setMessages((prev) => [...prev, ...fresh])
-  }, [])
-
-  const loadHistory = useCallback(async () => {
-    try {
-      const { data, error } = await apiClient.GET("/runs/{id}/messages", {
-        params: { path: { id: runId } },
-      })
-      if (Array.isArray(data)) {
-        appendMessages(data)
-        setLoadError(null)
-      } else {
-        setLoadError(
-          error?.code === "NOT_FOUND"
-            ? "Чат ещё не открыт: агент не задавал вопросов по этому исследованию."
-            : (error?.message ?? "История чата недоступна."),
-        )
-      }
-    } catch {
-      setLoadError("История чата недоступна: сервер не отвечает.")
-    } finally {
-      setLoading(false)
-    }
-  }, [runId, appendMessages])
-
-  useEffect(() => {
-    // Новый прогон — новый чат: старые id не должны блокировать загрузку истории.
-    knownIds.current = new Set()
-    // Сброс при смене runId — это синхронизация с внешним run, а не каскадный рендер.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMessages([])
-  }, [runId])
-
-  useEffect(() => {
-    // История загружается из API; состояние обновляется асинхронно после ответа.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadHistory()
-  }, [loadHistory])
-
-  useEffect(() => {
-    if (!active) return
-    let pollTimer: number | undefined
-
-    const disconnect = connectRunEvents(runId, {
-      onThinking: () => setThinking(true),
-      onAgentMessage: (message) => {
-        appendMessages([message])
-        setThinking(false)
-      },
-      onRunStatus: (status: RunStatus) => {
-        if (status === "done" || status === "failed") setThinking(false)
-      },
-      onStateChange: (state) => {
-        const previous = previousStreamState.current
-        previousStreamState.current = state
-        setStreamState(state)
-        if (state === "open") {
-          if (previous !== "open" && !interviewFinished) toast.success("Соединение восстановлено")
-          void loadHistory()
-        }
-        if (state === "reconnecting" && previous === "open" && !interviewFinished) {
-          toast.warning("Соединение потеряно", {
-            description: "Пробую переподключиться к серверу.",
-          })
-        }
-        if (state === "failed") {
-          if (previous !== "failed" && !interviewFinished) {
-            toast.error("Соединение с сервером потеряно", {
-              description: "Новые сообщения приходят опросом раз в 5 секунд.",
-            })
-          }
-          pollTimer = window.setInterval(async () => {
-            const { data } = await apiClient.GET("/runs/{id}/messages", {
-              params: { path: { id: runId } },
-            })
-            if (data) appendMessages(data)
-          }, 5000)
-        }
-      },
-    })
-
-    return () => {
-      disconnect()
-      if (pollTimer !== undefined) window.clearInterval(pollTimer)
-    }
-  }, [runId, active, appendMessages, loadHistory, interviewFinished])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" })
   }, [messages, thinking])
-
-  const send = async () => {
-    const content = draft.trim()
-    if (!content || sending) return
-    setSending(true)
-    try {
-      const { data, error } = await apiClient.POST("/runs/{id}/messages", {
-        params: { path: { id: runId } },
-        body: { content },
-      })
-      if (error) {
-        toast.error("Не удалось отправить ответ", { description: error.message })
-        return
-      }
-      if (data) appendMessages([data])
-      setDraft("")
-      setThinking(true)
-    } catch {
-      toast.error("Сервер недоступен", { description: "Ответ не отправлен." })
-    } finally {
-      setSending(false)
-    }
-  }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -175,13 +69,7 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
     return (
       <div className="space-y-3 rounded-xl border border-destructive/50 p-8 text-center">
         <p className="text-sm text-destructive">{loadError}</p>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setLoading(true)
-            void loadHistory()
-          }}
-        >
+        <Button variant="outline" onClick={() => void retry()}>
           <RefreshCwIcon className="size-4" />
           Повторить
         </Button>
@@ -197,9 +85,28 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
           Прогон завершился ошибкой - чат закрыт.
         </div>
       ) : chatClosed ? (
-        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <InfoIcon className="size-3.5 shrink-0" />
-          Интервью завершено - чат закрыт.
+          <span>
+            Интервью завершено - чат закрыт. История сохранена, можно вернуться и перечитать.
+          </span>
+          {messages.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-6 px-2 text-xs"
+              onClick={() =>
+                downloadText(
+                  "interview.md",
+                  chatTranscriptToMarkdown(messages, "Интервью"),
+                  "text/markdown;charset=utf-8",
+                )
+              }
+            >
+              <DownloadIcon className="size-3" />
+              Скачать транскрипт
+            </Button>
+          )}
         </div>
       ) : interviewFinished ? (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -218,7 +125,7 @@ export function ChatTab({ runId, active, runStatus, stage }: ChatTabProps) {
                 variant="outline"
                 size="sm"
                 className="ml-auto h-6 px-2 text-xs"
-                onClick={() => void loadHistory()}
+                onClick={() => void retry()}
               >
                 <RefreshCwIcon className="size-3" />
                 Обновить
