@@ -23,7 +23,10 @@ export function useRunPolling(runId: string, options: UseRunPollingOptions = {})
   const [error, setError] = useState<string | null>(null)
   const previousStatus = useRef<Run["status"] | undefined>(undefined)
   const statusCallback = useRef(options.onStatusChange)
-  statusCallback.current = options.onStatusChange
+
+  useEffect(() => {
+    statusCallback.current = options.onStatusChange
+  }, [options.onStatusChange])
 
   const loadRun = useCallback(async () => {
     try {
