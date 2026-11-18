@@ -28,7 +28,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_evidence_sync_approved ON evidence;
 CREATE TRIGGER trg_evidence_sync_approved
-    BEFORE INSERT OR UPDATE OF status ON evidence
+    BEFORE UPDATE OF status ON evidence
     FOR EACH ROW EXECUTE FUNCTION evidence_sync_approved();
 
 CREATE INDEX IF NOT EXISTS idx_evidence_status ON evidence(status);
