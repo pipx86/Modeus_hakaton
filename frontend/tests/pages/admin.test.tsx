@@ -105,8 +105,8 @@ describe("админка", () => {
     expect(await screen.findByText("demo-guest")).toBeInTheDocument()
     expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: /Удалить исследование Data Scientist/ }),
-    ).toBeInTheDocument()
+      screen.queryByRole("button", { name: /Удалить исследование/ }),
+    ).not.toBeInTheDocument()
     expect((await screen.findAllByText("ok")).length).toBeGreaterThan(0)
     expect(screen.getByText("HTTP 5xx")).toBeInTheDocument()
     expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
@@ -201,42 +201,6 @@ describe("админка", () => {
     expect(screen.getByText("Токенов за 24 часа")).toBeInTheDocument()
   })
 
-  it("удаляет исследование после подтверждения", async () => {
-    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
-    let deleted = false
-    setFetchHandler(async (url, init) => {
-      const method = init?.method ?? "GET"
-      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
-      if (url.endsWith("/api/v1/runs") && method === "GET") {
-        return {
-          status: 200,
-          body: deleted ? [] : [{ id: "run-1", profession: "Data Scientist", status: "done" }],
-        }
-      }
-      if (url.endsWith("/api/v1/runs/run-1") && method === "DELETE") {
-        deleted = true
-        return { status: 204, body: null }
-      }
-      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
-      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
-      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
-      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
-      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
-    })
-
-    renderAdmin()
-    await screen.findByText("Data Scientist")
-
-    fireEvent.click(screen.getByRole("button", { name: "Удалить исследование Data Scientist" }))
-
-    await waitFor(() => expect(screen.queryByText("Data Scientist")).not.toBeInTheDocument())
-    expect(
-      fetchCalls().some(
-        (call) => call.url.endsWith("/api/v1/runs/run-1") && call.init.method === "DELETE",
-      ),
-    ).toBe(true)
-  })
-
   it("обновляет данные по кнопке «Обновить»", async () => {
     storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
     stubAdminData()
@@ -267,35 +231,6 @@ describe("админка", () => {
     await waitFor(() => {
       expect(fetchCalls().some((call) => call.url.includes("status=error"))).toBe(true)
     })
-  })
-
-  it("оставляет исследование при ошибке удаления", async () => {
-    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
-    setFetchHandler(async (url, init) => {
-      const method = init?.method ?? "GET"
-      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
-      if (url.endsWith("/api/v1/runs") && method === "GET") {
-        return { status: 200, body: [{ id: "run-1", profession: "Data Scientist", status: "done" }] }
-      }
-      if (url.endsWith("/api/v1/runs/run-1") && method === "DELETE") {
-        return { status: 500, body: { code: "INTERNAL", message: "не удалилось" } }
-      }
-      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
-      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
-      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
-      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
-      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
-    })
-
-    renderAdmin()
-    await screen.findByText("Data Scientist")
-
-    fireEvent.click(screen.getByRole("button", { name: "Удалить исследование Data Scientist" }))
-
-    await waitFor(() =>
-      expect(fetchCalls().some((call) => call.init.method === "DELETE")).toBe(true),
-    )
-    expect(screen.getByText("Data Scientist")).toBeInTheDocument()
   })
 
   it("разбирает Prometheus-метрики и скачивает их", async () => {

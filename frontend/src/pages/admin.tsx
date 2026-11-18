@@ -114,7 +114,6 @@ export function Admin() {
   const [metricsText, setMetricsText] = useState("")
   const [loading, setLoading] = useState(isAdmin)
   const [refreshing, setRefreshing] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [llmRequests, setLlmRequests] = useState<LlmRequest[]>([])
   const [llmUsage, setLlmUsage] = useState<ModelUsage[]>([])
   const [llmUsageError, setLlmUsageError] = useState(false)
@@ -271,23 +270,6 @@ export function Admin() {
       toast.success("Материал удалён")
     } catch {
       toast.error("Сервер недоступен", { description: "Материал не удалён." })
-    }
-  }
-
-  const removeRun = async (run: Run) => {
-    setDeletingId(run.id)
-    try {
-      const { error } = await apiClient.DELETE("/runs/{id}", { params: { path: { id: run.id } } })
-      if (error) {
-        toast.error("Не удалось удалить исследование", { description: error.message })
-        return
-      }
-      setRuns((prev) => prev.filter((item) => item.id !== run.id))
-      toast.success("Исследование удалено")
-    } catch {
-      toast.error("Сервер недоступен", { description: "Исследование не удалено." })
-    } finally {
-      setDeletingId(null)
     }
   }
 
@@ -821,7 +803,10 @@ export function Admin() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Исследования</CardTitle>
-          <CardDescription>Всего: {runs.length}. Удаление необратимо.</CardDescription>
+          <CardDescription>
+            Всего: {runs.length}. Только просмотр — удалить исследование может его автор на главной
+            странице.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
@@ -836,16 +821,6 @@ export function Admin() {
                     </Link>
                   </div>
                   <StatusBadge status={run.status} />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Удалить исследование ${run.profession}`}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    disabled={deletingId === run.id}
-                    onClick={() => void removeRun(run)}
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
                 </li>
               ))}
             </ul>
