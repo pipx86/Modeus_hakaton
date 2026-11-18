@@ -1,3 +1,8 @@
+/**
+ * @file ChatTab.tsx
+ * @description Вкладка чата: SSE-поток интервью, отправка ответов и состояние завершённого диалога.
+ */
+
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"

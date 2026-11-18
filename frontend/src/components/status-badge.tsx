@@ -1,3 +1,8 @@
+/**
+ * @file status-badge.tsx
+ * @description Бейдж статуса прогона: цвет, подпись и доступное имя.
+ */
+
 import { Badge } from "@/components/ui/badge"
 import { cn } from "cn"
 import type { RunStatus } from "@/lib/api/client"

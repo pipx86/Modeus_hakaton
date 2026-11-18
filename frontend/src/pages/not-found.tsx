@@ -1,3 +1,8 @@
+/**
+ * @file not-found.tsx
+ * @description Страница 404 для неизвестных маршрутов.
+ */
+
 import { Link } from "react-router-dom"
 import { CompassIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"

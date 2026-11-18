@@ -1,3 +1,8 @@
+/**
+ * @file select.tsx
+ * @description Выпадающий список на Radix с триггером и пунктами.
+ */
+
 import * as React from "react"
 import { Select as SelectPrimitive } from "radix-ui"
 import { CheckIcon, ChevronDownIcon } from "lucide-react"

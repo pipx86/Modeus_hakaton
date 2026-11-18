@@ -1,3 +1,8 @@
+/**
+ * @file badge.tsx
+ * @description Бейдж с вариантами оформления для статусов и меток.
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"

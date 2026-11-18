@@ -1,3 +1,8 @@
+/**
+ * @file main.tsx
+ * @description Точка входа: монтирование React-приложения в DOM.
+ */
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from 'next-themes'

@@ -1,3 +1,8 @@
+/**
+ * @file sheet.tsx
+ * @description Выезжающая панель на Radix для мобильного меню.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 import { Dialog as SheetPrimitive } from "radix-ui"

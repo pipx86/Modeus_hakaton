@@ -1,3 +1,8 @@
+/**
+ * @file activity-tree-model.ts
+ * @description Модель дерева деятельности: сборка иерархии из плоского списка узлов и подписи уровней.
+ */
+
 import type { ActivityNode, NodeType } from "@/lib/api/client"
 
 /** Узел дерева с восстановленными детьми из плоского ответа API. */

@@ -1,3 +1,8 @@
+/**
+ * @file NewResearch.tsx
+ * @description Создание исследования: выбор роли с подсказками и запуск прогона.
+ */
+
 import { useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"

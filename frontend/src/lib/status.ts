@@ -1,3 +1,8 @@
+/**
+ * @file status.ts
+ * @description Русские подписи и тон статусов прогонов для интерфейса.
+ */
+
 import type { NodeType, RunStatus, SourceType } from "@/lib/api/client"
 
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {

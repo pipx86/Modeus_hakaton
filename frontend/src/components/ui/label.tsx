@@ -1,3 +1,8 @@
+/**
+ * @file label.tsx
+ * @description Подпись поля формы, связанная с контролом.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 import { Label as LabelPrimitive } from "radix-ui"

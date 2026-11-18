@@ -1,3 +1,8 @@
+/**
+ * @file textarea.tsx
+ * @description Многострочное поле ввода.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 

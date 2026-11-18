@@ -1,3 +1,8 @@
+/**
+ * @file dialog.tsx
+ * @description Модальное окно на Radix с шапкой, телом и футером.
+ */
+
 "use client"
 
 import * as React from "react"

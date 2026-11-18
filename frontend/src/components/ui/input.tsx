@@ -1,3 +1,8 @@
+/**
+ * @file input.tsx
+ * @description Однострочное поле ввода в стиле дизайн-системы.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 

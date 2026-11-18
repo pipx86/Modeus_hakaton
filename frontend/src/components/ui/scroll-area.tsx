@@ -1,3 +1,8 @@
+/**
+ * @file scroll-area.tsx
+ * @description Область с кастомным скроллбаром на Radix.
+ */
+
 "use client"
 
 import * as React from "react"

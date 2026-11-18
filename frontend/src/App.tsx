@@ -1,3 +1,8 @@
+/**
+ * @file App.tsx
+ * @description Маршруты приложения, провайдеры темы и тостов, границы ошибок.
+ */
+
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { RequireAuth } from "@/components/require-auth"

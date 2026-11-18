@@ -1,3 +1,8 @@
+/**
+ * @file card.tsx
+ * @description Набор карточек: контейнер, шапка, заголовок, описание и контент.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 

@@ -1,3 +1,8 @@
+/**
+ * @file separator.tsx
+ * @description Горизонтальный или вертикальный разделитель.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 import { Separator as SeparatorPrimitive } from "radix-ui"

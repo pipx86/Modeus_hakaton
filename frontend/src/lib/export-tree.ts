@@ -1,3 +1,8 @@
+/**
+ * @file export-tree.ts
+ * @description Экспорт дерева деятельности в Markdown/JSON и скачивание файла.
+ */
+
 import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import type { ActivityNode } from "@/lib/api/client"
 

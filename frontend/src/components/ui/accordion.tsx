@@ -1,3 +1,8 @@
+/**
+ * @file accordion.tsx
+ * @description Аккордеон на Radix: раскрывающиеся секции интерфейса.
+ */
+
 import * as React from "react"
 import { cn } from "cn"
 import { Accordion as AccordionPrimitive } from "radix-ui"

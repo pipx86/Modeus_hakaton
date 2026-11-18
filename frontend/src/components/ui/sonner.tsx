@@ -1,3 +1,8 @@
+/**
+ * @file sonner.tsx
+ * @description Контейнер всплывающих уведомлений sonner.
+ */
+
 "use client"
 
 import { useTheme } from "next-themes"

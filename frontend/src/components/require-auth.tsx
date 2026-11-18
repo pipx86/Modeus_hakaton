@@ -1,3 +1,8 @@
+/**
+ * @file require-auth.tsx
+ * @description Защита маршрутов: редирект на вход, если нет валидного JWT.
+ */
+
 import type { ReactNode } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { getValidToken } from "@/lib/auth"

@@ -1,3 +1,8 @@
+/**
+ * @file client.ts
+ * @description Настроенный openapi-fetch клиент: базовый URL, JWT и общие типы API.
+ */
+
 import createClient from "openapi-fetch"
 import { frontendLog } from "@/lib/frontend-log"
 import { getValidToken } from "@/lib/auth"

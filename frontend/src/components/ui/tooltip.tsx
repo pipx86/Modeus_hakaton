@@ -1,3 +1,8 @@
+/**
+ * @file tooltip.tsx
+ * @description Всплывающая подсказка на Radix.
+ */
+
 "use client"
 
 import * as React from "react"

@@ -1,3 +1,8 @@
+/**
+ * @file Layout.tsx
+ * @description Каркас приложения: сайдбар, мобильное меню, шапка, переключатель темы и аккаунт.
+ */
+
 import { useMemo, useState } from "react"
 import { Link, Outlet, useLocation } from "react-router-dom"
 import { useTheme } from "next-themes"

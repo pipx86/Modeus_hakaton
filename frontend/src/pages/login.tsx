@@ -1,3 +1,8 @@
+/**
+ * @file login.tsx
+ * @description Вход по JWT-токену, выданному администратором.
+ */
+
 import { useState, type FormEvent } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { KeyRoundIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react"

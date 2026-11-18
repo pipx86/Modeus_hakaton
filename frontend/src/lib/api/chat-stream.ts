@@ -1,3 +1,8 @@
+/**
+ * @file chat-stream.ts
+ * @description Разбор SSE-потока чата: события сообщений, ошибок и завершения.
+ */
+
 import { apiBaseUrl, type ChatMessage, type RunEvent, type RunStatus } from "./client"
 
 export type StreamState = "open" | "reconnecting" | "failed"
