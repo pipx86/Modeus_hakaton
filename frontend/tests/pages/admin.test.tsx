@@ -39,6 +39,22 @@ function stubAdminData() {
     if (url.endsWith("/api/v1/health")) {
       return { status: 200, body: { status: "ok" } }
     }
+    if (url.includes("/api/v1/llm/requests")) {
+      return {
+        status: 200,
+        body: {
+          items: [
+            {
+              id: "llm-1",
+              agent: "interviewer",
+              model: "deepseek-test",
+              status: "ok",
+              latency_ms: 1200,
+            },
+          ],
+        },
+      }
+    }
     return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
   })
 }
@@ -68,6 +84,8 @@ describe("админка", () => {
     expect(
       screen.getByRole("button", { name: /Удалить исследование Data Scientist/ }),
     ).toBeInTheDocument()
-    expect(await screen.findByText("ok")).toBeInTheDocument()
+    expect((await screen.findAllByText("ok")).length).toBeGreaterThan(0)
+    expect(screen.getByText("HTTP 5xx")).toBeInTheDocument()
+    expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
   })
 })

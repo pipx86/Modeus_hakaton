@@ -66,6 +66,11 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        // Prometheus-метрики бэкенда для админки.
+        "/metrics": {
+          target: env.VITE_PROXY_TARGET || "http://127.0.0.1:8080",
+          changeOrigin: true,
+        },
         // Живой бэкенд: прокси добавляет JWT, потому что EventSource не умеет заголовки.
         "/api": {
           target: env.VITE_PROXY_TARGET || "http://127.0.0.1:8080",
