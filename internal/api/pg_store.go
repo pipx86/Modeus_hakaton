@@ -71,7 +71,7 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT n.id::text,n.type,n.title,COALESCE(n.description,''),n.parent_id::text,
- COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote,'status',COALESCE(e.status,'pending')) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb)
  FROM nodes n WHERE n.run_id=$1 ORDER BY n.level,n.id`, id)
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.node_id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
+	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.node_id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote,COALESCE(e.status,'pending') FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
 	if err != nil {
 		return nil, err
 	}
@@ -105,9 +105,11 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	out := []domain.Evidence{}
 	for rows.Next() {
 		var e domain.Evidence
-		if err = rows.Scan(&e.ID, &e.NodeID, &e.SourceID, &e.RefID, &e.Quote); err != nil {
+		var st string
+		if err = rows.Scan(&e.ID, &e.NodeID, &e.SourceID, &e.RefID, &e.Quote, &st); err != nil {
 			return nil, err
 		}
+		e.Status = domain.EvidenceStatus(st)
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -118,21 +120,53 @@ func (p *PGStore) ApproveEvidence(id string) error {
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	tag, err := p.Pool.Exec(ctx, "UPDATE evidence SET approved=true WHERE id=$1 AND NOT approved", id)
+	// status + approved; trigger syncs approved from status when column exists
+	tag, err := p.Pool.Exec(ctx, `UPDATE evidence SET status='approved', approved=true WHERE id=$1 AND COALESCE(status,'pending') = 'pending'`, id)
 	if err != nil {
 		return translate(err)
 	}
 	if tag.RowsAffected() == 1 {
 		return nil
 	}
-	var exists bool
-	if err = p.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM evidence WHERE id=$1)", id).Scan(&exists); err != nil {
-		return err
+	var status string
+	err = p.Pool.QueryRow(ctx, `SELECT COALESCE(status,'pending') FROM evidence WHERE id=$1`, id).Scan(&status)
+	if err != nil {
+		return translate(err)
 	}
-	if exists {
+	if status == "approved" {
 		return ErrAlreadyApproved
 	}
-	return ErrNotFound
+	if status == "rejected" {
+		return ErrAlreadyRejected
+	}
+	return ErrAlreadyApproved
+}
+
+func (p *PGStore) RejectEvidence(id string) error {
+	if !validUUID(id) {
+		return ErrNotFound
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tag, err := p.Pool.Exec(ctx, `UPDATE evidence SET status='rejected', approved=false WHERE id=$1 AND COALESCE(status,'pending') = 'pending'`, id)
+	if err != nil {
+		return translate(err)
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	var status string
+	err = p.Pool.QueryRow(ctx, `SELECT COALESCE(status,'pending') FROM evidence WHERE id=$1`, id).Scan(&status)
+	if err != nil {
+		return translate(err)
+	}
+	if status == "rejected" {
+		return ErrAlreadyRejected
+	}
+	if status == "approved" {
+		return ErrAlreadyApproved
+	}
+	return ErrAlreadyRejected
 }
 func (p *PGStore) SetStage(id string, stage domain.Stage) error {
 	if !validUUID(id) {
@@ -362,7 +396,7 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 			return nil, translate(err)
 		}
 	}
-	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'node_id',node_id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
+	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'node_id',node_id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote,'status',COALESCE(status,'pending')) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +422,7 @@ func (p *PGStore) BulkApproveEvidence(ids []string) (int, int, error) {
 		if !validUUID(id) {
 			continue
 		}
-		tag, err := tx.Exec(ctx, `UPDATE evidence SET approved=true WHERE id=$1 AND NOT approved`, id)
+		tag, err := tx.Exec(ctx, `UPDATE evidence SET status='approved', approved=true WHERE id=$1 AND COALESCE(status,'pending')='pending'`, id)
 		if err != nil {
 			return 0, 0, err
 		}

@@ -179,6 +179,59 @@ func TestApproveEvidence(t *testing.T) {
 	}
 }
 
+func TestRejectEvidence(t *testing.T) {
+	m := newMemStore()
+	m.seedRun(domain.Run{ID: "r1", Status: domain.RunDone, Profession: "cook", Stage: domain.StageDone})
+	m.seedEvidence(domain.Evidence{ID: "e1", SourceID: "s1", Quote: "q1"}, "r1")
+	h := NewServer(m).Routes()
+
+	rr := do(t, h, "POST", "/api/v1/evidences/e1/reject", "teacher", "")
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("ожидали 204 на reject, получили %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = do(t, h, "POST", "/api/v1/evidences/e1/reject", "teacher", "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("ожидали 409 на повторный reject, получили %d", rr.Code)
+	}
+
+	// approve после reject — конфликт (уже rejected)
+	rr = do(t, h, "POST", "/api/v1/evidences/e1/approve", "teacher", "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("ожидали 409 approve после reject, получили %d", rr.Code)
+	}
+
+	m2 := newMemStore()
+	m2.seedRun(domain.Run{ID: "r2", Status: domain.RunDone, Profession: "dev", Stage: domain.StageDone})
+	m2.seedEvidence(domain.Evidence{ID: "e2", SourceID: "s2", Quote: "q2"}, "r2")
+	h2 := NewServer(m2).Routes()
+	rr = do(t, h2, "POST", "/api/v1/evidences/e2/reject", "student", "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("student не должен reject: ожидали 403, получили %d", rr.Code)
+	}
+
+	rr = do(t, h2, "POST", "/api/v1/evidences/missing/reject", "teacher", "")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("ожидали 404 на missing, получили %d", rr.Code)
+	}
+}
+
+func TestApproveThenRejectConflict(t *testing.T) {
+	m := newMemStore()
+	m.seedRun(domain.Run{ID: "r1", Status: domain.RunDone, Profession: "cook", Stage: domain.StageDone})
+	m.seedEvidence(domain.Evidence{ID: "e1", SourceID: "s1", Quote: "q1"}, "r1")
+	h := NewServer(m).Routes()
+
+	rr := do(t, h, "POST", "/api/v1/evidences/e1/approve", "teacher", "")
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("approve: %d", rr.Code)
+	}
+	rr = do(t, h, "POST", "/api/v1/evidences/e1/reject", "teacher", "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("reject после approve должен быть 409, получили %d", rr.Code)
+	}
+}
+
 func TestExportRun(t *testing.T) {
 	m := newMemStore()
 	m.seedRun(domain.Run{ID: "done", Status: domain.RunDone, Profession: "cook", Stage: domain.StageDone})

@@ -98,6 +98,7 @@ func TestGuestCannotMutate(t *testing.T) {
 		{"patch node", http.MethodPatch, "/api/v1/nodes/n1", `{"title":"Other"}`},
 		{"create snapshot", http.MethodPost, "/api/v1/runs/" + guestRunID + "/snapshots", ""},
 		{"approve evidence", http.MethodPost, "/api/v1/evidences/" + guestEvidenceID + "/approve", ""},
+		{"reject evidence", http.MethodPost, "/api/v1/evidences/" + guestEvidenceID + "/reject", ""},
 		{"bulk approve", http.MethodPost, "/api/v1/evidences/bulk-approve", `{"ids":["` + guestEvidenceID + `"]}`},
 		{"create evidence", http.MethodPost, "/api/v1/evidences", `{"node_id":"n1","source_id":"s1","quote":"q"}`},
 		{"create source", http.MethodPost, "/api/v1/sources", `{"type":"document","title":"x"}`},

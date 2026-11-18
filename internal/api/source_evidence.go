@@ -49,7 +49,7 @@ func (p *PGStore) listEvidences(ctx context.Context, nodeID, sourceID string) ([
 		}
 		sourceArg = sourceID
 	}
-	rows, err := p.Pool.Query(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote FROM evidence WHERE ($1::uuid IS NULL OR node_id=$1) AND ($2::uuid IS NULL OR source_id=$2) ORDER BY created_at,id LIMIT 1000`, nodeArg, sourceArg)
+	rows, err := p.Pool.Query(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending') FROM evidence WHERE ($1::uuid IS NULL OR node_id=$1) AND ($2::uuid IS NULL OR source_id=$2) ORDER BY created_at,id LIMIT 1000`, nodeArg, sourceArg)
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +57,11 @@ func (p *PGStore) listEvidences(ctx context.Context, nodeID, sourceID string) ([
 	out := []domain.Evidence{}
 	for rows.Next() {
 		var item domain.Evidence
-		if err = rows.Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote); err != nil {
+		var st string
+		if err = rows.Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st); err != nil {
 			return nil, err
 		}
+		item.Status = domain.EvidenceStatus(st)
 		out = append(out, item)
 	}
 	return out, rows.Err()
@@ -68,7 +70,12 @@ func (p *PGStore) createEvidence(ctx context.Context, nodeID string, item domain
 	if !validUUID(nodeID) || !validUUID(item.SourceID) || strings.TrimSpace(item.Quote) == "" || (item.RefID != "" && strings.TrimSpace(item.RefID) == "") {
 		return domain.Evidence{}, &domain.TreeValidationError{Code: "INVALID_EVIDENCE", Details: "нужны UUID узла и источника, непустая цитата"}
 	}
-	err := p.Pool.QueryRow(ctx, `INSERT INTO evidence(node_id,source_id,quote,ref_id) VALUES($1,$2,$3,NULLIF($4,'')) RETURNING id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote`, nodeID, item.SourceID, item.Quote, item.RefID).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote)
+	var st string
+	err := p.Pool.QueryRow(ctx, `INSERT INTO evidence(node_id,source_id,quote,ref_id) VALUES($1,$2,$3,NULLIF($4,'')) RETURNING id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending')`, nodeID, item.SourceID, item.Quote, item.RefID).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st)
+	item.Status = domain.EvidenceStatus(st)
+	if item.Status == "" {
+		item.Status = domain.EvidencePending
+	}
 	return item, translate(err)
 }
 
@@ -82,8 +89,14 @@ func (p *PGStore) getEvidence(ctx context.Context, id string) (evidenceDetails, 
 	if !validUUID(id) {
 		return item, ErrNotFound
 	}
-	err := p.Pool.QueryRow(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,approved FROM evidence WHERE id=$1`, id).
-		Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &item.Approved)
+	var st string
+	err := p.Pool.QueryRow(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending'),approved FROM evidence WHERE id=$1`, id).
+		Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st, &item.Approved)
+	item.Status = domain.EvidenceStatus(st)
+	if item.Status == "" {
+		item.Status = domain.EvidencePending
+	}
+	item.Approved = item.Status == domain.EvidenceApproved || item.Approved
 	return item, translate(err)
 }
 

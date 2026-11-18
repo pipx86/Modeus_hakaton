@@ -90,12 +90,31 @@ func (s RunStatus) Valid() bool {
 	}
 }
 
+// EvidenceStatus is the review state of a quote attached to a tree node.
+type EvidenceStatus string
+
+const (
+	EvidencePending  EvidenceStatus = "pending"
+	EvidenceApproved EvidenceStatus = "approved"
+	EvidenceRejected EvidenceStatus = "rejected"
+)
+
+func (s EvidenceStatus) Valid() bool {
+	switch s {
+	case EvidencePending, EvidenceApproved, EvidenceRejected, "":
+		return true
+	default:
+		return false
+	}
+}
+
 type Evidence struct {
-	ID       string `json:"id"`
-	NodeID   string `json:"node_id,omitempty"`
-	SourceID string `json:"source_id"`
-	RefID    string `json:"ref_id,omitempty"`
-	Quote    string `json:"quote"`
+	ID       string         `json:"id"`
+	NodeID   string         `json:"node_id,omitempty"`
+	SourceID string         `json:"source_id"`
+	RefID    string         `json:"ref_id,omitempty"`
+	Quote    string         `json:"quote"`
+	Status   EvidenceStatus `json:"status,omitempty"`
 }
 
 // Validate enforces the fields required by the AI agent contract.

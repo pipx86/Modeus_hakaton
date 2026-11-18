@@ -78,6 +78,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/snapshots/{snapshot_id}", s.handleGetSnapshot)
 	mux.HandleFunc("GET /api/v1/runs/{id}/answers", s.handleGetAnswers)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
+	mux.HandleFunc("POST /api/v1/evidences/{id}/reject", s.handleRejectEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
@@ -437,8 +438,46 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "evidence not found")
 		case errors.Is(err, ErrAlreadyApproved):
 			writeErr(w, http.StatusConflict, "ALREADY_APPROVED", "evidence already approved")
+		case errors.Is(err, ErrAlreadyRejected):
+			writeErr(w, http.StatusConflict, "ALREADY_REJECTED", "evidence already rejected")
 		default:
 			logging.Logger.Error("approve_evidence_internal_error", "evidence_id", id, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRejectEvidence godoc
+// @Summary      Reject a single piece of evidence
+// @Description  Marks a specific quote/snippet as rejected; only pending evidence can be rejected.
+// @Tags         evidences
+// @Produce      json
+// @Param        id   path      string  true  "Evidence ID"
+// @Success      204   "No Content"
+// @Failure      404   {object}  errorBody
+// @Failure      409   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/evidences/{id}/reject [post]
+func (s *Server) handleRejectEvidence(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+		return
+	}
+	id := r.PathValue("id")
+
+	err := s.store.RejectEvidence(id)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "evidence not found")
+		case errors.Is(err, ErrAlreadyRejected):
+			writeErr(w, http.StatusConflict, "ALREADY_REJECTED", "evidence already rejected")
+		case errors.Is(err, ErrAlreadyApproved):
+			writeErr(w, http.StatusConflict, "ALREADY_APPROVED", "evidence already approved")
+		default:
+			logging.Logger.Error("reject_evidence_internal_error", "evidence_id", id, "error", err)
 			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		}
 		return

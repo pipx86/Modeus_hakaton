@@ -11,6 +11,7 @@ import (
 
 var ErrNotFound = errors.New("NOT_FOUND")
 var ErrAlreadyApproved = errors.New("EVIDENCE_ALREADY_APPROVED")
+var ErrAlreadyRejected = errors.New("EVIDENCE_ALREADY_REJECTED")
 var ErrConflict = errors.New("conflict")
 var ErrServiceUnavailable = errors.New("SERVICE_UNAVAILABLE")
 var ErrGatewayTimeout = errors.New("GATEWAY_TIMEOUT")
@@ -32,6 +33,7 @@ type Store interface {
 	GetTree(runID string) ([]domain.Node, error)
 	GetAnswers(runID string) ([]domain.Evidence, error)
 	ApproveEvidence(id string) error
+	RejectEvidence(id string) error
 	SetStage(id string, stage domain.Stage) error
 	SetStatus(id string, status domain.RunStatus) error
 	UpdateNode(nodeID string, patch NodePatch) (*domain.Node, error)
@@ -50,6 +52,7 @@ type memStore struct {
 	sources        map[string]domain.Source // === NEW ===
 	runEvidenceIDs map[string][]string
 	approved       map[string]bool
+	status         map[string]domain.EvidenceStatus
 	seq            int
 }
 
@@ -65,6 +68,7 @@ func newMemStore() *memStore {
 		sources:        map[string]domain.Source{}, // === NEW ===
 		runEvidenceIDs: map[string][]string{},
 		approved:       map[string]bool{},
+		status:         map[string]domain.EvidenceStatus{},
 	}
 }
 
@@ -140,11 +144,46 @@ func (m *memStore) ApproveEvidence(id string) error {
 	if _, ok := m.evidences[id]; !ok {
 		return ErrNotFound
 	}
-	if m.approved[id] {
+	st := m.status[id]
+	if st == "" {
+		st = domain.EvidencePending
+	}
+	if st == domain.EvidenceApproved {
 		return ErrAlreadyApproved
 	}
-
+	if st == domain.EvidenceRejected {
+		return ErrAlreadyRejected
+	}
+	m.status[id] = domain.EvidenceApproved
 	m.approved[id] = true
+	ev := m.evidences[id]
+	ev.Status = domain.EvidenceApproved
+	m.evidences[id] = ev
+	return nil
+}
+
+func (m *memStore) RejectEvidence(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.evidences[id]; !ok {
+		return ErrNotFound
+	}
+	st := m.status[id]
+	if st == "" {
+		st = domain.EvidencePending
+	}
+	if st == domain.EvidenceRejected {
+		return ErrAlreadyRejected
+	}
+	if st == domain.EvidenceApproved {
+		return ErrAlreadyApproved
+	}
+	m.status[id] = domain.EvidenceRejected
+	m.approved[id] = false
+	ev := m.evidences[id]
+	ev.Status = domain.EvidenceRejected
+	m.evidences[id] = ev
 	return nil
 }
 
