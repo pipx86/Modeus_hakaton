@@ -53,6 +53,7 @@ const exportSchemaVersion = "run-export/v1"
 type exportFormat string
 
 const (
+	exportFormatLegacy   exportFormat = "legacy"
 	exportFormatMarkdown exportFormat = "md"
 	exportFormatJSON     exportFormat = "json"
 )
@@ -152,6 +153,22 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if format == exportFormatLegacy {
+		// Backward compatibility: without an explicit format this endpoint has
+		// always returned a bare JSON array of domain.Node values.
+		payload, marshalErr := json.Marshal(nodes)
+		if marshalErr != nil {
+			logging.Logger.Error("export_marshal_error", "run_id", id, "error", marshalErr)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "failed to encode export")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", exportFilename(run.ID, "json")))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(append(payload, '\n'))
+		return
+	}
+
 	document := s.buildRunExport(r.Context(), run, nodes)
 
 	var (
@@ -192,12 +209,12 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 func parseExportFormat(values url.Values, accept string) (exportFormat, error) {
 	raw := strings.ToLower(strings.TrimSpace(values.Get("format")))
 	if raw == "" {
-		// Backward compatibility: the legacy /export endpoint returned the tree
-		// as JSON. Markdown is explicit via ?format=md or Accept: text/markdown.
+		// Backward compatibility: the legacy /export endpoint returned a bare
+		// JSON array of nodes. New formats are explicit: ?format=md|json.
 		if strings.Contains(strings.ToLower(accept), "text/markdown") {
 			return exportFormatMarkdown, nil
 		}
-		return exportFormatJSON, nil
+		return exportFormatLegacy, nil
 	}
 	switch raw {
 	case string(exportFormatMarkdown):

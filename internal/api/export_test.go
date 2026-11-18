@@ -125,6 +125,21 @@ func exportFilenameFromDisposition(t *testing.T, header string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(header, prefix), `"`)
 }
 
+func TestExportRunLegacyDefaultIsBareTreeArray(t *testing.T) {
+	handler := NewServer(exportSeedStore()).Routes()
+	rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export", "teacher", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ожидали 200, получили %d (%s)", rec.Code, rec.Body.String())
+	}
+	var nodes []domain.Node
+	if err := json.Unmarshal(rec.Body.Bytes(), &nodes); err != nil {
+		t.Fatalf("legacy export должен быть массивом Node: %v (%s)", err, rec.Body.String())
+	}
+	if len(nodes) != 4 {
+		t.Fatalf("legacy export: ожидали 4 узла, получили %d", len(nodes))
+	}
+}
+
 func TestExportRunMarkdown(t *testing.T) {
 	handler := NewServer(exportSeedStore()).Routes()
 	rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+exportTestRunID+"/export?format=md", "teacher", "")

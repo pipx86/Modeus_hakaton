@@ -755,22 +755,22 @@ paths:
       tags:
       - runs
       summary: Export a completed run as Markdown or JSON
-      description: 'Exports the finalized activity tree of a run whose status is `done`. The default `format=json` preserves
-        the legacy tree JSON contract; `format=md` returns a human-readable Markdown report with the profession, status, run
-        id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the
-        final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the
-        same data as a structured document (`schema=run-export/v1`). Roles: admin, teacher, rop and guest; student receives
-        403. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still
-        succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized
-        run id.'
+      description: 'Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns
+        the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md`
+        returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy,
+        evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when
+        available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`).
+        Roles: admin, teacher, rop and guest; student receives 403. Conflicts and source metadata are auxiliary and are read
+        best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition:
+        attachment` and a filename built from a sanitized run id.'
       operationId: exportRun
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: format
         in: query
         required: false
-        description: 'Export format: `json` (default) or `md`. Any other value returns 400 BAD_REQUEST. Case and surrounding
-          whitespace are normalized.'
+        description: 'Export format: `md`, `json`, or omitted for the legacy bare node array. Any other value returns 400
+          BAD_REQUEST. Case and surrounding whitespace are normalized.'
         schema:
           type: string
           enum:
@@ -779,7 +779,7 @@ paths:
           default: json
       responses:
         '200':
-          description: Exported run as JSON (default) or as Markdown when requested.
+          description: Legacy bare node array by default; structured JSON or Markdown when requested.
           headers:
             Content-Disposition:
               description: '`attachment; filename="run-<sanitized-id>.md"` or `.json`; the id is reduced to ASCII letters,
