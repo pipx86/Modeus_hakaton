@@ -3,7 +3,7 @@
   "info": {
     "title": "Modeus activity-descriptor API",
     "version": "0.1.0",
-    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, require a JWT bearer token. Successful responses are JSON; run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`."
+    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, require a JWT bearer token. Successful responses are JSON, except the run export which serves Markdown by default (`?format=md`) and JSON on request (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`."
   },
   "servers": [
     {
@@ -1154,27 +1154,55 @@
         "tags": [
           "runs"
         ],
-        "summary": "Export the final tree of a completed run",
-        "description": "Returns the finalized activity tree only when the run status is done.",
+        "summary": "Export a completed run as Markdown or JSON",
+        "description": "Exports the finalized activity tree of a run whose status is `done`. `format=md` (default) returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, teacher, rop and guest; student receives 403. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.",
         "operationId": "exportRun",
         "parameters": [
           {
             "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "Export format: `md` (default) or `json`. Any other value returns 400 BAD_REQUEST. Case and surrounding whitespace are normalized.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "md",
+                "json"
+              ],
+              "default": "md"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Exported nodes.",
+            "description": "Exported run as Markdown (default) or as a JSON document.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"run-<sanitized-id>.md\"` or `.json`; the id is reduced to ASCII letters, digits, `-` and `_`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "# Run export: Аналитик данных\n\n- Run ID: `run-export-1`\n- Status: done\n- Generated at: 2026-11-18T10:12:00Z\n\n## Competency tree\n\n- Аналитик данных (role) `node-role`\n  - Аналитика требований (function) `node-function`\n\n## Evidence\n\n| Node | Quote | Source | Ref ID | Status |\n| --- | --- | --- | --- | --- |\n| `node-function` — Аналитика требований | Цитата про анализ требований | `src-interview` (interview) | `ref-function` | approved |\n\n## Conflicts\n\nNo source conflicts were resolved for this run.\n"
+              },
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Node"
-                  }
+                  "$ref": "#/components/schemas/ExportRun"
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -1186,15 +1214,27 @@
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
-            "description": "The run is not finished yet, nothing to export.",
+            "description": "The run is not finished (`RUN_NOT_FINISHED`) or is finished but has no saved tree (`RUN_HAS_NO_TREE`); there is nothing to export.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "code": "RUN_NOT_FINISHED",
-                  "message": "run is not finished yet"
+                "examples": {
+                  "runNotFinished": {
+                    "summary": "Run is not done yet",
+                    "value": {
+                      "code": "RUN_NOT_FINISHED",
+                      "message": "run is not finished yet"
+                    }
+                  },
+                  "runHasNoTree": {
+                    "summary": "Finished run without a saved tree",
+                    "value": {
+                      "code": "RUN_HAS_NO_TREE",
+                      "message": "run has no saved tree yet"
+                    }
+                  }
                 }
               }
             }
@@ -2618,6 +2658,195 @@
             "type": "string",
             "format": "date-time"
           }
+        }
+      },
+      "ExportNode": {
+        "type": "object",
+        "description": "One node of the flat `nodes` list of a JSON run export.",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Absent for the root node."
+          },
+          "zun": {
+            "$ref": "#/components/schemas/Zun"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          }
+        }
+      },
+      "ExportTreeNode": {
+        "type": "object",
+        "description": "Node of the nested `tree` of a JSON run export; children repeat the same shape.",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "evidence",
+          "children"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Absent for the root node."
+          },
+          "zun": {
+            "$ref": "#/components/schemas/Zun"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportTreeNode"
+            }
+          }
+        }
+      },
+      "ExportRun": {
+        "type": "object",
+        "description": "Structured JSON export of a completed run (`GET /runs/{id}/export?format=json`).",
+        "required": [
+          "schema",
+          "generated_at",
+          "run",
+          "tree",
+          "nodes",
+          "evidence",
+          "conflicts",
+          "final_message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "run-export/v1"
+            ],
+            "description": "Export document schema version."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the export was generated (UTC)."
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          },
+          "tree": {
+            "type": "array",
+            "description": "Nested role → function → task → action hierarchy.",
+            "items": {
+              "$ref": "#/components/schemas/ExportTreeNode"
+            }
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Flat node list in storage order.",
+            "items": {
+              "$ref": "#/components/schemas/ExportNode"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "description": "All evidence quotes of the tree; `node_id` is always filled.",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "description": "Resolved synthesizer conflicts; empty when none or when the store cannot provide them.",
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            }
+          },
+          "final_message": {
+            "type": "string",
+            "description": "Last agent chat message with recommendations/courses. Empty for batch runs and after a server restart because the chat session lives in memory."
+          },
+          "sources": {
+            "type": "array",
+            "description": "Metadata of sources linked to the run (best-effort, PostgreSQL only). The full source content is intentionally not exported.",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          }
+        },
+        "example": {
+          "schema": "run-export/v1",
+          "generated_at": "2026-11-18T10:12:00Z",
+          "run": {
+            "id": "run-export-1",
+            "status": "done",
+            "profession": "Аналитик данных",
+            "stage": "done",
+            "type": "chat"
+          },
+          "tree": [
+            {
+              "id": "node-role",
+              "type": "role",
+              "title": "Аналитик данных",
+              "evidence": [],
+              "children": []
+            }
+          ],
+          "nodes": [
+            {
+              "id": "node-role",
+              "type": "role",
+              "title": "Аналитик данных",
+              "evidence": []
+            }
+          ],
+          "evidence": [],
+          "conflicts": [],
+          "final_message": "Интервью завершено. Курсы Stepik: SQL с нуля"
         }
       },
       "Run": {

@@ -34,7 +34,9 @@ var ErrProviderTimeout = errors.New("llm: provider timeout")
 var ErrNilContext = errors.New("llm: nil context")
 
 // DegradedError marks a call that failed because the model was unavailable.
-// The agent layer converts it into a fallback and marks the run degraded.
+// A fallback chain (see FallbackClient) may hide a transient DegradedError by
+// answering with another model; when no model answers, the agent layer can
+// convert it into a degraded run status.
 type DegradedError struct {
 	Err error
 }

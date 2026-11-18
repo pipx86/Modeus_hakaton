@@ -88,16 +88,21 @@ func run(ctx context.Context, c config) error {
 	var agentMetrics *agentmetrics.Registry
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
-	var llmProvider, llmModel, llmAnalystModel string
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
-		llmProvider = "openai-compatible"
-		llmModel = cfg.Agents[agents.Interviewer].Model
-		llmAnalystModel = cfg.Agents[agents.Analyst].Model
 		logging.Logger.Info("LLM provider configured",
 			"base_url", cfg.BaseURL,
 			"interviewer_model", cfg.Agents[agents.Interviewer].Model,
-			"analyst_model", cfg.Agents[agents.Analyst].Model)
-		if agentPool, poolErr := agents.NewPool(cfg); poolErr == nil {
+			"interviewer_fallback_model", cfg.Agents[agents.Interviewer].FallbackModel,
+			"analyst_model", cfg.Agents[agents.Analyst].Model,
+			"analyst_fallback_model", cfg.Agents[agents.Analyst].FallbackModel)
+		// The pool wraps every per-model client with this decorator, so the
+		// llm_requests audit row names the model that actually answered. A
+		// fallback call therefore shows up as a second row with its own model
+		// instead of being attributed to the primary model.
+		recordLLMRequest := func(name agents.AgentName, model string, client llm.ChatClient) llm.ChatClient {
+			return llmobs.NewRecorder(client, llmStore, string(name), "openai-compatible", model)
+		}
+		if agentPool, poolErr := agents.NewPool(cfg, agents.WithClientDecorator(recordLLMRequest)); poolErr == nil {
 			agentMetrics = agentPool.Metrics()
 			if interviewerClient, clientErr := agentPool.Client(agents.Interviewer); clientErr == nil {
 				chatClient = interviewerClient
@@ -105,21 +110,13 @@ func run(ctx context.Context, c config) error {
 			if client, clientErr := agentPool.Client(agents.Analyst); clientErr == nil {
 				analystClient = client
 			}
+		} else {
+			logging.Logger.Error("LLM provider pool setup failed; using fallback interview", "error", poolErr)
 		}
 	} else {
 		logging.Logger.Warn("LLM provider is not configured; using fallback interview", "error", cfgErr)
 	}
 	if agentMetrics != nil {
-		provider := llmProvider
-		model := llmModel
-		chatClient = llmobs.NewRecorder(chatClient, llmStore, "interviewer", provider, model)
-		if analystClient != nil {
-			analystModel := model
-			if llmAnalystModel != "" {
-				analystModel = llmAnalystModel
-			}
-			analystClient = llmobs.NewRecorder(analystClient, llmStore, "analyst", provider, analystModel)
-		}
 		chatClient = llm.NewCachedClient(chatClient, 128)
 		if analystClient != nil {
 			analystClient = llm.NewCachedClient(analystClient, 128)
