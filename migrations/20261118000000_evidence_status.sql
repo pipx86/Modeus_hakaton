@@ -17,12 +17,14 @@ ALTER TABLE evidence
     CHECK (status IN ('pending', 'approved', 'rejected'));
 
 -- Держим approved в согласии со status при будущих UPDATE.
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION evidence_sync_approved() RETURNS TRIGGER AS $$
 BEGIN
     NEW.approved := (NEW.status = 'approved');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS trg_evidence_sync_approved ON evidence;
 CREATE TRIGGER trg_evidence_sync_approved
