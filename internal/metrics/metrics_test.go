@@ -190,3 +190,20 @@ func TestConcurrentUse(t *testing.T) {
 		t.Fatalf("unexpected counter total:\n%s", m.Text())
 	}
 }
+
+func TestMiddlewarePreservesFlusherForSSE(t *testing.T) {
+	m := New()
+	mux := http.NewServeMux()
+	var gotFlusher bool
+	mux.HandleFunc("GET /stream", func(w http.ResponseWriter, _ *http.Request) {
+		_, gotFlusher = w.(http.Flusher)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := m.Middleware(mux)
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/stream", nil))
+
+	if !gotFlusher {
+		t.Fatal("middleware must preserve http.Flusher so SSE keeps working")
+	}
+}

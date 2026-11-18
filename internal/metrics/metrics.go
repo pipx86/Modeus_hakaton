@@ -478,3 +478,15 @@ func (r *responseRecorder) Write(p []byte) (int, error) {
 	}
 	return r.ResponseWriter.Write(p)
 }
+
+// Flush проксирует потоковые ответы (SSE), если нижележащий writer это умеет.
+func (r *responseRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap позволяет http.ResponseController добраться до исходного writer.
+func (r *responseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
