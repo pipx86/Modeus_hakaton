@@ -135,7 +135,7 @@ function SidebarContent({
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight">Название</p>
+            <p className="truncate text-sm font-semibold leading-tight">Activity Descriptor</p>
             <p className="text-xs text-muted-foreground">Анализ деятельности</p>
           </div>
         )}
