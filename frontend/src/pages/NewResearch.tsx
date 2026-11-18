@@ -104,7 +104,7 @@ export function NewResearch() {
         <CardHeader>
           <CardTitle>Новое исследование</CardTitle>
           <CardDescription>
-            Укажите роль — агенты проведут интервью и построят дерево деятельности.
+            Укажите роль - агенты проведут интервью и построят дерево деятельности.
           </CardDescription>
         </CardHeader>
         <CardContent>

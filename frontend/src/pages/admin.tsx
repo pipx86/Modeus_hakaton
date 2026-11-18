@@ -87,7 +87,7 @@ function formatPercent(value: number): string {
 }
 
 function formatMs(value: number | null): string {
-  if (value === null) return "—"
+  if (value === null) return "-"
   if (value >= 1000) return `${(value / 1000).toFixed(1)} с`
   return `${Math.round(value)} мс`
 }
@@ -456,12 +456,12 @@ export function Admin() {
         <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
         <Kpi
           label="HTTP 4xx"
-          value={stats.httpTotal > 0 ? formatPercent((stats.http4xx / stats.httpTotal) * 100) : "—"}
+          value={stats.httpTotal > 0 ? formatPercent((stats.http4xx / stats.httpTotal) * 100) : "-"}
           hint={`${stats.http4xx} из ${stats.httpTotal} запросов`}
         />
         <Kpi
           label="HTTP 5xx"
-          value={stats.httpTotal > 0 ? formatPercent((stats.http5xx / stats.httpTotal) * 100) : "—"}
+          value={stats.httpTotal > 0 ? formatPercent((stats.http5xx / stats.httpTotal) * 100) : "-"}
           hint={`${stats.http5xx} из ${stats.httpTotal} запросов`}
         />
         <Kpi
@@ -471,7 +471,7 @@ export function Admin() {
         />
         <Kpi
           label="Токенов за 24 часа"
-          value={llmUsageError ? "—" : tokenStats.total.toLocaleString("ru-RU")}
+          value={llmUsageError ? "-" : tokenStats.total.toLocaleString("ru-RU")}
           hint={
             llmUsageError
               ? "нет доступа к расходу"
@@ -543,7 +543,7 @@ export function Admin() {
                           ? new Intl.DateTimeFormat("ru-RU", { timeStyle: "medium" }).format(
                               new Date(request.created_at),
                             )
-                          : "—"}
+                          : "-"}
                       </td>
                       <td className="py-2 pr-3">{request.agent}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{request.model}</td>
@@ -553,7 +553,7 @@ export function Admin() {
                         </Badge>
                       </td>
                       <td className="py-2 pr-3">{formatMs(request.latency_ms)}</td>
-                      <td className="py-2 text-muted-foreground">{request.error_code || "—"}</td>
+                      <td className="py-2 text-muted-foreground">{request.error_code || "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -679,7 +679,7 @@ export function Admin() {
         <CardHeader>
           <CardTitle className="text-base">Материалы для аналитика</CardTitle>
           <CardDescription>
-            Загрузите PDF, DOCX или текстовый файл — текст извлечётся автоматически. Материалы
+            Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
             доступны всем новым прогонам, аналитик опирается на них при разборе интервью.
           </CardDescription>
         </CardHeader>
@@ -707,7 +707,7 @@ export function Admin() {
                   id="material-title"
                   value={sourceTitle}
                   onChange={(event) => setSourceTitle(event.target.value)}
-                  placeholder="По умолчанию — имя файла"
+                  placeholder="По умолчанию - имя файла"
                   maxLength={200}
                 />
               </div>
@@ -834,7 +834,7 @@ export function Admin() {
         <CardHeader>
           <CardTitle className="text-base">Исследования</CardTitle>
           <CardDescription>
-            Всего: {runs.length}. Только просмотр — удалить исследование может его автор на главной
+            Всего: {runs.length}. Только просмотр - удалить исследование может его автор на главной
             странице.
           </CardDescription>
         </CardHeader>

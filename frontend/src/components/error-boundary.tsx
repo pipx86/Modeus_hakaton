@@ -10,7 +10,7 @@ import { frontendLog } from "@/lib/frontend-log"
 
 interface ErrorBoundaryProps {
   children: ReactNode
-  /** `page` — на весь экран, `inline` — внутри Layout вокруг маршрута. */
+  /** `page` - на весь экран, `inline` - внутри Layout вокруг маршрута. */
   variant?: "page" | "inline"
 }
 
@@ -57,7 +57,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <div className="space-y-1">
             <p className="text-lg font-semibold">Что-то пошло не так</p>
             <p className="text-sm text-muted-foreground">
-              Интерфейс столкнулся с ошибкой. Данные не потеряны — попробуйте ещё раз или обновите
+              Интерфейс столкнулся с ошибкой. Данные не потеряны - попробуйте ещё раз или обновите
               страницу.
             </p>
           </div>

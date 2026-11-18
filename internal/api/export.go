@@ -31,15 +31,15 @@ import (
 // (schema=run-export/v1): run, дерево, плоский список узлов, evidence,
 // conflicts, final_message и метаданные источников.
 //
-// Права: admin, teacher, rop, guest — только чтение, как у остальных
-// read-only маршрутов прогона. student получает 403, отсутствие токена — 401.
+// Права: admin, teacher, rop, guest - только чтение, как у остальных
+// read-only маршрутов прогона. student получает 403, отсутствие токена - 401.
 //
-// Коды: 400 — неизвестный format; 404 — прогон не найден; 409 — прогон ещё не
+// Коды: 400 - неизвестный format; 404 - прогон не найден; 409 - прогон ещё не
 // завершён (RUN_NOT_FINISHED) или завершён, но дерево не сохранено
-// (RUN_HAS_NO_TREE); 500 — ошибка хранилища; 503/504 — временная
+// (RUN_HAS_NO_TREE); 500 - ошибка хранилища; 503/504 - временная
 // недоступность/таймаут апстрима (пробрасываются mapStoreError).
 //
-// Конфликты, источники и финальное сообщение — вспомогательные данные:
+// Конфликты, источники и финальное сообщение - вспомогательные данные:
 // конфликты и метаданные источников читаются best-effort и не ломают экспорт
 // при ошибке (в отчёт попадёт пустой список, ошибка пишется в лог). Финальное
 // сообщение берётся из чата интервью (последнее сообщение агента) и доступно,
@@ -49,7 +49,7 @@ import (
 // exportSchemaVersion идентифицирует структуру JSON-экспорта.
 const exportSchemaVersion = "run-export/v1"
 
-// exportFormat — значение query-параметра format.
+// exportFormat - значение query-параметра format.
 type exportFormat string
 
 const (
@@ -58,21 +58,21 @@ const (
 	exportFormatJSON     exportFormat = "json"
 )
 
-// synthesisConflictsReader — узкий читающий интерфейс конфликтов синтезатора.
+// synthesisConflictsReader - узкий читающий интерфейс конфликтов синтезатора.
 // Его реализует *PGStore; в отличие от synthesisReviewReader (review-эндпоинты)
 // экспорту не нужны сообщения памяти агента, поэтому интерфейс уже.
 type synthesisConflictsReader interface {
 	listSynthesisConflicts(ctx context.Context, runID string) ([]domain.Conflict, error)
 }
 
-// runSourcesReader — узкий читающий интерфейс метаданных источников прогона.
+// runSourcesReader - узкий читающий интерфейс метаданных источников прогона.
 // Его реализует *PGStore; in-memory хранилище его не реализует, поэтому для
 // демо-стенда секция источников просто отсутствует.
 type runSourcesReader interface {
 	ListRunSources(ctx context.Context, runID string) ([]domain.Source, error)
 }
 
-// runExport — документ JSON-экспорта (format=json).
+// runExport - документ JSON-экспорта (format=json).
 type runExport struct {
 	Schema       string            `json:"schema"`
 	GeneratedAt  time.Time         `json:"generated_at"`
@@ -85,7 +85,7 @@ type runExport struct {
 	Sources      []domain.Source   `json:"sources,omitempty"`
 }
 
-// runExportNode — узел иерархии экспорта: поля domain.Node плюс вложенные дети.
+// runExportNode - узел иерархии экспорта: поля domain.Node плюс вложенные дети.
 type runExportNode struct {
 	domain.Node
 	Children []runExportNode `json:"children"`
@@ -115,7 +115,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 
-	// Формат проверяем до обращения к хранилищу: неизвестный format — это 400
+	// Формат проверяем до обращения к хранилищу: неизвестный format - это 400
 	// независимо от того, существует ли прогон.
 	format, err := parseExportFormat(r.URL.Query(), r.Header.Get("Accept"))
 	if err != nil {
@@ -205,7 +205,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 
 // parseExportFormat разбирает и валидирует ?format=. Пустое значение означает
 // формат по умолчанию md. Регистр и пробелы вокруг значения нормализуются,
-// любое другое значение — ошибка для 400.
+// любое другое значение - ошибка для 400.
 func parseExportFormat(values url.Values, accept string) (exportFormat, error) {
 	raw := strings.ToLower(strings.TrimSpace(values.Get("format")))
 	if raw == "" {
@@ -306,7 +306,7 @@ func (s *Server) exportSources(ctx context.Context, runID string) []domain.Sourc
 	return out
 }
 
-// exportFinalMessage возвращает последнее сообщение агента в чате интервью —
+// exportFinalMessage возвращает последнее сообщение агента в чате интервью -
 // это финальное сообщение с рекомендациями и бесплатными курсами. История
 // читается из chat.Service, который возвращает сохранённый диалог даже после
 // перезапуска backend; для batch-прогонов без чата сообщение недоступно и
@@ -502,7 +502,7 @@ func writeMarkdownTree(builder *strings.Builder, nodes []runExportNode, depth in
 	for _, node := range nodes {
 		suffix := ""
 		if len(node.Evidence) > 0 {
-			suffix = fmt.Sprintf(" — evidence: %d", len(node.Evidence))
+			suffix = fmt.Sprintf(" - evidence: %d", len(node.Evidence))
 		}
 		fmt.Fprintf(builder, "%s- %s (%s) %s%s\n",
 			indent, markdownText(node.Title), markdownText(string(node.Type)), markdownCode(node.ID), suffix)
@@ -534,8 +534,8 @@ func writeMarkdownEvidenceSection(builder *strings.Builder, document *runExport)
 	builder.WriteString("| --- | --- | --- | --- | --- |\n")
 	for _, evidence := range document.Evidence {
 		nodeLabel := markdownCode(evidence.NodeID)
-		if title := markdownText(titles[evidence.NodeID]); title != "—" {
-			nodeLabel = fmt.Sprintf("%s — %s", markdownCode(evidence.NodeID), markdownCell(title))
+		if title := markdownText(titles[evidence.NodeID]); title != "-" {
+			nodeLabel = fmt.Sprintf("%s - %s", markdownCode(evidence.NodeID), markdownCell(title))
 		}
 		status := string(evidence.Status)
 		if status == "" {
@@ -619,7 +619,7 @@ func markdownSourceLabel(sourceID string, sources map[string]domain.Source) stri
 	if len(parts) == 0 {
 		return label
 	}
-	return fmt.Sprintf("%s (%s)", label, strings.Join(parts, " — "))
+	return fmt.Sprintf("%s (%s)", label, strings.Join(parts, " - "))
 }
 
 // markdownInline убирает переводы строк, чтобы значение не ломало структуру
@@ -639,7 +639,7 @@ func markdownCell(value string) string {
 func markdownCellOrDash(value string) string {
 	cell := markdownCell(value)
 	if cell == "" {
-		return "—"
+		return "-"
 	}
 	return cell
 }
@@ -647,7 +647,7 @@ func markdownCellOrDash(value string) string {
 func markdownText(value string) string {
 	text := markdownInline(value)
 	if text == "" {
-		return "—"
+		return "-"
 	}
 	return text
 }
@@ -657,7 +657,7 @@ func markdownText(value string) string {
 func markdownCode(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "—"
+		return "-"
 	}
 	return "`" + strings.ReplaceAll(value, "`", "'") + "`"
 }

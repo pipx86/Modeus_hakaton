@@ -15,7 +15,7 @@ export function treeToMarkdown(nodes: ActivityNode[]): string {
   const walk = (node: TreeNode, depth: number) => {
     const shift = "  ".repeat(depth)
     const evidence = (node.evidence ?? []).length
-    const suffix = evidence > 0 ? ` — обоснований: ${evidence}` : ""
+    const suffix = evidence > 0 ? ` - обоснований: ${evidence}` : ""
     lines.push(`${shift}- ${node.title} _(${NODE_TYPE_LABELS[node.type]})_${suffix}`)
     node.children.forEach((child) => walk(child, depth + 1))
   }

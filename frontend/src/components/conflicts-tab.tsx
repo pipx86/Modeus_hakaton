@@ -92,7 +92,7 @@ export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
         <div className="space-y-1">
           <p className="font-medium">Конфликтов не найдено</p>
           <p className="text-sm text-muted-foreground">
-            Источники не противоречили друг другу — синтезатору не пришлось выбирать победителя.
+            Источники не противоречили друг другу - синтезатору не пришлось выбирать победителя.
           </p>
         </div>
       </div>

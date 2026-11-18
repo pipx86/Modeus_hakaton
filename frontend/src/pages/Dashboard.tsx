@@ -46,7 +46,7 @@ function formatDate(value?: string) {
 }
 
 function formatDuration(ms: number | null): string {
-  if (ms === null) return "—"
+  if (ms === null) return "-"
   if (ms < 60_000) return `${Math.round(ms / 1000)} с`
   if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} мин`
   return `${(ms / 3_600_000).toFixed(1)} ч`
@@ -246,7 +246,7 @@ export function Dashboard() {
               <CardContent className="space-y-1">
                 <p className="text-xs text-muted-foreground">Успешных</p>
                 <p className="text-2xl font-semibold">
-                  {stats.successRate === null ? "—" : `${Math.round(stats.successRate)}%`}
+                  {stats.successRate === null ? "-" : `${Math.round(stats.successRate)}%`}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {stats.done} из {stats.done + stats.failed} завершённых

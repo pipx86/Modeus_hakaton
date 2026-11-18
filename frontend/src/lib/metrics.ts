@@ -63,7 +63,7 @@ export function averageHistogramMs(
   return (sum / count) * 1000
 }
 
-/** URL метрик: в dev проксируется, при VITE_API_URL — абсолютный адрес бэкенда. */
+/** URL метрик: в dev проксируется, при VITE_API_URL - абсолютный адрес бэкенда. */
 export function metricsEndpoint(): string {
   const base = import.meta.env.VITE_API_URL
   return base ? `${base}/metrics` : "/metrics"

@@ -1223,7 +1223,7 @@ export function Research() {
         )}
         {run?.status === "failed" && (
           <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            Прогон завершился ошибкой. Подробности — в журнале LLM-запросов админки.
+            Прогон завершился ошибкой. Подробности - в журнале LLM-запросов админки.
           </p>
         )}
       </div>

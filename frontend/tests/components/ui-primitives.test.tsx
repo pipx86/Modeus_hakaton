@@ -1,7 +1,7 @@
 /**
  * Дымовые тесты shadcn-примитивов: проверяется, что компонент рендерится,
  * принимает className и пробрасывает атрибуты. Поведение Radix-обёрток
- * (Sheet, Tooltip, Tabs) здесь не тестируется — оно проверяется через страницы.
+ * (Sheet, Tooltip, Tabs) здесь не тестируется - оно проверяется через страницы.
  */
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"

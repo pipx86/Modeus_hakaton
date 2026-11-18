@@ -1,6 +1,6 @@
 /**
  * Тесты вкладки чата: история, отправка, индикатор «агент думает», обрыв SSE
- * и переход на поллинг. Сеть подменяется fetch-стабом, EventSource — фейком.
+ * и переход на поллинг. Сеть подменяется fetch-стабом, EventSource - фейком.
  */
 import { StrictMode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"

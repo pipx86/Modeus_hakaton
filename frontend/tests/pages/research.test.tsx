@@ -156,7 +156,7 @@ describe("Research", () => {
     expect(await screen.findByText(/Запущено/)).toBeInTheDocument()
   })
 
-  it("не показывает форму загрузки источников — только список", async () => {
+  it("не показывает форму загрузки источников - только список", async () => {
     stubRun()
 
     renderPage()
@@ -176,7 +176,7 @@ describe("Research", () => {
     )
 
     // Radix Tabs (activationMode="automatic") выбирает вкладку по фокусу,
-    // а jsdom не перемещает фокус при клике — поэтому focus(), не click().
+    // а jsdom не перемещает фокус при клике - поэтому focus(), не click().
     act(() => {
       screen.getByRole("tab", { name: "Дерево" }).focus()
     })

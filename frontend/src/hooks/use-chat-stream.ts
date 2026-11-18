@@ -37,7 +37,7 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   const chatClosed = runStatus === "done" || stage === "done"
 
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
-    // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
+    // Бэкенд может вернуть объект ошибки вместо массива - не роняем вкладку.
     if (!Array.isArray(incoming)) return
     const fresh = incoming.filter((message) => !knownIds.current.has(message.id))
     if (fresh.length === 0) return
@@ -68,9 +68,9 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   }, [runId, appendMessages])
 
   useEffect(() => {
-    // Новый прогон — новый чат: старые id не должны блокировать загрузку истории.
+    // Новый прогон - новый чат: старые id не должны блокировать загрузку истории.
     knownIds.current = new Set()
-    // Сброс при смене runId — синхронизация с внешним run, а не каскадный рендер.
+    // Сброс при смене runId - синхронизация с внешним run, а не каскадный рендер.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([])
   }, [runId])

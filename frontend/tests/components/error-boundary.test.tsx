@@ -9,7 +9,7 @@ function Bomb({ shouldThrow }: { shouldThrow: boolean }) {
 
 describe("ErrorBoundary", () => {
   beforeEach(() => {
-    // React печатает stack trace упавшего компонента — в тесте это шум.
+    // React печатает stack trace упавшего компонента - в тесте это шум.
     vi.spyOn(console, "error").mockImplementation(() => {})
   })
 

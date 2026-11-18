@@ -232,9 +232,9 @@ function FieldChange({ label, before, after }: { label: string; before: string; 
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="space-y-0.5">
         <span className="block text-muted-foreground line-through decoration-destructive/60">
-          {before || "—"}
+          {before || "-"}
         </span>
-        <span className="block">{after || "—"}</span>
+        <span className="block">{after || "-"}</span>
       </dd>
     </div>
   )
@@ -510,9 +510,9 @@ function QuoteDetailDialog({
           </blockquote>
           <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 text-sm">
             <dt className="text-muted-foreground">Источник</dt>
-            <dd className="break-words">{detail?.sourceTitle ?? detail?.sourceId ?? "—"}</dd>
+            <dd className="break-words">{detail?.sourceTitle ?? detail?.sourceId ?? "-"}</dd>
             <dt className="text-muted-foreground">source_id</dt>
-            <dd className="font-mono text-xs break-all">{detail?.sourceId ?? "—"}</dd>
+            <dd className="font-mono text-xs break-all">{detail?.sourceId ?? "-"}</dd>
             <dt className="text-muted-foreground">ref_id</dt>
             <dd className="font-mono text-xs break-all">{detail?.refId ?? "не указан"}</dd>
             <dt className="text-muted-foreground">Статус</dt>
