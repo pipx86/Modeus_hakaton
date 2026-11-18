@@ -134,6 +134,9 @@ func Classify(err error) ErrorKind {
 	if errors.As(err, &guard) {
 		return ErrorGuardrail
 	}
+	if errors.Is(err, ErrEmptyResponse) {
+		return ErrorInvalidResponse
+	}
 	if errors.Is(err, ErrProviderTimeout) {
 		return ErrorTimeout
 	}

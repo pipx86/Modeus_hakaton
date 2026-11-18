@@ -45,7 +45,12 @@ const (
 
 // Spec is the per-agent model configuration.
 type Spec struct {
-	Model           string
+	Model string
+	// FallbackModel is an optional second model tried when the primary model
+	// fails transiently (timeout, unavailable, rate limit, empty/invalid
+	// provider response). Empty disables the fallback chain, keeping the
+	// primary-only behaviour. It is read from LLM_<AGENT>_FALLBACK_MODEL.
+	FallbackModel   string
 	Temperature     float64
 	MaxTokens       int
 	ReasoningEffort string
@@ -167,9 +172,10 @@ func FromEnv() (Config, error) {
 func specFromEnv(name AgentName, defaultModel string, defaultTimeout time.Duration) (Spec, error) {
 	upper := strings.ToUpper(string(name))
 	spec := Spec{
-		Model:     getenv("LLM_"+upper+"_MODEL", defaultModel),
-		Timeout:   defaultTimeout,
-		MaxTokens: 3000,
+		Model:         getenv("LLM_"+upper+"_MODEL", defaultModel),
+		FallbackModel: getenv("LLM_"+upper+"_FALLBACK_MODEL", ""),
+		Timeout:       defaultTimeout,
+		MaxTokens:     3000,
 	}
 	// Agent-specific defaults: the interviewer is short and creative, the
 	// analyst is precise and long, the synthesizer is deterministic.
@@ -221,6 +227,12 @@ func specFromEnv(name AgentName, defaultModel string, defaultTimeout time.Durati
 	}
 	if spec.Model == "" {
 		return Spec{}, fmt.Errorf("LLM_%s_MODEL is empty", upper)
+	}
+	if spec.FallbackModel == spec.Model {
+		// A duplicate fallback would call the same model twice. Treat it as
+		// disabled: refusing the whole provider configuration over a harmless
+		// duplicate would take the LLM out of service on demo day.
+		spec.FallbackModel = ""
 	}
 	return spec, nil
 }

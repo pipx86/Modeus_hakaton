@@ -13,6 +13,9 @@ func TestFromEnvDefaults(t *testing.T) {
 	t.Setenv("OPENROUTER_MODEL", "")
 	t.Setenv("LLM_MAX_CONCURRENCY", "")
 	t.Setenv("LLM_REQUESTS_PER_MINUTE", "")
+	t.Setenv("LLM_INTERVIEWER_FALLBACK_MODEL", "")
+	t.Setenv("LLM_ANALYST_FALLBACK_MODEL", "")
+	t.Setenv("LLM_SYNTHESIZER_FALLBACK_MODEL", "")
 	// Ensure a stray secret file cannot affect this test.
 	t.Setenv("LLM_API_KEY_FILE", os.DevNull)
 
@@ -37,6 +40,58 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 	if cfg.Agents[Analyst].MaxTokens != 8000 {
 		t.Fatalf("analyst max tokens = %d", cfg.Agents[Analyst].MaxTokens)
+	}
+	for _, name := range Names() {
+		if cfg.Agents[name].FallbackModel != "" {
+			t.Fatalf("%s fallback model = %q, want disabled by default", name, cfg.Agents[name].FallbackModel)
+		}
+	}
+}
+
+func TestFromEnvFallbackModels(t *testing.T) {
+	t.Setenv("LLM_API_KEY", "test-key")
+	t.Setenv("LLM_BASE_URL", "")
+	t.Setenv("LLM_MODEL", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENROUTER_MODEL", "")
+	t.Setenv("LLM_API_KEY_FILE", os.DevNull)
+	t.Setenv("LLM_ANALYST_MODEL", "minimax-m3.1-flash")
+	t.Setenv("LLM_ANALYST_FALLBACK_MODEL", "deepseek-v4.1-flash-1017")
+	t.Setenv("LLM_INTERVIEWER_FALLBACK_MODEL", "backup-interviewer")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if got := cfg.Agents[Analyst].FallbackModel; got != "deepseek-v4.1-flash-1017" {
+		t.Fatalf("analyst fallback model = %q", got)
+	}
+	if got := cfg.Agents[Analyst].Model; got != "minimax-m3.1-flash" {
+		t.Fatalf("analyst primary model = %q, want the configured primary unchanged", got)
+	}
+	if got := cfg.Agents[Interviewer].FallbackModel; got != "backup-interviewer" {
+		t.Fatalf("interviewer fallback model = %q", got)
+	}
+	if got := cfg.Agents[Synthesizer].FallbackModel; got != "" {
+		t.Fatalf("synthesizer fallback model = %q, want disabled", got)
+	}
+}
+
+func TestFromEnvDuplicateFallbackModelIsDisabled(t *testing.T) {
+	t.Setenv("LLM_API_KEY", "test-key")
+	t.Setenv("LLM_API_KEY_FILE", os.DevNull)
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("LLM_ANALYST_MODEL", "minimax-m3.1-flash")
+	t.Setenv("LLM_ANALYST_FALLBACK_MODEL", "minimax-m3.1-flash")
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v, a duplicate fallback must not disable the provider", err)
+	}
+	if got := cfg.Agents[Analyst].FallbackModel; got != "" {
+		t.Fatalf("analyst fallback model = %q, want disabled for a duplicate", got)
+	}
+	if got := cfg.Agents[Analyst].Model; got != "minimax-m3.1-flash" {
+		t.Fatalf("analyst primary model = %q, want the configured primary unchanged", got)
 	}
 }
 

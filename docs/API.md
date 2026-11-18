@@ -1,8 +1,9 @@
 # HTTP API и OpenAPI-спецификация
 
 Документ фиксирует, где живёт контракт HTTP API и что изменилось в спецификации
-после добавления сравнения снимков, очереди экспертной проверки и отклонения
-подтверждений. Полный актуальный список операций — в спецификации и в Swagger UI.
+после добавления сравнения снимков, очереди экспертной проверки, отклонения
+подтверждений и экспорта завершённого исследования. Полный актуальный список
+операций — в спецификации и в Swagger UI.
 
 ## Где лежит контракт
 
@@ -63,16 +64,52 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 | `GET /users` | Демо-пользователи и роли | admin | 200, 403 |
 | `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin, teacher, rop | 200, 404, 501 |
 | `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin, teacher, rop | 200, 404, 501 |
+| `GET /runs/{id}/export?format=md\|json` | Экспорт завершённого исследования: Markdown-отчёт (по умолчанию) или структурированный JSON (`schema=run-export/v1`) | admin, teacher, rop, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
 
 Детали контрактов: [`snapshot_diff.go`](../internal/api/snapshot_diff.go),
 [`review_queue.go`](../internal/api/review_queue.go),
-[`synthesis_conflicts.go`](../internal/api/synthesis_conflicts.go).
+[`synthesis_conflicts.go`](../internal/api/synthesis_conflicts.go),
+[`export.go`](../internal/api/export.go).
 
-Остальные операции (health, sources, evidences CRUD, runs, tree, answers, export,
+Остальные операции (health, sources, evidences CRUD, runs, tree, answers,
 events, snapshots, search, index, nodes) сохранили прежнее поведение; в
 спецификацию добавлены недостающие коды ответов и схемы полей, которые реально
 отдают Go-модели (`Evidence.status`, `Node.zun`, `Run.type`, `RunStatus.degraded`,
 `Source.source_url`), а также примеры запросов/ответов.
+
+## Экспорт исследования
+
+`GET /runs/{id}/export` отдаёт результат завершённого (`status=done`) прогона.
+
+- `format=md` (по умолчанию) — Markdown-отчёт: профессия, статус, run id,
+  иерархия `role → function → task → action`, таблица подтверждений (цитата,
+  `source_id`, `ref_id`, статус), разрешённые конфликты, финальное сообщение чата
+  с рекомендациями/курсами (если доступно) и время генерации.
+- `format=json` — документ `schema=run-export/v1`: `run`, вложенное `tree`,
+  плоский `nodes`, `evidence`, `conflicts`, `final_message`, `generated_at` и
+  (при наличии PostgreSQL) метаданные `sources`. Полный `content` источников
+  намеренно не экспортируется.
+- Любое другое значение `format` — `400 BAD_REQUEST`; формат проверяется до
+  поиска прогона.
+- Неизвестный/невалидный `id` — `404 NOT_FOUND`; незавершённый прогон —
+  `409 RUN_NOT_FINISHED`; завершённый прогон без сохранённого дерева —
+  `409 RUN_HAS_NO_TREE`.
+- Роли: `admin`, `teacher`, `rop`, `guest`; `student` получает `403` (как и
+  раньше на этом маршруте), без токена — `401`.
+- `Content-Type` — `text/markdown; charset=utf-8` или
+  `application/json; charset=utf-8`; `Content-Disposition: attachment` с
+  безопасным именем `run-<sanitized-id>.md|.json` (только ASCII-буквы, цифры,
+  `-`, `_`).
+- Конфликты и метаданные источников читаются best-effort: их ошибка логируется,
+  но экспорт основного результата не ломает. Финальное сообщение берётся из
+  in-memory чата, поэтому для batch-прогонов и после перезапуска сервера оно
+  пустое.
+
+> Изменение контракта: раньше `GET /runs/{id}/export` возвращал «голый» массив
+> `domain.Node`. Теперь по умолчанию отдаётся Markdown, а JSON-формат — документ
+> `run-export/v1` (узлы доступны в `tree`/`nodes`). Клиентский экспорт во
+> фронтенде (`frontend/src/lib/export-tree.ts`) собирается в браузере и от этого
+> маршрута не зависит.
 
 ## Проверка спецификации
 

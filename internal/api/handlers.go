@@ -490,54 +490,6 @@ func (s *Server) handleRejectEvidence(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleExportRun godoc
-// @Summary      Export final results of a completed run
-// @Description  Returns the finalized competency tree only if the run status is 'done'.
-// @Tags         runs
-// @Produce      json
-// @Param        id   path      string  true  "Run ID"
-// @Success      200   {array}   domain.Node
-// @Failure      404   {object}  errorBody
-// @Failure      409   {object}  errorBody
-// @Security     BearerAuth
-// @Router       /api/v1/runs/{id}/export [get]
-func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
-		return
-	}
-	id := r.PathValue("id")
-
-	run, err := s.store.GetRun(id)
-	if err != nil {
-		if mapStoreError(w, err) {
-			return
-		}
-		logging.Logger.Error("export_get_run_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
-		return
-	}
-
-	if run.Status != domain.RunDone {
-		writeErr(w, http.StatusConflict, "RUN_NOT_FINISHED", "run is not finished yet")
-		return
-	}
-
-	nodes, err := s.store.GetTree(run.ID)
-	if err != nil {
-		if mapStoreError(w, err) {
-			return
-		}
-		logging.Logger.Error("export_get_tree_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
-		return
-	}
-
-	if nodes == nil {
-		nodes = []domain.Node{}
-	}
-	writeJSON(w, http.StatusOK, nodes)
-}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
