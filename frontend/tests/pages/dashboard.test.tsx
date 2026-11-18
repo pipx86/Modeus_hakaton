@@ -36,6 +36,7 @@ describe("Dashboard", () => {
     expect(screen.getByText("Frontend Developer")).toBeInTheDocument()
     expect(screen.getByText("Завершено")).toBeInTheDocument()
     expect(screen.getByText("В работе")).toBeInTheDocument()
+    expect(screen.getByText("Активность за 14 дней")).toBeInTheDocument()
   })
 
   it("считает количество исследований и активных", async () => {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { AlertCircleIcon, ChevronRightIcon, FlaskConicalIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,20 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
+import { Donut, StackedBars } from "@/components/charts"
 import { apiClient, type Run } from "@/lib/api/client"
+
+const DAYS = 14
+
+const STAGE_LABEL: Record<string, string> = {
+  created: "Создано",
+  interview: "Интервью",
+  analysis: "Анализ",
+  synthesis: "Синтез",
+  review: "Проверка",
+  done: "Готово",
+  failed: "Ошибка",
+}
 
 function formatDate(value?: string) {
   if (!value) return "Дата не указана"
@@ -26,8 +40,15 @@ function formatDate(value?: string) {
   }).format(date)
 }
 
+function formatDuration(ms: number | null): string {
+  if (ms === null) return "—"
+  if (ms < 60_000) return `${Math.round(ms / 1000)} с`
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} мин`
+  return `${(ms / 3_600_000).toFixed(1)} ч`
+}
+
 /**
- * Список исследований.
+ * Список исследований и обзорная аналитика.
  *
  * Три состояния экрана: загрузка (скелетон), ошибка (баннер с повтором и тост),
  * пустой список (подсказка с переходом к созданию). Демо-данные при ошибке больше
@@ -73,20 +94,94 @@ export function Dashboard() {
 
   const active = runs.filter((run) => run.status === "running").length
 
+  const stats = useMemo(() => {
+    const done = runs.filter((run) => run.status === "done").length
+    const failed = runs.filter((run) => run.status === "failed").length
+    const durations = runs
+      .filter((run) => run.started_at && run.finished_at)
+      .map((run) => new Date(run.finished_at as string).getTime() - new Date(run.started_at as string).getTime())
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const average = durations.length
+      ? durations.reduce((sum, value) => sum + value, 0) / durations.length
+      : null
+    const successRate = done + failed > 0 ? (done / (done + failed)) * 100 : null
+    return { done, failed, average, successRate }
+  }, [runs])
+
+  const daily = useMemo(() => {
+    const days: {
+      key: string
+      label: string
+      done: number
+      running: number
+      failed: number
+      other: number
+    }[] = []
+    for (let index = DAYS - 1; index >= 0; index -= 1) {
+      const date = new Date()
+      date.setHours(0, 0, 0, 0)
+      date.setDate(date.getDate() - index)
+      days.push({
+        key: date.toISOString().slice(0, 10),
+        label: `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}`,
+        done: 0,
+        running: 0,
+        failed: 0,
+        other: 0,
+      })
+    }
+    const index = new Map(days.map((day) => [day.key, day]))
+    for (const run of runs) {
+      if (!run.started_at) continue
+      const bucket = index.get(new Date(run.started_at).toISOString().slice(0, 10))
+      if (!bucket) continue
+      if (run.status === "done") bucket.done += 1
+      else if (run.status === "failed") bucket.failed += 1
+      else if (run.status === "running") bucket.running += 1
+      else bucket.other += 1
+    }
+    return days.map((day) => ({
+      label: day.label,
+      segments: [
+        { value: day.done, className: "bg-emerald-500" },
+        { value: day.running, className: "bg-sky-500" },
+        { value: day.failed, className: "bg-destructive" },
+        { value: day.other, className: "bg-muted-foreground/40" },
+      ],
+    }))
+  }, [runs])
+
+  const stages = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const run of runs) {
+      const stage = run.stage ?? "created"
+      counts.set(stage, (counts.get(stage) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([stage, count]) => ({ stage, count }))
+      .sort((left, right) => right.count - left.count)
+  }, [runs])
+
+  const statusSegments = [
+    { label: "done", value: stats.done, className: "text-emerald-500" },
+    { label: "running", value: active, className: "text-sky-500" },
+    { label: "failed", value: stats.failed, className: "text-destructive" },
+    {
+      label: "other",
+      value: Math.max(0, runs.length - stats.done - active - stats.failed),
+      className: "text-muted-foreground/60",
+    },
+  ]
+
   const removeRun = async () => {
     if (!pendingDelete) return
     setDeleting(true)
     try {
-      const { error: apiError, response } = await apiClient.DELETE("/runs/{id}", {
+      const { error: apiError } = await apiClient.DELETE("/runs/{id}", {
         params: { path: { id: pendingDelete.id } },
       })
       if (apiError) {
-        const forbidden = response.status === 403
-        toast.error(forbidden ? "Недостаточно прав" : "Не удалось удалить исследование", {
-          description: forbidden
-            ? "Удалять исследования может только администратор."
-            : apiError.message,
-        })
+        toast.error("Не удалось удалить исследование", { description: apiError.message })
         return
       }
       setRuns((prev) => prev.filter((run) => run.id !== pendingDelete.id))
@@ -115,6 +210,104 @@ export function Dashboard() {
           </Link>
         </Button>
       </div>
+
+      {!loading && !error && runs.length > 0 && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Card size="sm">
+              <CardContent className="space-y-1">
+                <p className="text-xs text-muted-foreground">Всего исследований</p>
+                <p className="text-2xl font-semibold">{runs.length}</p>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent className="space-y-1">
+                <p className="text-xs text-muted-foreground">Активных</p>
+                <p className="text-2xl font-semibold">{active}</p>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent className="space-y-1">
+                <p className="text-xs text-muted-foreground">Успешных</p>
+                <p className="text-2xl font-semibold">
+                  {stats.successRate === null ? "—" : `${Math.round(stats.successRate)}%`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.done} из {stats.done + stats.failed} завершённых
+                </p>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent className="space-y-1">
+                <p className="text-xs text-muted-foreground">Средняя длительность</p>
+                <p className="text-2xl font-semibold">{formatDuration(stats.average)}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base">Активность за 14 дней</CardTitle>
+                <CardDescription>
+                  Столбики по дням: успешные, активные, с ошибкой.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <StackedBars data={daily} />
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-emerald-500" /> успешные
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-sky-500" /> активные
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-destructive" /> с ошибкой
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Статусы</CardTitle>
+                <CardDescription>Распределение всех прогонов.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-center">
+                <Donut
+                  segments={statusSegments}
+                  centerLabel="прогонов"
+                  centerValue={String(runs.length)}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Этапы прогонов</CardTitle>
+              <CardDescription>На каком шаге сейчас находятся исследования.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {stages.map((item) => {
+                const percent = runs.length > 0 ? (item.count / runs.length) * 100 : 0
+                return (
+                  <div key={item.stage} className="flex items-center gap-3 text-sm">
+                    <span className="w-28 shrink-0 text-muted-foreground">
+                      {STAGE_LABEL[item.stage] ?? item.stage}
+                    </span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
+                    </div>
+                    <span className="w-8 shrink-0 text-right">{item.count}</span>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {loading ? (
         <div className="overflow-hidden rounded-xl border">
@@ -187,6 +380,7 @@ export function Dashboard() {
           </ul>
         </div>
       )}
+
       <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <DialogContent>
           <DialogHeader>
