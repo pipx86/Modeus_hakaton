@@ -56,6 +56,7 @@ type Evidence struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	RunID     pgtype.UUID        `json:"run_id"`
 	RefID     pgtype.Text        `json:"ref_id"`
+	Status    string             `json:"status"`
 }
 
 type IdempotencyKey struct {

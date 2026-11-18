@@ -382,6 +382,7 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 		for _, e := range *patch.Evidence {
 			tag, err := tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote,ref_id) VALUES($1,$2,$3,$4,NULLIF($5,''))
  ON CONFLICT (id) DO UPDATE SET source_id=EXCLUDED.source_id, quote=EXCLUDED.quote, ref_id=EXCLUDED.ref_id,
+ status=CASE WHEN evidence.source_id=EXCLUDED.source_id AND evidence.quote=EXCLUDED.quote AND evidence.ref_id IS NOT DISTINCT FROM EXCLUDED.ref_id THEN evidence.status ELSE 'pending' END,
  approved=CASE WHEN evidence.source_id=EXCLUDED.source_id AND evidence.quote=EXCLUDED.quote AND evidence.ref_id IS NOT DISTINCT FROM EXCLUDED.ref_id THEN evidence.approved ELSE false END
  WHERE evidence.node_id=EXCLUDED.node_id`, e.ID, nodeID, e.SourceID, e.Quote, e.RefID)
 			if err != nil {

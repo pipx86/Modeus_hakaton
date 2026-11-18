@@ -12,7 +12,7 @@ import (
 )
 
 const createEvidence = `-- name: CreateEvidence :one
-INSERT INTO evidence (id, node_id, source_id, quote, approved, ref_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, node_id, source_id, quote, approved, created_at, run_id, ref_id
+INSERT INTO evidence (id, node_id, source_id, quote, approved, ref_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, node_id, source_id, quote, approved, created_at, run_id, ref_id, status
 `
 
 type CreateEvidenceParams struct {
@@ -43,6 +43,7 @@ func (q *Queries) CreateEvidence(ctx context.Context, arg CreateEvidenceParams) 
 		&i.CreatedAt,
 		&i.RunID,
 		&i.RefID,
+		&i.Status,
 	)
 	return i, err
 }
@@ -60,7 +61,7 @@ func (q *Queries) DeleteEvidence(ctx context.Context, id pgtype.UUID) (int64, er
 }
 
 const getEvidence = `-- name: GetEvidence :one
-SELECT id, node_id, source_id, quote, approved, created_at, run_id, ref_id FROM evidence WHERE id = $1
+SELECT id, node_id, source_id, quote, approved, created_at, run_id, ref_id, status FROM evidence WHERE id = $1
 `
 
 func (q *Queries) GetEvidence(ctx context.Context, id pgtype.UUID) (Evidence, error) {
@@ -75,12 +76,13 @@ func (q *Queries) GetEvidence(ctx context.Context, id pgtype.UUID) (Evidence, er
 		&i.CreatedAt,
 		&i.RunID,
 		&i.RefID,
+		&i.Status,
 	)
 	return i, err
 }
 
 const listEvidenceByNode = `-- name: ListEvidenceByNode :many
-SELECT id, node_id, source_id, quote, approved, created_at, run_id, ref_id FROM evidence WHERE node_id = $1 ORDER BY created_at, id
+SELECT id, node_id, source_id, quote, approved, created_at, run_id, ref_id, status FROM evidence WHERE node_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListEvidenceByNode(ctx context.Context, nodeID pgtype.UUID) ([]Evidence, error) {
@@ -101,6 +103,7 @@ func (q *Queries) ListEvidenceByNode(ctx context.Context, nodeID pgtype.UUID) ([
 			&i.CreatedAt,
 			&i.RunID,
 			&i.RefID,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -113,7 +116,7 @@ func (q *Queries) ListEvidenceByNode(ctx context.Context, nodeID pgtype.UUID) ([
 }
 
 const updateEvidence = `-- name: UpdateEvidence :one
-UPDATE evidence SET source_id = $2, quote = $3, approved = $4, ref_id = $5 WHERE id = $1 RETURNING id, node_id, source_id, quote, approved, created_at, run_id, ref_id
+UPDATE evidence SET source_id = $2, quote = $3, approved = $4, ref_id = $5 WHERE id = $1 RETURNING id, node_id, source_id, quote, approved, created_at, run_id, ref_id, status
 `
 
 type UpdateEvidenceParams struct {
@@ -142,6 +145,7 @@ func (q *Queries) UpdateEvidence(ctx context.Context, arg UpdateEvidenceParams) 
 		&i.CreatedAt,
 		&i.RunID,
 		&i.RefID,
+		&i.Status,
 	)
 	return i, err
 }

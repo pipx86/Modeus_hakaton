@@ -59,8 +59,8 @@ func expectNode(pool pgxmock.PgxPoolIface, id, runID, parentID pgtype.UUID, leve
 
 func expectEvidence(pool pgxmock.PgxPoolIface, e store.TreeEvidence, nodeID, runID pgtype.UUID) {
 	pool.ExpectQuery("INSERT INTO evidence").WithArgs(anyArgs(6)...).WillReturnRows(pgxmock.NewRows([]string{
-		"id", "node_id", "source_id", "quote", "approved", "created_at", "run_id", "ref_id",
-	}).AddRow(e.ID, nodeID, e.SourceID, e.Quote, e.Approved, time.Now(), runID, e.RefID))
+		"id", "node_id", "source_id", "quote", "approved", "created_at", "run_id", "ref_id", "status",
+	}).AddRow(e.ID, nodeID, e.SourceID, e.Quote, e.Approved, time.Now(), runID, e.RefID, "pending"))
 }
 
 func TestSaveTreeUnit(t *testing.T) {
