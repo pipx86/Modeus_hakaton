@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"activity-descriptor/internal/auth"
 )
@@ -17,6 +18,7 @@ type StoreAPI interface {
 	GetRequest(ctx context.Context, id string) (Request, error)
 	ListPromptVersions(ctx context.Context, agent string) ([]PromptVersion, error)
 	ActivatePromptVersion(ctx context.Context, id, activatedBy, reason string) error
+	UsageByModel(ctx context.Context, since time.Time) ([]ModelUsage, error)
 }
 
 // NewHandler returns an authenticated /api/v1/llm handler.
@@ -27,6 +29,7 @@ func NewHandler(store StoreAPI) http.Handler {
 	mux.HandleFunc("GET /api/v1/llm/requests/{id}", h.getRequest)
 	mux.HandleFunc("GET /api/v1/llm/prompt-versions", h.listPromptVersions)
 	mux.HandleFunc("POST /api/v1/llm/prompt-versions/activate", h.activatePromptVersion)
+	mux.HandleFunc("GET /api/v1/llm/usage", h.usage)
 	return mux
 }
 
@@ -113,8 +116,29 @@ func (h *handler) activatePromptVersion(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "activated"})
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
+// usage отдаёт расход токенов по моделям за период (?since=24h).
+func (h *handler) usage(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+		return
+	}
+	since := time.Now().Add(-24 * time.Hour)
+	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 && parsed <= 30*24*time.Hour {
+			since = time.Now().Add(-parsed)
+		}
+	}
+	items, err := h.store.UsageByModel(r.Context(), since)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"since": since.UTC().Format(time.RFC3339),
+		"items": items,
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }

@@ -16,6 +16,7 @@ import (
 type RecordStore interface {
 	CreateRequest(ctx context.Context, req Request) (string, error)
 	SaveResponse(ctx context.Context, response Response) error
+	SaveUsage(ctx context.Context, usage Usage) error
 	FinishRequest(ctx context.Context, id, status, errorCode string, latencyMS int, finishedAt time.Time) error
 }
 
@@ -57,6 +58,12 @@ func (r *Recorder) Chat(ctx context.Context, messages []llm.Message) (string, er
 		requestID = ""
 	}
 
+	var captured *llm.Usage
+	ctx = llm.WithUsageCollector(ctx, func(usage llm.Usage) {
+		copied := usage
+		captured = &copied
+	})
+
 	answer, err := r.Next.Chat(ctx, messages)
 	latency := int(time.Since(started).Milliseconds())
 	status := "ok"
@@ -75,6 +82,15 @@ func (r *Recorder) Chat(ctx context.Context, messages []llm.Message) (string, er
 			})
 		}
 		_ = r.Store.FinishRequest(ctx, requestID, status, errorCode, latency, time.Now().UTC())
+		if captured != nil {
+			_ = r.Store.SaveUsage(ctx, Usage{
+				RequestID:        requestID,
+				PromptTokens:     captured.PromptTokens,
+				CompletionTokens: captured.CompletionTokens,
+				TotalTokens:      captured.TotalTokens,
+				LatencyMS:        latency,
+			})
+		}
 	}
 	return answer, err
 }

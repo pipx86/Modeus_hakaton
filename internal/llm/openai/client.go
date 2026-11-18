@@ -265,14 +265,16 @@ func (c *Client) Chat(ctx context.Context, messages []llm.Message) (string, erro
 		c.logFailure(ctx, "empty response", resp.StatusCode, time.Since(start), err)
 		return "", llm.NewDomainError(llm.ErrorInvalidResponse, "openai", 0, false, fmt.Errorf("%w: %v", ErrDecode, err))
 	}
-	if c.usageObserver != nil {
-		c.usageObserver(llm.Usage{
-			PromptTokens:     decoded.Usage.PromptTokens,
-			CompletionTokens: decoded.Usage.CompletionTokens,
-			TotalTokens:      decoded.Usage.TotalTokens,
-			Model:            c.model,
-		})
+	usage := llm.Usage{
+		PromptTokens:     decoded.Usage.PromptTokens,
+		CompletionTokens: decoded.Usage.CompletionTokens,
+		TotalTokens:      decoded.Usage.TotalTokens,
+		Model:            c.model,
 	}
+	if c.usageObserver != nil {
+		c.usageObserver(usage)
+	}
+	llm.ReportUsage(ctx, usage)
 	return decoded.Choices[0].Message.Content, nil
 }
 

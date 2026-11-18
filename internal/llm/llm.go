@@ -34,3 +34,22 @@ type Usage struct {
 // UsageObserver receives usage for every successful provider call. It must be
 // safe for concurrent use.
 type UsageObserver func(Usage)
+
+type usageCollectorKey struct{}
+
+// WithUsageCollector подписывает контекст на usage текущего вызова: клиент
+// провайдера сообщает токены, а обёртка (например, llmobs.Recorder) сохраняет их.
+func WithUsageCollector(ctx context.Context, collector func(Usage)) context.Context {
+	if collector == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, usageCollectorKey{}, collector)
+}
+
+// ReportUsage передаёт usage подписчику из контекста, если он есть.
+func ReportUsage(ctx context.Context, usage Usage) {
+	collector, ok := ctx.Value(usageCollectorKey{}).(func(Usage))
+	if ok && collector != nil {
+		collector(usage)
+	}
+}

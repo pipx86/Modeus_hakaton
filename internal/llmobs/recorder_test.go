@@ -22,6 +22,7 @@ type recorderFakeStore struct {
 	created   int
 	responses int
 	finished  int
+	usage     int
 	lastID    string
 	lastError string
 }
@@ -34,6 +35,11 @@ func (s *recorderFakeStore) CreateRequest(context.Context, Request) (string, err
 
 func (s *recorderFakeStore) SaveResponse(context.Context, Response) error {
 	s.responses++
+	return nil
+}
+
+func (s *recorderFakeStore) SaveUsage(context.Context, Usage) error {
+	s.usage++
 	return nil
 }
 
@@ -75,5 +81,24 @@ func TestRecorderWritesFailedCall(t *testing.T) {
 func TestRecorderWithoutClient(t *testing.T) {
 	if _, err := (&Recorder{}).Chat(context.Background(), nil); err == nil {
 		t.Fatal("expected configuration error")
+	}
+}
+
+type recorderUsageClient struct{}
+
+func (recorderUsageClient) Chat(ctx context.Context, _ []llm.Message) (string, error) {
+	llm.ReportUsage(ctx, llm.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15})
+	return `{"ok":true}`, nil
+}
+
+func TestRecorderSavesUsageFromContext(t *testing.T) {
+	store := &recorderFakeStore{}
+	recorder := NewRecorder(recorderUsageClient{}, store, "analyst", "provider", "model")
+
+	if _, err := recorder.Chat(context.Background(), []llm.Message{{Role: llm.RoleUser, Content: "hi"}}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if store.usage != 1 {
+		t.Fatalf("usage rows = %d, want 1", store.usage)
 	}
 }

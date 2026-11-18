@@ -439,3 +439,43 @@ func floatPtr(value pgtype.Numeric) *float64 {
 	}
 	return &f.Float64
 }
+
+// ModelUsage — агрегированный расход токенов по модели за период.
+type ModelUsage struct {
+	Model            string `json:"model"`
+	Requests         int64  `json:"requests"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+}
+
+// UsageByModel суммирует токены по моделям за указанный период.
+func (s *Store) UsageByModel(ctx context.Context, since time.Time) ([]ModelUsage, error) {
+	if s == nil || s.pool == nil {
+		return nil, fmt.Errorf("llmobs: nil store")
+	}
+	rows, err := s.pool.Query(ctx, `SELECT r.model,
+       COUNT(*)::bigint,
+       COALESCE(SUM(u.prompt_tokens),0)::bigint,
+       COALESCE(SUM(u.completion_tokens),0)::bigint,
+       COALESCE(SUM(u.total_tokens),0)::bigint
+FROM llm_requests r
+LEFT JOIN llm_usage u ON u.request_id = r.id
+WHERE r.created_at >= $1
+GROUP BY r.model
+ORDER BY 5 DESC`, since)
+	if err != nil {
+		return nil, fmt.Errorf("llmobs: usage by model: %w", err)
+	}
+	defer rows.Close()
+
+	out := []ModelUsage{}
+	for rows.Next() {
+		var item ModelUsage
+		if err := rows.Scan(&item.Model, &item.Requests, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens); err != nil {
+			return nil, fmt.Errorf("llmobs: scan usage: %w", err)
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}

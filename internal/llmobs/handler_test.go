@@ -16,6 +16,7 @@ type fakeStore struct {
 	requests    []Request
 	request     Request
 	prompts     []PromptVersion
+	usage       []ModelUsage
 	activatedID string
 	activatedBy string
 	reason      string
@@ -31,6 +32,10 @@ func (f *fakeStore) ListPromptVersions(context.Context, string) ([]PromptVersion
 func (f *fakeStore) ActivatePromptVersion(_ context.Context, id, by, reason string) error {
 	f.activatedID, f.activatedBy, f.reason = id, by, reason
 	return nil
+}
+
+func (f *fakeStore) UsageByModel(context.Context, time.Time) ([]ModelUsage, error) {
+	return f.usage, nil
 }
 
 func testServer(t *testing.T, store StoreAPI) *httptest.Server {
@@ -118,6 +123,41 @@ func TestHandlerRejectsStudentActivation(t *testing.T) {
 	defer srv.Close()
 	resp, _ := request(t, srv, http.MethodPost, "/api/v1/llm/prompt-versions/activate",
 		auth.TokenFor("student-1", auth.RoleStudent), `{}`)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestHandlerUsageByModel(t *testing.T) {
+	store := &fakeStore{usage: []ModelUsage{{
+		Model:            "minimax-m3.1-flash",
+		Requests:         2,
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		TotalTokens:      150,
+	}}}
+	srv := testServer(t, store)
+	defer srv.Close()
+
+	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/usage?since=24h", auth.TokenFor("u1", auth.RoleTeacher), "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("items = %#v", body["items"])
+	}
+	first, _ := items[0].(map[string]any)
+	if first["model"] != "minimax-m3.1-flash" || first["total_tokens"] != float64(150) {
+		t.Fatalf("unexpected usage item: %#v", first)
+	}
+}
+
+func TestHandlerUsageForbiddenForGuest(t *testing.T) {
+	srv := testServer(t, &fakeStore{})
+	defer srv.Close()
+
+	resp, _ := request(t, srv, http.MethodGet, "/api/v1/llm/usage", auth.TokenFor("guest-1", auth.RoleGuest), "")
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
