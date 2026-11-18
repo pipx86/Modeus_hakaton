@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
+import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { RunStageStepper } from "@/components/run-stage"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
@@ -1136,9 +1137,26 @@ function TreeTab({
  */
 export function Research() {
   const { id = "" } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const focusNodeId = searchParams.get("node")
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
+  /**
+   * Переход из вкладки «Снимки и проверка» к узлу дерева: переключаем вкладку и
+   * дублируем id узла в search-параметре `?node=`, который уже умеет читать
+   * {@link ActivityTree} (раскрывает ветку и подсвечивает строку). Это же делает
+   * ссылку на узел копируемой и переживающей перезагрузку страницы.
+   */
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      setTab("tree")
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous)
+        next.set("node", nodeId)
+        return next
+      })
+    },
+    [setSearchParams],
+  )
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1246,6 +1264,9 @@ export function Research() {
           <TabsTrigger value="tree" className={TAB_TRIGGER_CLASS}>
             Дерево
           </TabsTrigger>
+          <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
+            Снимки и проверка
+          </TabsTrigger>
           <TabsTrigger value="chat" className={TAB_TRIGGER_CLASS}>
             Чат
           </TabsTrigger>
@@ -1255,6 +1276,9 @@ export function Research() {
         </TabsContent>
         <TabsContent value="tree">
           <TreeTab id={id} active={isActive} focusNodeId={focusNodeId} />
+        </TabsContent>
+        <TabsContent value="snapshots">
+          <SnapshotReviewTab runId={id} onFocusNode={focusNode} />
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab runId={id} active={!loading && !error} runStatus={run?.status} stage={run?.stage} />

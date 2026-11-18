@@ -76,6 +76,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{id}/snapshots", s.handleCreateSnapshot)
 	mux.HandleFunc("GET /api/v1/runs/{id}/snapshots", s.handleListSnapshots)
 	mux.HandleFunc("GET /api/v1/runs/{id}/snapshots/{snapshot_id}", s.handleGetSnapshot)
+	mux.HandleFunc("GET /api/v1/runs/{id}/snapshots/{snapshot_id}/diff", s.handleSnapshotDiff)
+	mux.HandleFunc("GET /api/v1/reviews/evidence", s.handleReviewQueue)
 	mux.HandleFunc("GET /api/v1/runs/{id}/answers", s.handleGetAnswers)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/reject", s.handleRejectEvidence)

@@ -3,8 +3,13 @@ bin/
 *.exe
 *.test
 coverage.out
+coverage-ai.out
 coverage-db.out
 coverage-db-unit.out
+*.coverprofile
+# Ad-hoc `go test -coverprofile=auth` / `total` runs at the repo root.
+/auth
+/total
 e2e-output.json
 
 # --- Environment and secrets ---
@@ -34,6 +39,11 @@ logs/
 # --- Generated data ---
 data/acceptance/
 data/reports/
+
+# --- Editor / tool workspace metadata ---
+# Postman workspace metadata is local-only; the importable collection with
+# request examples lives in postman/ and is tracked.
+.postman/
 
 # --- Editors and OS ---
 **/.vscode/*
