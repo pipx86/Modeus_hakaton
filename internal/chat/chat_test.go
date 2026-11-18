@@ -187,6 +187,45 @@ func TestServiceCallsFinalizerAfterInterview(t *testing.T) {
 	}
 }
 
+func TestServiceCallsAdvisorAfterFinalizer(t *testing.T) {
+	service := NewService(fakeInterviewer{}, nil)
+	service.SetFinalizer(func(context.Context, string, string, domain.InterviewSession) (domain.RunStatus, error) {
+		return domain.RunDone, nil
+	})
+	advised := make(chan string, 1)
+	service.SetAdvisor(func(_ context.Context, _ string, _ string, _ domain.InterviewSession) (string, error) {
+		advised <- "ПЕРСОНАЛЬНЫЕ РЕКОМЕНДАЦИИ"
+		return "ПЕРСОНАЛЬНЫЕ РЕКОМЕНДАЦИИ", nil
+	})
+	if err := service.Start("run-7", "Аналитик"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		waitFor(t, 3*time.Second, func() bool {
+			messages, err := service.Messages("run-7")
+			return err == nil && len(messages) >= 2*i+2
+		})
+		if _, err := service.Post("run-7", "Конкретный ответ про аналитику данных."); err != nil {
+			t.Fatalf("Post %d: %v", i, err)
+		}
+	}
+	select {
+	case got := <-advised:
+		if got == "" {
+			t.Fatal("advisor message is empty")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("advisor was not called")
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		messages, err := service.Messages("run-7")
+		if err != nil || len(messages) == 0 {
+			return false
+		}
+		return messages[len(messages)-1].Content == "ПЕРСОНАЛЬНЫЕ РЕКОМЕНДАЦИИ"
+	})
+}
+
 func transcriptFromSessionForTest(session domain.InterviewSession) string {
 	if len(session.Questions) == 0 || len(session.Answers) == 0 {
 		return ""

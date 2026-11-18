@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"activity-descriptor/internal/agent/advisor"
 	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
@@ -133,6 +134,19 @@ func run(ctx context.Context, c config) error {
 	chatService.SetPromptVersion(interviewerVersion)
 	if analystClient != nil {
 		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
+	}
+	if chatClient != nil {
+		advisorAgent := advisor.New(chatClient)
+		chatService.SetAdvisor(func(ctx context.Context, _ string, profession string, session domain.InterviewSession) (string, error) {
+			recommendation, err := advisorAgent.Recommend(ctx, advisor.Input{
+				Profession: profession,
+				Transcript: transcriptFromSession(session),
+			})
+			if err != nil {
+				return "", err
+			}
+			return recommendation.ChatMessage(), nil
+		})
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	rawHandler := app.Routes()

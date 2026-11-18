@@ -79,7 +79,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/answers", s.handleGetAnswers)
 	mux.HandleFunc("POST /api/v1/evidences/{id}/approve", s.handleApproveEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/export", s.handleExportRun)
-	mux.HandleFunc("GET /api/v1/runs/{id}/recommendations", s.handleGetRecommendations)
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
 	mux.HandleFunc("POST /api/v1/runs/{id}/messages", s.handlePostMessage)

@@ -49,12 +49,18 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 // after all questions are answered and before the run is marked done.
 type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
 
+// Advisor generates the final personalised recommendation after the tree is
+// saved. It is a chat message produced by the LLM, not a static UI catalogue.
+// Advice failures never fail the run.
+type Advisor func(ctx context.Context, runID, profession string, session domain.InterviewSession) (string, error)
+
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
 // Service owns one interviewer session per run.
 type Service struct {
 	client        llm.ChatClient
 	finalizer     Finalizer
+	advisor       Advisor
 	onFinish      func(runID string, status domain.RunStatus)
 	promptVersion string
 
@@ -90,6 +96,14 @@ func (s *Service) SetFinalizer(finalizer Finalizer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.finalizer = finalizer
+}
+
+// SetAdvisor installs the optional LLM advisor that posts the final
+// recommendation into the chat after the finalizer finishes.
+func (s *Service) SetAdvisor(advisor Advisor) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.advisor = advisor
 }
 
 // SetPromptVersion pins the interviewer prompt version for new sessions.
@@ -282,8 +296,8 @@ func (s *Service) complete(runID, profession string, state domain.InterviewSessi
 	status := domain.RunDone
 	if s.finalizer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
-		defer cancel()
 		finalStatus, err := s.finalizer(ctx, runID, profession, state)
+		cancel()
 		if err != nil {
 			log.Printf("chat: finalizer failed for run %s: %v", runID, err)
 			status = domain.RunFailed
@@ -291,10 +305,38 @@ func (s *Service) complete(runID, profession string, state domain.InterviewSessi
 			status = finalStatus
 		}
 	}
+	if s.advisor != nil && (status == domain.RunDone || status == domain.RunDegraded) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		advice, err := s.advisor(ctx, runID, profession, state)
+		cancel()
+		if err != nil {
+			log.Printf("chat: advisor failed for run %s: %v", runID, err)
+		} else if advice != "" {
+			s.appendAgentMessage(runID, advice)
+		}
+	}
 	s.publish(runID, Event{Type: "run_status", Status: string(status)})
 	if s.onFinish != nil {
 		s.onFinish(runID, status)
 	}
+}
+
+func (s *Service) appendAgentMessage(runID, content string) {
+	sess, err := s.lookup(runID)
+	if err != nil {
+		return
+	}
+	sess.mu.Lock()
+	sess.seq++
+	message := Message{
+		ID:        fmt.Sprintf("msg-%s-%d", runID, sess.seq),
+		Role:      "agent",
+		Content:   content,
+		CreatedAt: time.Now().UTC(),
+	}
+	sess.messages = append(sess.messages, message)
+	sess.mu.Unlock()
+	s.publish(runID, Event{Type: "agent_message", Message: &message})
 }
 
 func (s *Service) publish(runID string, event Event) {
