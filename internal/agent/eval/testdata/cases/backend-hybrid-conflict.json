@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "name": "backend-hybrid-conflict",
+  "description": "Backend case where interview, standard and vacancy disagree on one function title; interview wins by source priority.",
+  "tags": ["backend", "hybrid", "conflict"],
+  "profession": "Backend-разработчик",
+  "respondent": {
+    "id": "resp-be-1",
+    "name": "Демо-backend",
+    "role": "Backend-разработчик",
+    "level": "senior",
+    "profession": "Backend-разработчик"
+  },
+  "answers": {
+    "role": "Я Backend-разработчик, проектирую и развиваю API для мобильного приложения.",
+    "function": "Моя функция — проектировать API, поддерживать контракты и следить за производительностью.",
+    "task": "Проектирую REST API и пишу обработчики на Go для новых сценариев.",
+    "action": "Пишу интеграционные тесты и профилирую медленные запросы."
+  },
+  "sources": [
+    { "id": "src-interview", "type": "interview", "title": "Интервью backend-разработчика" },
+    { "id": "src-standard", "type": "standard", "title": "Профстандарт backend-разработчика" },
+    { "id": "src-vacancy", "type": "vacancy", "title": "Вакансия backend-разработчика" }
+  ],
+  "standard": [
+    {
+      "id": "fn-api",
+      "type": "function",
+      "title": "Проектировать интеграции",
+      "evidence": [
+        {
+          "id": "ev-std-api",
+          "source_id": "src-standard",
+          "ref_id": "std-2.4",
+          "quote": "Проектирование интеграций и контрактов"
+        }
+      ]
+    }
+  ],
+  "vacancy": [
+    {
+      "id": "fn-api",
+      "type": "function",
+      "title": "Поддерживать API",
+      "evidence": [
+        {
+          "id": "ev-vac-api",
+          "source_id": "src-vacancy",
+          "ref_id": "vac-req-1",
+          "quote": "Поддержка существующего API"
+        }
+      ]
+    }
+  ],
+  "script": {
+    "analyst": {
+      "entities": [
+        {
+          "id": "be-role",
+          "type": "role",
+          "title": "Backend-разработчик",
+          "confidence": 0.95,
+          "evidence": [
+            {
+              "id": "ev-be-role",
+              "source_id": "src-interview",
+              "ref_id": "answer-1",
+              "quote": "Я Backend-разработчик, проектирую и развиваю API для мобильного приложения."
+            }
+          ]
+        },
+        {
+          "id": "fn-api",
+          "type": "function",
+          "title": "Проектировать API",
+          "confidence": 0.9,
+          "evidence": [
+            {
+              "id": "ev-be-fn",
+              "source_id": "src-interview",
+              "ref_id": "answer-2",
+              "quote": "Моя функция — проектировать API, поддерживать контракты и следить за производительностью."
+            }
+          ]
+        },
+        {
+          "id": "be-task",
+          "type": "task",
+          "title": "Проектировать REST API",
+          "confidence": 0.9,
+          "evidence": [
+            {
+              "id": "ev-be-task",
+              "source_id": "src-interview",
+              "ref_id": "answer-3",
+              "quote": "Проектирую REST API и пишу обработчики на Go для новых сценариев."
+            }
+          ]
+        },
+        {
+          "id": "be-act",
+          "type": "action",
+          "title": "Профилировать запросы",
+          "confidence": 0.85,
+          "evidence": [
+            {
+              "id": "ev-be-act",
+              "source_id": "src-interview",
+              "ref_id": "answer-4",
+              "quote": "Пишу интеграционные тесты и профилирую медленные запросы."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "status": "done",
+    "questions": 6,
+    "fallbacks": 0,
+    "tree_nodes": 4,
+    "node_types": ["role", "function", "task", "action"],
+    "min_evidence_per_node": 1,
+    "evidence": 6,
+    "conflicts": 1,
+    "conflict_winners": ["interview"],
+    "conflict_values": [3],
+    "model_calls": 7
+  }
+}

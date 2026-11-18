@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "name": "devops-interviewer-degraded",
+  "description": "One scripted interviewer transport error: the session falls back to a deterministic question and the run status becomes degraded.",
+  "tags": ["devops", "fallback", "degraded"],
+  "profession": "DevOps-инженер",
+  "respondent": {
+    "id": "resp-devops-2",
+    "name": "Демо-DevOps",
+    "role": "DevOps-инженер",
+    "level": "middle",
+    "profession": "DevOps-инженер"
+  },
+  "answers": {
+    "role": "Я DevOps-инженер, отвечаю за инфраструктуру, надёжность деплоя и мониторинг сервисов.",
+    "function": "Моя функция — автоматизация сборки, доставка изменений и поддержка кластера Kubernetes.",
+    "task": "Настраиваю пайплайны CI/CD и деплою сервисы в Kubernetes через Helm.",
+    "action": "Пишу Helm-чарты и проверяю алерты в Prometheus после выкатки."
+  },
+  "sources": [
+    { "id": "src-interview", "type": "interview", "title": "Интервью DevOps-инженера" }
+  ],
+  "script": {
+    "interviewer": {
+      "error_on_calls": [1]
+    },
+    "analyst": {
+      "entities": [
+        {
+          "id": "devops-role",
+          "type": "role",
+          "title": "DevOps-инженер",
+          "confidence": 0.95,
+          "evidence": [
+            {
+              "id": "ev-devops-role",
+              "source_id": "src-interview",
+              "ref_id": "answer-1",
+              "quote": "Я DevOps-инженер, отвечаю за инфраструктуру, надёжность деплоя и мониторинг сервисов."
+            }
+          ]
+        },
+        {
+          "id": "devops-fn",
+          "type": "function",
+          "title": "Автоматизация доставки",
+          "confidence": 0.9,
+          "evidence": [
+            {
+              "id": "ev-devops-fn",
+              "source_id": "src-interview",
+              "ref_id": "answer-2",
+              "quote": "Моя функция — автоматизация сборки, доставка изменений и поддержка кластера Kubernetes."
+            }
+          ]
+        },
+        {
+          "id": "devops-task",
+          "type": "task",
+          "title": "Настраивать CI/CD",
+          "confidence": 0.9,
+          "evidence": [
+            {
+              "id": "ev-devops-task",
+              "source_id": "src-interview",
+              "ref_id": "answer-3",
+              "quote": "Настраиваю пайплайны CI/CD и деплою сервисы в Kubernetes через Helm."
+            }
+          ]
+        },
+        {
+          "id": "devops-act",
+          "type": "action",
+          "title": "Деплоить через Helm",
+          "confidence": 0.85,
+          "evidence": [
+            {
+              "id": "ev-devops-act",
+              "source_id": "src-interview",
+              "ref_id": "answer-4",
+              "quote": "Пишу Helm-чарты и проверяю алерты в Prometheus после выкатки."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "status": "degraded",
+    "questions": 6,
+    "clarifications": 0,
+    "fallbacks": 1,
+    "tree_nodes": 4,
+    "node_types": ["role", "function", "task", "action"],
+    "min_evidence_per_node": 1,
+    "evidence": 4,
+    "conflicts": 0,
+    "model_calls": 7
+  }
+}

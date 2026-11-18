@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	"activity-descriptor/internal/agent"
 	"activity-descriptor/internal/agent/analyst"
@@ -18,8 +17,6 @@ import (
 	"activity-descriptor/internal/embeddings"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/search"
-	"activity-descriptor/internal/store"
-	"activity-descriptor/internal/store/db"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -27,17 +24,48 @@ import (
 // sourceRetriever returns only the source fragments relevant to a run query.
 type sourceRetriever func(ctx context.Context, runID, query string) ([]domain.Source, error)
 
+// finalizeStore is the slice of the persistence layer the post-interview
+// pipeline needs. *api.PGStore implements it in production; tests inject a fake
+// so the finalizer can be verified without PostgreSQL or a live LLM.
+type finalizeStore interface {
+	SetStage(id string, stage domain.Stage) error
+	ListRunSources(ctx context.Context, runID string) ([]domain.Source, error)
+	CreateInterviewSource(ctx context.Context, runID, sourceID, transcript string) error
+	SaveTree(ctx context.Context, id string, nodes []domain.Node) error
+	SaveRunSnapshot(ctx context.Context, runID string) error
+	SaveSynthesisReview(ctx context.Context, runID string, conflicts []domain.Conflict, messages []agent.AgentMessage) error
+}
+
+// interviewAnalyst is the analyst step of the pipeline. It is an interface so a
+// fake can stand in for the LLM-backed agent in tests.
+type interviewAnalyst interface {
+	Analyze(ctx context.Context, in agent.AnalystInput) (agent.AnalystOutput, error)
+}
+
+// synthesisRunner is the deterministic merge step of the pipeline.
+type synthesisRunner interface {
+	Synthesize(ctx context.Context, in agent.SynthesizerInput) (agent.SynthesizerOutput, error)
+}
+
+// finalizerDeps are the collaborators of one finalization. zunClient is
+// optional and only used for the best-effort knowledge/skills enrichment.
+type finalizerDeps struct {
+	store       finalizeStore
+	analyst     interviewAnalyst
+	synthesizer synthesisRunner
+	zunClient   llm.ChatClient
+	retrievers  []sourceRetriever
+}
+
 // newTreeFinalizer builds the post-interview pipeline: analyst, synthesizer
 // and persistence of the resulting tree. An optional retriever injects RAG
 // context instead of sending every source to the model.
-func newTreeFinalizer(pgStore *api.PGStore, analystClient llm.ChatClient, retrievers ...sourceRetriever) chat.Finalizer {
-	return newTreeFinalizerWithVersions(pgStore, analystClient, "", "", retrievers...)
+func newTreeFinalizer(store finalizeStore, analystClient llm.ChatClient, retrievers ...sourceRetriever) chat.Finalizer {
+	return newTreeFinalizerWithVersions(store, analystClient, "", "", retrievers...)
 }
 
-func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
+func newTreeFinalizerWithVersions(store finalizeStore, analystClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
 	return func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
-		transcript := transcriptFromSession(session)
-		setFinalizeStage(pgStore, runID, domain.StageAnalysis)
 		analystOptions := []analyst.Option{}
 		if analystVersion != "" {
 			analystOptions = append(analystOptions, analyst.WithPromptVersion(analystVersion))
@@ -46,27 +74,6 @@ func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatCl
 		if err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: analyst: %w", err)
 		}
-		input := agent.AnalystInput{
-			SessionID:  session.ID,
-			Profession: profession,
-			Transcript: transcript,
-		}
-		if len(retrievers) > 0 && retrievers[0] != nil {
-			query := profession + " " + truncateRunes(transcript, 2000)
-			if sources, retrieveErr := retrievers[0](ctx, runID, query); retrieveErr == nil {
-				input.Sources = sources
-			}
-		}
-		analysis, err := analystAgent.Analyze(ctx, input)
-		if err != nil {
-			return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
-		}
-
-		interviewNodes := make([]domain.Node, 0, len(analysis.Entities))
-		for _, entity := range analysis.Entities {
-			interviewNodes = append(interviewNodes, entity.Node)
-		}
-
 		synthesizerOptions := []synthesizer.Option{}
 		if synthesizerVersion != "" {
 			synthesizerOptions = append(synthesizerOptions, synthesizer.WithPromptVersion(synthesizerVersion))
@@ -75,31 +82,152 @@ func newTreeFinalizerWithVersions(pgStore *api.PGStore, analystClient llm.ChatCl
 		if err != nil {
 			return domain.RunFailed, fmt.Errorf("finalizer: synthesizer: %w", err)
 		}
-		setFinalizeStage(pgStore, runID, domain.StageSynthesis)
-		synthesis, err := synthesizerAgent.Synthesize(ctx, agent.SynthesizerInput{
-			Profession: profession,
-			Interview:  interviewNodes,
-		})
-		if err != nil {
-			return domain.RunFailed, fmt.Errorf("finalizer: synthesize: %w", err)
-		}
+		return finalizeInterview(ctx, finalizerDeps{
+			store:       store,
+			analyst:     analystAgent,
+			synthesizer: synthesizerAgent,
+			zunClient:   analystClient,
+			retrievers:  retrievers,
+		}, runID, profession, session)
+	}
+}
 
-		setFinalizeStage(pgStore, runID, domain.StageReview)
-		nodes := enrichZun(ctx, analystClient, profession, synthesis.Tree)
-		if err := saveInterviewTree(ctx, pgStore, runID, profession, transcript, nodes); err != nil {
-			return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
+// finalizeInterview runs analysis, deterministic synthesis, persistence of the
+// review artifacts and the final tree for one finished interview.
+func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
+	if deps.store == nil {
+		return domain.RunFailed, fmt.Errorf("finalizer: store is required")
+	}
+	transcript := transcriptFromSession(session)
+	setFinalizeStage(deps.store, runID, domain.StageAnalysis)
+
+	input := agent.AnalystInput{
+		SessionID:  session.ID,
+		Profession: profession,
+		Transcript: transcript,
+	}
+	if len(deps.retrievers) > 0 && deps.retrievers[0] != nil {
+		query := profession + " " + truncateRunes(transcript, 2000)
+		if sources, retrieveErr := deps.retrievers[0](ctx, runID, query); retrieveErr == nil {
+			input.Sources = sources
 		}
-		setFinalizeStage(pgStore, runID, domain.StageDone)
-		return domain.RunDone, nil
+	}
+	analysis, err := deps.analyst.Analyze(ctx, input)
+	if err != nil {
+		return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
+	}
+
+	// The sources linked to this run are the only source metadata available at
+	// finalization time, and they are what recovers the provenance of the
+	// analyst's entities: every evidence item references a source by id. Loading
+	// them is best-effort: without metadata the already supported interview-only
+	// path must keep working.
+	runSources, err := deps.store.ListRunSources(ctx, runID)
+	if err != nil {
+		log.Printf("finalizer: load run sources for %s: %v", runID, err)
+		runSources = nil
+	}
+	interviewNodes, standardNodes, vacancyNodes := partitionEntitiesByProvenance(analysis.Entities, runSources)
+
+	setFinalizeStage(deps.store, runID, domain.StageSynthesis)
+	synthesis, err := deps.synthesizer.Synthesize(ctx, buildSynthesizerInput(profession, runSources, interviewNodes, standardNodes, vacancyNodes))
+	if err != nil {
+		return domain.RunFailed, fmt.Errorf("finalizer: synthesize: %w", err)
+	}
+
+	// Persist conflicts/messages before the tree so the evidence for expert
+	// review is not lost if tree persistence fails afterwards. Review storage is
+	// auxiliary: a failure is logged but does not fail an otherwise valid run,
+	// same as the automatic snapshot below.
+	if persistErr := deps.store.SaveSynthesisReview(ctx, runID, synthesis.Conflicts, synthesis.Messages); persistErr != nil {
+		log.Printf("finalizer: persist synthesis review for run %s: %v", runID, persistErr)
+	}
+
+	setFinalizeStage(deps.store, runID, domain.StageReview)
+	nodes := enrichZun(ctx, deps.zunClient, profession, synthesis.Tree)
+	if err := saveInterviewTree(ctx, deps.store, runID, profession, transcript, nodes); err != nil {
+		return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
+	}
+	setFinalizeStage(deps.store, runID, domain.StageDone)
+	return domain.RunDone, nil
+}
+
+// partitionEntitiesByProvenance routes the analyst entities into the three
+// synthesizer inputs using the declared type of the run sources their evidence
+// references.
+//
+// An entity belongs to Standard (or Vacancy) only when every evidence item is
+// backed by a source of that type. Mixed provenance, interview or document
+// sources, missing source metadata, unknown ids and evidence-less nodes all fall
+// back to the Interview list, which keeps the already supported interview-only
+// path working when provenance cannot be established. Node ids, hierarchy and
+// evidence are passed through unchanged: partitioning only chooses a slot.
+func partitionEntitiesByProvenance(entities []agent.ExtractedEntity, sources []domain.Source) (interview, standard, vacancy []domain.Node) {
+	sourceTypes := make(map[string]domain.SourceType, len(sources))
+	for _, source := range sources {
+		sourceTypes[source.ID] = source.Type
+	}
+	for _, entity := range entities {
+		node := entity.Node
+		switch classifyEntityProvenance(node, sourceTypes) {
+		case domain.SourceStandard:
+			standard = append(standard, node)
+		case domain.SourceVacancy:
+			vacancy = append(vacancy, node)
+		default:
+			interview = append(interview, node)
+		}
+	}
+	return interview, standard, vacancy
+}
+
+// classifyEntityProvenance reports the single non-interview source type shared
+// by all evidence of the node. Anything mixed, unknown or interview-backed is
+// reported as interview so the caller keeps the safe default.
+func classifyEntityProvenance(node domain.Node, sourceTypes map[string]domain.SourceType) domain.SourceType {
+	if len(node.Evidence) == 0 {
+		return domain.SourceInterview
+	}
+	provenance := domain.SourceType("")
+	for _, evidence := range node.Evidence {
+		sourceType, ok := sourceTypes[evidence.SourceID]
+		if !ok {
+			return domain.SourceInterview
+		}
+		if sourceType != domain.SourceStandard && sourceType != domain.SourceVacancy {
+			return domain.SourceInterview
+		}
+		if provenance == "" {
+			provenance = sourceType
+			continue
+		}
+		if provenance != sourceType {
+			return domain.SourceInterview
+		}
+	}
+	return provenance
+}
+
+// buildSynthesizerInput assembles the deterministic merge input. The analyst
+// nodes keep the source slot their evidence proves (interview, standard or
+// vacancy) so the merge can resolve priorities and actually detect cross-source
+// conflicts; the run sources provide the ids, types and priorities for that.
+func buildSynthesizerInput(profession string, sources []domain.Source, interviewNodes, standardNodes, vacancyNodes []domain.Node) agent.SynthesizerInput {
+	return agent.SynthesizerInput{
+		Profession: profession,
+		Sources:    sources,
+		Interview:  interviewNodes,
+		Standard:   standardNodes,
+		Vacancy:    vacancyNodes,
 	}
 }
 
 // setFinalizeStage обновляет этап прогона, чтобы UI видел прогресс пайплайна.
-func setFinalizeStage(pgStore *api.PGStore, runID string, stage domain.Stage) {
-	if pgStore == nil || pgStore.Pool == nil {
+func setFinalizeStage(store finalizeStore, runID string, stage domain.Stage) {
+	if store == nil {
 		return
 	}
-	_ = pgStore.SetStage(runID, stage)
+	_ = store.SetStage(runID, stage)
 }
 
 func truncateRunes(value string, limit int) string {
@@ -171,30 +299,13 @@ func transcriptFromSession(session domain.InterviewSession) string {
 }
 
 // saveInterviewTree assigns database-safe UUIDs to the AI tree, creates the
-// interview source and persists the tree through the existing PGStore.
-func saveInterviewTree(ctx context.Context, pgStore *api.PGStore, runID, profession, transcript string, nodes []domain.Node) error {
-	if pgStore == nil || pgStore.Pool == nil {
+// interview source and persists the tree through the finalize store.
+func saveInterviewTree(ctx context.Context, store finalizeStore, runID, profession, transcript string, nodes []domain.Node) error {
+	if store == nil {
 		return fmt.Errorf("postgres store is not configured")
 	}
-	var runUUID pgtype.UUID
-	if err := runUUID.Scan(runID); err != nil || !runUUID.Valid {
-		return fmt.Errorf("invalid run id %q", runID)
-	}
-
 	sourceID := newUUID()
-	now := time.Now().UTC()
-	_, err := store.New(pgStore.Pool).CreateSource(ctx, db.CreateSourceParams{
-		ID:               sourceID,
-		RunID:            runUUID,
-		Type:             string(domain.SourceInterview),
-		Title:            "Interview transcript",
-		Content:          pgtype.Text{String: transcript, Valid: true},
-		RawPayload:       nil,
-		ProcessingStatus: "processed",
-		ProcessedAt:      pgtype.Timestamptz{Time: now, Valid: true},
-		Provider:         pgtype.Text{String: "ai", Valid: true},
-	})
-	if err != nil {
+	if err := store.CreateInterviewSource(ctx, runID, sourceID.String(), transcript); err != nil {
 		return fmt.Errorf("create interview source: %w", err)
 	}
 
@@ -212,12 +323,12 @@ func saveInterviewTree(ctx context.Context, pgStore *api.PGStore, runID, profess
 	if rootCount != 1 {
 		return fmt.Errorf("tree must have exactly one root, got %d", rootCount)
 	}
-	if err := pgStore.SaveTree(ctx, runID, converted); err != nil {
+	if err := store.SaveTree(ctx, runID, converted); err != nil {
 		return fmt.Errorf("store tree: %w", err)
 	}
 	// Автоснимок дерева: вкладка «Снимки и проверка» получает базовую точку
 	// для diff, без ручного POST /snapshots.
-	if _, snapErr := store.New(pgStore.Pool).SaveSnapshot(ctx, runUUID); snapErr != nil {
+	if snapErr := store.SaveRunSnapshot(ctx, runID); snapErr != nil {
 		log.Printf("chat: snapshot failed for run %s: %v", runID, snapErr)
 	}
 	return nil

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "name": "backend-sparse-analyst-output",
+  "description": "Analyst returns only a role and one action; the synthesizer generates the missing function and task and aggregates their evidence.",
+  "tags": ["backend", "tree-repair"],
+  "profession": "Backend-разработчик",
+  "respondent": {
+    "id": "resp-be-2",
+    "name": "Демо-backend",
+    "role": "Backend-разработчик",
+    "level": "middle",
+    "profession": "Backend-разработчик"
+  },
+  "answers": {
+    "role": "Я Backend-разработчик, проектирую и развиваю API для мобильного приложения.",
+    "function": "Моя функция — проектировать API, поддерживать контракты и следить за производительностью.",
+    "task": "Проектирую REST API и пишу обработчики на Go для новых сценариев.",
+    "action": "Пишу интеграционные тесты и профилирую медленные запросы."
+  },
+  "sources": [
+    { "id": "src-interview", "type": "interview", "title": "Интервью backend-разработчика" }
+  ],
+  "script": {
+    "analyst": {
+      "entities": [
+        {
+          "id": "sparse-role",
+          "type": "role",
+          "title": "Backend-разработчик",
+          "confidence": 0.95,
+          "evidence": [
+            {
+              "id": "ev-sparse-role",
+              "source_id": "src-interview",
+              "ref_id": "answer-1",
+              "quote": "Я Backend-разработчик, проектирую и развиваю API для мобильного приложения."
+            }
+          ]
+        },
+        {
+          "id": "sparse-act",
+          "type": "action",
+          "title": "Профилировать запросы",
+          "confidence": 0.85,
+          "evidence": [
+            {
+              "id": "ev-sparse-act",
+              "source_id": "src-interview",
+              "ref_id": "answer-4",
+              "quote": "Пишу интеграционные тесты и профилирую медленные запросы."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "status": "done",
+    "questions": 6,
+    "fallbacks": 0,
+    "tree_nodes": 4,
+    "node_types": ["role", "function", "task", "action"],
+    "min_evidence_per_node": 1,
+    "evidence": 4,
+    "conflicts": 0,
+    "model_calls": 7
+  }
+}

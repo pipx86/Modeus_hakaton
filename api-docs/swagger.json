@@ -1,805 +1,3080 @@
 {
-    "swagger": "2.0",
-    "info": {
-        "description": "Backend service for extracting competency trees from job descriptions and interviews.",
-        "title": "Activity Descriptor API",
-        "contact": {},
-        "version": "1.0"
-    },
-    "basePath": "/api/v1",
-    "paths": {
-        "/api/v1/evidences/bulk-approve": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Verifies several quotes at once. Skips those that are already approved.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidences"
-                ],
-                "summary": "Bulk approve multiple pieces of evidence",
-                "parameters": [
-                    {
-                        "description": "List of Evidence IDs",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.bulkApproveRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.bulkApproveResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/evidences/{id}/approve": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Marks a specific quote/snippet as verified and usable in synthesis.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidences"
-                ],
-                "summary": "Approve a single piece of evidence",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Evidence ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/nodes/{id}": {
-            "patch": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Modifies title, description, type or parent relationship of a tree node.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "nodes"
-                ],
-                "summary": "Update properties of a specific node",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Node ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Fields to update",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.NodePatch"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/domain.Node"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/runs": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns a list of all existing runs with their current status and stage.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "runs"
-                ],
-                "summary": "List all research runs",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/domain.Run"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Starts an asynchronous analysis pipeline for the given profession. Returns immediately with run ID; progress streamed via SSE.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "runs"
-                ],
-                "summary": "Create a new research run",
-                "parameters": [
-                    {
-                        "description": "Run parameters",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "profession": {
-                                    "type": "string"
-                                },
-                                "type": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/domain.Run"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/runs/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retrieves full information about a specific research run including nodes and evidence.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "runs"
-                ],
-                "summary": "Get run details by ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Run ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/domain.Run"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/runs/{id}/answers": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns all raw quotes and snippets gathered during the interview phase.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidences"
-                ],
-                "summary": "Get collected answers (evidence) for a run",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Run ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/domain.Evidence"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/runs/{id}/export": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns the finalized competency tree only if the run status is 'done'.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "runs"
-                ],
-                "summary": "Export final results of a completed run",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Run ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/domain.Node"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/runs/{id}/tree": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns the flat list of nodes associated with the run's tree.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "trees"
-                ],
-                "summary": "Get competency tree for a run",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Run ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/domain.Node"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Replaces or creates the full node hierarchy for the specified run. Validates structure before saving.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "trees"
-                ],
-                "summary": "Save competency tree for a run",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Run ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Array of nodes forming the tree",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/domain.Node"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/sources": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Adds a new vacancy, interview transcript, or standard document to the system.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sources"
-                ],
-                "summary": "Create a data source",
-                "parameters": [
-                    {
-                        "description": "Source parameters",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "content": {
-                                    "type": "string"
-                                },
-                                "title": {
-                                    "type": "string"
-                                },
-                                "type": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/domain.Source"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/sources/{id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Удаляет источник только при отсутствии защищённых связей; иначе возвращается 409.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sources"
-                ],
-                "summary": "Delete a data source",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/api.errorBody"
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "definitions": {
-        "api.NodePatch": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "evidence": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.Evidence"
-                    }
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.bulkApproveRequest": {
-            "type": "object",
-            "properties": {
-                "ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "api.bulkApproveResponse": {
-            "type": "object",
-            "properties": {
-                "approved": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "integer"
-                }
-            }
-        },
-        "api.errorBody": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "domain.Evidence": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "quote": {
-                    "type": "string"
-                },
-                "source_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "domain.Node": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "evidence": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.Evidence"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "parent_id": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "type": {
-                    "$ref": "#/definitions/domain.NodeType"
-                }
-            }
-        },
-        "domain.NodeType": {
-            "type": "string",
-            "enum": [
-                "role",
-                "function",
-                "task",
-                "action"
-            ],
-            "x-enum-varnames": [
-                "NodeRole",
-                "NodeFunction",
-                "NodeTask",
-                "NodeAction"
-            ]
-        },
-        "domain.Run": {
-            "type": "object",
-            "properties": {
-                "finished_at": {
-                    "type": "string"
-                },
-                "hybrid_weights_raw": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "number",
-                        "format": "float64"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "level_data": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": {}
-                    }
-                },
-                "profession": {
-                    "type": "string"
-                },
-                "root_node_id": {
-                    "type": "string"
-                },
-                "skill_freq": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "integer"
-                    }
-                },
-                "stage": {
-                    "$ref": "#/definitions/domain.Stage"
-                },
-                "started_at": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/domain.RunStatus"
-                },
-                "type": {
-                    "description": "=== NEW ===",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.RunType"
-                        }
-                    ]
-                }
-            }
-        },
-        "domain.RunStatus": {
-            "type": "string",
-            "enum": [
-                "pending",
-                "running",
-                "done",
-                "failed"
-            ],
-            "x-enum-varnames": [
-                "RunPending",
-                "RunRunning",
-                "RunDone",
-                "RunFailed"
-            ]
-        },
-        "domain.RunType": {
-            "type": "string",
-            "enum": [
-                "batch",
-                "chat"
-            ],
-            "x-enum-varnames": [
-                "RunTypeBatch",
-                "RunTypeChat"
-            ]
-        },
-        "domain.Source": {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "type": {
-                    "$ref": "#/definitions/domain.SourceType"
-                }
-            }
-        },
-        "domain.SourceType": {
-            "type": "string",
-            "enum": [
-                "vacancy",
-                "interview",
-                "standard",
-                "document"
-            ],
-            "x-enum-varnames": [
-                "SourceVacancy",
-                "SourceInterview",
-                "SourceStandard",
-                "SourceDocument"
-            ]
-        },
-        "domain.Stage": {
-            "type": "string",
-            "enum": [
-                "created",
-                "interview",
-                "analysis",
-                "synthesis",
-                "review",
-                "done",
-                "failed"
-            ],
-            "x-enum-varnames": [
-                "StageCreated",
-                "StageInterview",
-                "StageAnalysis",
-                "StageSynthesis",
-                "StageReview",
-                "StageDone",
-                "StageFailed"
-            ]
-        }
-    },
-    "securityDefinitions": {
-        "BearerAuth": {
-            "type": "apiKey",
-            "name": "Authorization",
-            "in": "header"
-        }
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Modeus activity-descriptor API",
+    "version": "0.1.0",
+    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, require a JWT bearer token. Successful responses are JSON; run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API prefix used by cmd/api and cmd/server."
     }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "Liveness probe."
+    },
+    {
+      "name": "sources",
+      "description": "Source documents (vacancies, interviews, standards) and their searchable fragments."
+    },
+    {
+      "name": "evidences",
+      "description": "Evidence quotes attached to tree nodes and their expert approval or rejection state."
+    },
+    {
+      "name": "reviews",
+      "description": "Expert review queue of disputed evidence (pending and rejected quotes)."
+    },
+    {
+      "name": "runs",
+      "description": "Research runs, saved activity trees, answers, snapshots, snapshot diffs, export and search."
+    },
+    {
+      "name": "nodes",
+      "description": "Editing of individual activity-tree nodes."
+    },
+    {
+      "name": "chat",
+      "description": "Interview chat messages of a run."
+    },
+    {
+      "name": "users",
+      "description": "Demo users and their roles."
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Service liveness probe",
+        "description": "Public endpoint; no bearer token is required.",
+        "operationId": "getHealth",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "List sources",
+        "description": "Returns sources ordered by creation time, newest first (at most 1000).",
+        "operationId": "listSources",
+        "responses": {
+          "200": {
+            "description": "Array of sources.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Source"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Create a source",
+        "operationId": "createSource",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "title"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "$ref": "#/components/schemas/SourceType"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "source_url": {
+                    "type": "string"
+                  }
+                }
+              },
+              "example": {
+                "type": "interview",
+                "title": "Интервью с ведущим аналитиком",
+                "content": "Транскрипт интервью о ежедневных задачах аналитика."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created source (server-assigned id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/sources/{id}": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Get one source",
+        "operationId": "getSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Delete a source",
+        "description": "A source is deleted only when no evidence references it; otherwise the server returns 409.",
+        "operationId": "deleteSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted, no content."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The source is referenced by evidence and cannot be deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SOURCE_IN_USE",
+                  "message": "source is referenced by evidence"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/sources/{id}/index": {
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Build source fragments and their vectors",
+        "operationId": "indexSourceFragments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Index stored."
+          },
+          "400": {
+            "description": "The path id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "expected UUID"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "502": {
+            "description": "The source or the embedding model is unavailable; the previous index is kept.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INDEX_FAILED",
+                  "message": "unable to obtain vectors; previous index kept"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/evidences": {
+      "get": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "List evidences",
+        "description": "Optionally filtered by node_id and/or source_id; at most 1000 rows.",
+        "operationId": "listEvidences",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "query",
+            "required": false,
+            "description": "Only evidence attached to this node (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "query",
+            "required": false,
+            "description": "Only evidence quoting this source (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of evidences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Evidence"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableTree"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Attach an evidence to a node",
+        "operationId": "createEvidence",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "node_id",
+                  "source_id",
+                  "quote"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "node_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "source_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "ref_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "quote": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "example": {
+                "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                "ref_id": "frag-12",
+                "quote": "Каждую неделю я собираю требования у заказчика."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created evidence (server-assigned id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Evidence"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableTree"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/evidences/{id}": {
+      "get": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Get one evidence",
+        "description": "Returns the evidence with the legacy `approved` flag in addition to `status`.",
+        "operationId": "getEvidence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EvidenceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Evidence details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/evidences/{id}/approve": {
+      "post": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Approve an evidence",
+        "description": "Confirmation status is stored server-side; no body is returned. Only pending evidence can be approved.",
+        "operationId": "approveEvidence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EvidenceId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Approved, no content."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence is already approved or already rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "alreadyApproved": {
+                    "summary": "Already approved",
+                    "value": {
+                      "code": "ALREADY_APPROVED",
+                      "message": "evidence already approved"
+                    }
+                  },
+                  "alreadyRejected": {
+                    "summary": "Already rejected",
+                    "value": {
+                      "code": "ALREADY_REJECTED",
+                      "message": "evidence already rejected"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/evidences/{id}/reject": {
+      "post": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Reject an evidence",
+        "description": "Marks a quote as rejected; only pending evidence can be rejected. Rejected evidence appears in the expert review queue with `status=rejected` (`GET /reviews/evidence`), where an expert can then approve it.",
+        "operationId": "rejectEvidence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EvidenceId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Rejected, no content."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence is already rejected or already approved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "alreadyRejected": {
+                    "summary": "Already rejected",
+                    "value": {
+                      "code": "ALREADY_REJECTED",
+                      "message": "evidence already rejected"
+                    }
+                  },
+                  "alreadyApproved": {
+                    "summary": "Already approved",
+                    "value": {
+                      "code": "ALREADY_APPROVED",
+                      "message": "evidence already approved"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/evidences/bulk-approve": {
+      "post": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Bulk approve evidences",
+        "description": "Approves several quotes at once; ids that are missing or not pending are counted as skipped.",
+        "operationId": "bulkApproveEvidences",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkApproveRequest"
+              },
+              "example": {
+                "ids": [
+                  "8b1a2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+                  "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Counts of approved and skipped evidences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkApproveResponse"
+                },
+                "example": {
+                  "approved": 2,
+                  "skipped": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON body or an empty ids array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "ids array is required and must not be empty"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/reviews/evidence": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Expert review queue for disputed evidence",
+        "description": "Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url, ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`, never `null`. Only the expert roles admin, teacher and rop may call this operation; student and guest receive 403.",
+        "operationId": "listReviewQueue",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Review state to list. Any value other than pending or rejected is a 400.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "rejected"
+              ],
+              "default": "pending"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size, 1..200.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Number of rows to skip, >= 0.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the review queue; an empty page is [].",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewQueueItem"
+                  }
+                },
+                "examples": {
+                  "pendingPage": {
+                    "summary": "One pending evidence row",
+                    "value": [
+                      {
+                        "id": "8b1a2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+                        "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                        "node_id": "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+                        "node_title": "Проводить интервью с заказчиком",
+                        "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                        "source_title": "Интервью с ведущим аналитиком",
+                        "source_url": "https://example.com/interviews/42",
+                        "ref_id": "frag-12",
+                        "quote": "Каждую неделю я собираю требования у заказчика.",
+                        "status": "pending"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "status, limit or offset is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "invalidStatus": {
+                    "summary": "Unsupported status value",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "status must be pending or rejected"
+                    }
+                  },
+                  "invalidLimit": {
+                    "summary": "Limit out of range",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "limit must be an integer between 1 and 200"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List research runs",
+        "operationId": "listRuns",
+        "responses": {
+          "200": {
+            "description": "Array of runs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Start a run",
+        "description": "Starts an analysis run for the given profession. When the chat interviewer is configured, the run is created in the interview stage and the interviewer starts immediately; otherwise the batch pipeline is triggered for the PostgreSQL store.",
+        "operationId": "createRun",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "profession"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "profession": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "example": {
+                "profession": "Аналитик данных"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created run (status pending).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "description": "The interview chat/LLM provider failed to start the run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_GATEWAY",
+                  "message": "llm provider unavailable"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get run status",
+        "operationId": "getRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Delete a research run",
+        "description": "Deletes the run together with its tree, evidences and messages (cascade).",
+        "operationId": "deleteRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted, no content."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/runs/{id}/tree": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get the activity tree of a run",
+        "description": "Flat array of nodes; clients rebuild the hierarchy via `parent_id`.",
+        "operationId": "getRunTree",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of nodes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Node"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Save a new activity tree in one transaction",
+        "description": "Requires the admin, teacher or rop role. Validates the flat node list and saves it atomically. An existing tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.",
+        "operationId": "saveRunTree",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Tree saved."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run already has a saved tree.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "TREE_ALREADY_EXISTS",
+                  "message": "tree already saved"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableTree"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/answers": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List evidence answers collected by a run",
+        "description": "Flat array of evidences gathered across the run's nodes.",
+        "operationId": "getRunAnswers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of evidences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Evidence"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/export": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Export the final tree of a completed run",
+        "description": "Returns the finalized activity tree only when the run status is done.",
+        "operationId": "exportRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exported nodes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Node"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run is not finished yet, nothing to export.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "RUN_NOT_FINISHED",
+                  "message": "run is not finished yet"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/events": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Stream run progress (SSE)",
+        "description": "`text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`, `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously delivered events are skipped, and the stream closes when the run reaches done or failed.",
+        "operationId": "streamRunEvents",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "description": "ID of the last received event; the server resumes after it without duplicates.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-sent events stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/runs/{id}/messages": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List chat messages of a run",
+        "description": "Returns the interview chat history, oldest first. Available while the chat service is configured.",
+        "operationId": "listMessages",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of chat messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatMessage"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "The run has no chat session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "chat session not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "The chat service is not configured on this server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "CHAT_DISABLED",
+                  "message": "chat is not configured"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Send a user message to the interviewer",
+        "description": "Records the respondent answer and schedules the next question. Guest role cannot post messages.",
+        "operationId": "sendMessage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "example": {
+                "content": "Провожу интервью с заказчиком и фиксирую требования."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created user message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON body or empty content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "content is required"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The run has no chat session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "chat session not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The chat session does not accept this message (for example it is already finished).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "CHAT_CONFLICT",
+                  "message": "chat session is closed"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The chat service is not configured on this server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "CHAT_DISABLED",
+                  "message": "chat is not configured"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/conflicts": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Resolved synthesizer conflicts for a run",
+        "description": "Returns title/description conflicts detected and deterministically resolved by the synthesizer during finalization. Every conflict keeps the competing values and the winner (interview > standard > vacancy > document). The list is empty when the run has no stored conflicts.",
+        "operationId": "getRunConflicts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of resolved conflicts; [] when none were stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Conflict"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "conflict-1",
+                    "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                    "field": "title",
+                    "values": [
+                      {
+                        "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                        "source_type": "interview",
+                        "value": "Собирать требования к интеграции",
+                        "priority": 300
+                      },
+                      {
+                        "source_id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
+                        "source_type": "vacancy",
+                        "value": "Собирать требования",
+                        "priority": 100
+                      }
+                    ],
+                    "winner": {
+                      "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                      "source_type": "interview",
+                      "value": "Собирать требования к интеграции",
+                      "priority": 300
+                    },
+                    "reason": "higher source priority wins: interview (300)"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/agent-messages": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Synthesizer agent-memory messages for a run",
+        "description": "Returns agent-memory messages emitted by the deterministic synthesizer during finalization. Messages of kind `conflict` carry the resolved conflict object in `payload`. The list is empty when the run has no stored messages.",
+        "operationId": "getRunAgentMessages",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of synthesizer messages; [] when none were stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentMessage"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "msg-conflict-1",
+                    "kind": "conflict",
+                    "text": "Конфликт title: побеждает interview (Собирать требования к интеграции)",
+                    "payload": {
+                      "id": "conflict-1",
+                      "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                      "field": "title"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/search": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Search fragments in the run's sources",
+        "description": "Vector search by default; `strategy=hybrid` combines vector and BM25 hits. Requires the PostgreSQL store and a configured embedding model.",
+        "operationId": "searchRunFragments",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Search query.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of hits, 1..100.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 5
+            }
+          },
+          {
+            "name": "strategy",
+            "in": "query",
+            "required": false,
+            "description": "Search strategy; `vector` by default.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "vector",
+                "hybrid"
+              ],
+              "default": "vector"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search mode and the found fragments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "hits"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "vector",
+                        "bm25",
+                        "hybrid"
+                      ]
+                    },
+                    "hits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "source_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "quote": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, strategy, limit or a failed search request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "limit must be between 1 and 100"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/snapshots": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/RunId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List run snapshots",
+        "description": "Snapshots ordered by version. Requires the PostgreSQL store.",
+        "operationId": "listSnapshots",
+        "responses": {
+          "200": {
+            "description": "Snapshots in version order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Snapshot"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Create a snapshot of the saved tree",
+        "description": "Captures the currently saved activity tree as the next snapshot version.",
+        "operationId": "createSnapshot",
+        "responses": {
+          "201": {
+            "description": "Snapshot created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run has no saved tree yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "TREE_MISSING",
+                  "message": "the run has no saved tree"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/snapshots/{snapshot_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/RunId"
+        },
+        {
+          "$ref": "#/components/parameters/SnapshotId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get a run snapshot",
+        "operationId": "getSnapshot",
+        "responses": {
+          "200": {
+            "description": "Stored snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/snapshots/{snapshot_id}/diff": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/RunId"
+        },
+        {
+          "$ref": "#/components/parameters/SnapshotId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Diff two snapshots of a run",
+        "description": "Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros).",
+        "operationId": "diffRunSnapshots",
+        "parameters": [
+          {
+            "name": "against",
+            "in": "query",
+            "required": true,
+            "description": "Base snapshot id; the path snapshot is the head of the comparison.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot tree diff (added, removed, changed and summary counts).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDiff"
+                },
+                "examples": {
+                  "oneAddedOneChanged": {
+                    "summary": "A node was added and another node was renamed",
+                    "value": {
+                      "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                      "base": {
+                        "id": "0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b",
+                        "version": 1
+                      },
+                      "head": {
+                        "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+                        "version": 2
+                      },
+                      "added": [
+                        {
+                          "id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                          "type": "action",
+                          "title": "Собирать требования еженедельно",
+                          "parent_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                          "evidence": [
+                            {
+                              "id": "e1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                              "node_id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                              "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                              "ref_id": "frag-12",
+                              "quote": "Каждую неделю я собираю требования у заказчика.",
+                              "status": "pending"
+                            }
+                          ]
+                        }
+                      ],
+                      "removed": [],
+                      "changed": [
+                        {
+                          "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                          "before": {
+                            "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                            "type": "task",
+                            "title": "Собирать требования",
+                            "evidence": [
+                              {
+                                "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                                "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                                "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                                "ref_id": "frag-7",
+                                "quote": "Собираю требования у заказчика.",
+                                "status": "approved"
+                              }
+                            ]
+                          },
+                          "after": {
+                            "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                            "type": "task",
+                            "title": "Собирать требования к интеграции",
+                            "evidence": [
+                              {
+                                "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                                "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                                "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                                "ref_id": "frag-7",
+                                "quote": "Собираю требования у заказчика.",
+                                "status": "approved"
+                              }
+                            ]
+                          },
+                          "fields": [
+                            "title"
+                          ]
+                        }
+                      ],
+                      "summary": {
+                        "added": 1,
+                        "removed": 0,
+                        "changed": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The against query parameter is missing or is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missingAgainst": {
+                    "summary": "Missing base snapshot",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "against parameter is required"
+                    }
+                  },
+                  "invalidAgainst": {
+                    "summary": "Base snapshot is not a UUID",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "against must be a snapshot UUID"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The run or either snapshot does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "run or snapshot not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A snapshot exists but belongs to another run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "SNAPSHOT_RUN_MISMATCH",
+                  "message": "snapshot belongs to another run"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A stored snapshot tree could not be parsed, or a database error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "treeInvalid": {
+                    "summary": "Stored snapshot tree is corrupted",
+                    "value": {
+                      "code": "SNAPSHOT_TREE_INVALID",
+                      "message": "unable to parse the snapshot tree"
+                    }
+                  },
+                  "internal": {
+                    "summary": "Other database or server error",
+                    "value": {
+                      "code": "INTERNAL",
+                      "message": "unable to compare snapshots"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/nodes/{id}": {
+      "patch": {
+        "tags": [
+          "nodes"
+        ],
+        "summary": "Edit a node (rename or describe)",
+        "description": "Updates title, description and/or the full evidence list of a node. Only these fields are applied; retyping or moving a node (type, parent_id) is not supported by the backend and such fields are ignored.",
+        "operationId": "patchNode",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/NodeId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/components/schemas/Evidence"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "title": "Собирать требования к интеграции",
+                "description": "Регулярно уточнять требования у заказчика."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated node.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Node"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableTree"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List demo users",
+        "description": "List of demo accounts and their roles; available to the admin role only.",
+        "operationId": "listUsers",
+        "responses": {
+          "200": {
+            "description": "Demo users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DemoUser"
+                  }
+                },
+                "example": [
+                  {
+                    "subject": "demo-admin",
+                    "role": "admin"
+                  },
+                  {
+                    "subject": "demo-guest",
+                    "role": "guest",
+                    "read_only": true
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT with `sub` and `role` claims; roles are admin, teacher, rop, student and guest."
+      }
+    },
+    "parameters": {
+      "RunId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SourceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Source identifier (UUID with PostgreSQL).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "EvidenceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Evidence identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "NodeId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Node identifier.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SnapshotId": {
+        "name": "snapshot_id",
+        "in": "path",
+        "required": true,
+        "description": "Snapshot identifier (UUID). The path snapshot is the head of a diff comparison.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed request body, path or query parameter.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "BAD_REQUEST",
+              "message": "invalid JSON body"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid bearer token.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "UNAUTHORIZED",
+              "message": "missing or invalid token"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The authenticated role is not allowed to call this operation.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "FORBIDDEN",
+              "message": "insufficient permissions for this action"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The requested run, snapshot, source, node or evidence does not exist.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "NOT_FOUND",
+              "message": "not found"
+            }
+          }
+        }
+      },
+      "UnprocessableTree": {
+        "description": "Tree or evidence validation failed. `code` is a stable machine-readable value such as MISSING_EVIDENCE, INVALID_EVIDENCE, DUPLICATE_NODE_ID, DUPLICATE_SIBLING_TITLE, CYCLE_DETECTED, INVALID_TREE_DEPTH, ORPHAN_NODE or INVALID_REFERENCE.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TreeValidationError"
+            },
+            "example": {
+              "code": "MISSING_EVIDENCE",
+              "node_id": "n1",
+              "details": "node must reference at least one evidence quote"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected server or database error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "INTERNAL",
+              "message": "internal error"
+            }
+          }
+        }
+      },
+      "NotImplemented": {
+        "description": "The configured store does not support this operation. The in-memory demo store returns this for PostgreSQL-only features.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "NOT_IMPLEMENTED",
+              "message": "requires PostgreSQL store"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "The service or an upstream dependency is temporarily unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "SERVICE_UNAVAILABLE",
+              "message": "service temporarily unavailable"
+            }
+          }
+        }
+      },
+      "GatewayTimeout": {
+        "description": "The upstream operation timed out.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "GATEWAY_TIMEOUT",
+              "message": "upstream timeout"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable error code."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message; may be localized."
+          }
+        }
+      },
+      "TreeValidationError": {
+        "type": "object",
+        "required": [
+          "code",
+          "details"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable validation code (for example MISSING_EVIDENCE or INVALID_EVIDENCE)."
+          },
+          "node_id": {
+            "type": "string",
+            "description": "Node the validation error points at, when known."
+          },
+          "details": {
+            "type": "string",
+            "description": "Human-readable validation details."
+          }
+        }
+      },
+      "NodeType": {
+        "type": "string",
+        "enum": [
+          "role",
+          "function",
+          "task",
+          "action"
+        ]
+      },
+      "SourceType": {
+        "type": "string",
+        "enum": [
+          "vacancy",
+          "interview",
+          "standard",
+          "document"
+        ]
+      },
+      "RunStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "done",
+          "degraded",
+          "failed"
+        ]
+      },
+      "RunType": {
+        "type": "string",
+        "enum": [
+          "batch",
+          "chat"
+        ],
+        "description": "chat runs are driven by the interview chat; batch runs by the batch pipeline."
+      },
+      "EvidenceStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "description": "Review state of an evidence quote. An empty status is treated as pending on legacy records."
+      },
+      "Evidence": {
+        "type": "object",
+        "required": [
+          "id",
+          "source_id",
+          "quote"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Anchor of the quoted fragment inside the source."
+          },
+          "quote": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus"
+          }
+        }
+      },
+      "EvidenceDetails": {
+        "type": "object",
+        "description": "Evidence plus the legacy `approved` flag.",
+        "required": [
+          "id",
+          "source_id",
+          "quote",
+          "approved"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus"
+          },
+          "approved": {
+            "type": "boolean",
+            "description": "True when status is approved."
+          }
+        }
+      },
+      "Zun": {
+        "type": "object",
+        "description": "Knowledge, skills and abilities attached to a tree node.",
+        "additionalProperties": false,
+        "properties": {
+          "knowledge": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "abilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Node": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string",
+            "description": "Absent for the root node."
+          },
+          "zun": {
+            "$ref": "#/components/schemas/Zun"
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "title"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Run": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "profession"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "profession": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/RunType"
+          },
+          "root_node_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "created",
+              "interview",
+              "analysis",
+              "synthesis",
+              "review",
+              "done",
+              "failed"
+            ]
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "version",
+          "tree",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tree": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Stored snapshot document (`schema_version`, `root_node_id`, `nodes`); the server compares it internally and returns nodes in domain form."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SnapshotVersionRef": {
+        "type": "object",
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "Reference to one snapshot version in a diff response.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "SnapshotNodeChange": {
+        "type": "object",
+        "required": [
+          "id",
+          "before",
+          "after",
+          "fields"
+        ],
+        "additionalProperties": false,
+        "description": "A node present in both snapshots whose fields changed.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "before": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "after": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "fields": {
+            "type": "array",
+            "description": "Changed fields in the fixed contract order.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "title",
+                "description",
+                "type",
+                "parent_id",
+                "evidence"
+              ]
+            }
+          }
+        }
+      },
+      "SnapshotDiffSummary": {
+        "type": "object",
+        "required": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "changed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SnapshotDiff": {
+        "type": "object",
+        "description": "Response of GET /runs/{id}/snapshots/{snapshot_id}/diff?against={base_snapshot_id}.",
+        "required": [
+          "run_id",
+          "base",
+          "head",
+          "added",
+          "removed",
+          "changed",
+          "summary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "base": {
+            "$ref": "#/components/schemas/SnapshotVersionRef"
+          },
+          "head": {
+            "$ref": "#/components/schemas/SnapshotVersionRef"
+          },
+          "added": {
+            "type": "array",
+            "description": "Nodes that exist only in head, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "description": "Nodes that exist only in base, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "changed": {
+            "type": "array",
+            "description": "Nodes present in both snapshots whose fields changed, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotNodeChange"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SnapshotDiffSummary"
+          }
+        }
+      },
+      "ReviewQueueItem": {
+        "type": "object",
+        "description": "One disputed-evidence row of the expert review queue.",
+        "required": [
+          "id",
+          "run_id",
+          "node_id",
+          "source_id",
+          "quote",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Evidence id."
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Run the evidence belongs to."
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Tree node the evidence is attached to."
+          },
+          "node_title": {
+            "type": "string",
+            "description": "Node title for reviewer context."
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_title": {
+            "type": "string",
+            "description": "Source title for reviewer context."
+          },
+          "source_url": {
+            "type": "string",
+            "description": "Source URL for reviewer context, when the source has one."
+          },
+          "ref_id": {
+            "type": "string",
+            "description": "Anchor of the quoted fragment inside the source."
+          },
+          "quote": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected"
+            ],
+            "description": "The queue never returns approved evidence."
+          }
+        }
+      },
+      "ConflictValue": {
+        "type": "object",
+        "description": "One competing value for a conflicting node field.",
+        "required": [
+          "source_id",
+          "source_type",
+          "value",
+          "priority"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "value": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Source trust priority (interview 300, standard 200, vacancy 100, document 50)."
+          }
+        }
+      },
+      "Conflict": {
+        "type": "object",
+        "description": "A disagreement between sources and its deterministic resolution.",
+        "required": [
+          "id",
+          "node_id",
+          "field",
+          "values",
+          "winner",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "field": {
+            "type": "string",
+            "description": "Node field that conflicted (for example title or description)."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConflictValue"
+            }
+          },
+          "winner": {
+            "$ref": "#/components/schemas/ConflictValue"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentMessage": {
+        "type": "object",
+        "description": "One synthesizer agent-memory message. Messages of kind `conflict` carry the resolved conflict object in payload.",
+        "required": [
+          "id",
+          "kind",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "description": "Message kind; the synthesizer emits kind=conflict for resolved conflicts."
+          },
+          "text": {
+            "type": "string"
+          },
+          "payload": {
+            "description": "Arbitrary JSON payload; for kind=conflict it is a domain.Conflict object."
+          }
+        }
+      },
+      "BulkApproveRequest": {
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BulkApproveResponse": {
+        "type": "object",
+        "required": [
+          "approved",
+          "skipped"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "approved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DemoUser": {
+        "type": "object",
+        "required": [
+          "subject",
+          "role"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "teacher",
+              "rop",
+              "student",
+              "guest"
+            ]
+          },
+          "read_only": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
 }

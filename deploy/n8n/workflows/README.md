@@ -153,8 +153,8 @@ reverse proxy.
 
 #### SMTP configuration
 
-The workflow reads these variables from the `n8n` service environment (they must
-also be passed through by `docker-compose.yml`; see the snippet below):
+The workflow reads these variables from the `n8n` service environment;
+`docker-compose.yml` already passes all of them through from `.env`:
 
 | Variable | Required | Meaning |
 | -------- | -------- | ------- |
@@ -168,13 +168,21 @@ also be passed through by `docker-compose.yml`; see the snippet below):
 The **Normalize payload** node validates all six names; if one is missing it logs
 the names to the *Log skipped notification* branch (visible under **Executions**)
 instead of attempting a half-configured send. The actual SMTP transport, however,
-comes from the n8n **SMTP account** credential: n8n credentials cannot read
-`$env`, so the same host/port/user/password must be entered once in the
-credential. `MAIL_FROM` / `MAIL_TO` are evaluated per execution from the
-environment. Keep n8n's environment access enabled (the default — do not set
+comes from the n8n **SMTP account** credential. This is a hard requirement of the
+node, not a configuration choice: in n8n 1.63.4 the *Send Email*
+(`n8n-nodes-base.emailSend`) node declares
+`credentials: [{name: "smtp", required: true}]` and builds its transport only from
+the credential fields. **The email node cannot read SMTP settings from
+environment variables** — `SMTP_*` can never replace the credential. `$env` is
+used only for `MAIL_FROM` / `MAIL_TO` in the node's `fromEmail` / `toEmail`
+expressions and for the pre-flight validation in the Code node. Keep n8n's
+environment access enabled (the default — do not set
 `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`), otherwise `$env` expressions fail.
 
-Create it in **n8n → Credentials → New → SMTP account**:
+Create the credential in one of two ways:
+
+**Option A — n8n UI (normal deployments):** **n8n → Credentials → New → SMTP
+account**:
 
 * Host / Port / User / Password = the `SMTP_*` values above;
 * SSL/TLS: on for port 465, off for port 587 (STARTTLS is negotiated
@@ -183,12 +191,47 @@ Create it in **n8n → Credentials → New → SMTP account**:
   **Send email via SMTP** and choose the credential instead of the
   `REPLACE_WITH_SMTP_CREDENTIAL_ID` placeholder.
 
-If the variables are not yet passed to the container, add them to the `n8n`
-service in `docker-compose.yml` (or a `docker-compose.override.yml`) and to
-`.env`:
+**Option B — non-interactive CLI import (verified):** `n8n import:credentials`
+accepts a JSON **array** of credentials whose `data` is **plaintext**; it
+encrypts the data with the instance encryption key before storing it (the
+Postgres value starts with `U2FsdGVk…`, not with the plaintext). `id` is an
+optional string primary key — a UUID/nanoid is generated when it is omitted. The
+CLI acts as the instance owner, so an owner must exist first: on a **fresh**
+database run `n8n user-management:reset` once (creates an unclaimed owner;
+destructive — disposable environments only), or complete the owner setup in the
+UI on first start.
+
+```json
+[
+  {
+    "name": "SMTP account",
+    "type": "smtp",
+    "data": {
+      "user": "<smtp-user>",
+      "password": "<smtp-password>",
+      "host": "smtp.example.com",
+      "port": 587,
+      "secure": false,
+      "disableStartTls": false
+    }
+  }
+]
+```
+
+```bash
+docker compose --profile automation exec n8n n8n import:credentials --input=/tmp/smtp-credential.json
+# -> Successfully imported 1 credential.
+```
+
+Never commit that JSON (or an `n8n export:credentials --decrypted` output) — both
+contain secrets in plaintext. The complete throwaway local recipe, which imports
+the committed workflow **unchanged**, is in **End-to-end test** below.
+
+`docker-compose.yml` **already** passes these variables to the `n8n` service
+(verified in the running container); set the values in `.env`:
 
 ```yaml
-# docker-compose.yml -> services.n8n.environment
+# docker-compose.yml -> services.n8n.environment (already present)
 SMTP_HOST: "${SMTP_HOST:-}"
 SMTP_PORT: "${SMTP_PORT:-587}"
 SMTP_USER: "${SMTP_USER:-}"
@@ -197,30 +240,163 @@ MAIL_FROM: "${MAIL_FROM:-}"
 MAIL_TO: "${MAIL_TO:-}"
 ```
 
-Never commit real SMTP credentials: the n8n credential is encrypted in its
-Postgres volume and `.env` is git-ignored.
+An empty `SMTP_*` / `MAIL_*` set makes the workflow take the *Log skipped
+notification* branch (by design) instead of failing. Never commit real SMTP
+credentials: the n8n credential is encrypted in its Postgres volume and `.env`
+is git-ignored.
+
+## End-to-end test with a local SMTP sink (verified)
+
+The whole path — production webhook → Code node → SMTP credential → SMTP sink —
+was **verified locally** against the pinned `n8nio/n8n:1.63.4` image with
+[MailHog](https://github.com/mailhog/MailHog) as the sink, including the skip and
+failure branches and the manual-trigger demo. No real credentials are involved;
+every value below is a throwaway test value. The committed
+[`notion_email_notifications.json`](notion_email_notifications.json) is imported
+**unchanged**: the imported credential deliberately uses the placeholder id
+`REPLACE_WITH_SMTP_CREDENTIAL_ID`, which is exactly the id the export references,
+so the E2E test also proves the export's credential wiring.
+
+Prerequisites: Docker with the `automation` profile usable and a **fresh** n8n
+database. Step 3 resets the instance owner and step 4 imports a plaintext
+credential — both are destructive and for disposable environments only.
+
+```bash
+# 0) clean slate (drops the automation volumes)
+docker compose --profile automation down -v
+
+# 1) SMTP sink: SMTP on 1025, web UI/API on 8025
+docker run -d --name n8n-mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog:v1.0.1
+
+# 2) start n8n with throwaway SMTP/MAIL settings
+#    (bash; on PowerShell use $env:SMTP_HOST="..." etc., and write files as UTF-8 without BOM)
+export SMTP_HOST=host.docker.internal   # Docker Desktop; on Linux add --add-host=host.docker.internal:host-gateway
+export SMTP_PORT=1025
+export SMTP_USER=mailhog                # MailHog accepts any AUTH PLAIN credentials
+export SMTP_PASS=mailhog
+export MAIL_FROM="n8n <n8n@example.test>"
+export MAIL_TO="notifications@example.test"
+docker compose --profile automation up -d n8n n8n-postgres
+until curl -fsS http://localhost:5678/healthz; do sleep 2; done
+
+# 3) bootstrap the instance owner on the fresh database (needed by the CLI imports)
+docker compose --profile automation exec n8n n8n user-management:reset
+# -> Successfully reset the database to default user state.
+
+# 4) create the SMTP credential non-interactively (plaintext in, encrypted at rest)
+cat > /tmp/smtp-credential.json <<'JSON'
+[
+  {
+    "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+    "name": "SMTP account",
+    "type": "smtp",
+    "data": {
+      "user": "mailhog",
+      "password": "mailhog",
+      "host": "host.docker.internal",
+      "port": 1025,
+      "secure": false,
+      "disableStartTls": false
+    }
+  }
+]
+JSON
+CID=$(docker compose --profile automation ps -q n8n)
+docker cp /tmp/smtp-credential.json "$CID":/tmp/smtp-credential.json
+docker compose --profile automation exec n8n n8n import:credentials --input=/tmp/smtp-credential.json
+# -> Successfully imported 1 credential.
+
+# 5) import the committed export unchanged, activate it, restart n8n
+docker compose --profile automation exec n8n sh -c \
+  'mkdir -p /tmp/n8n-import && cp /workflows/notion_email_notifications.json /tmp/n8n-import/ && \
+   n8n import:workflow --separate --input=/tmp/n8n-import'
+docker compose --profile automation exec n8n n8n list:workflow   # copy the workflow id
+docker compose --profile automation exec n8n n8n update:workflow --id=<workflow-id> --active=true
+docker compose --profile automation restart n8n
+
+# 6) trigger the production webhook
+curl -X POST http://localhost:5678/webhook/notion-notify \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Q3 competency review","url":"https://www.notion.so/page/abc123","event":"page.updated","page_id":"abc123","actor":"ivan.petrov","timestamp":"2026-11-18T12:00:00Z"}'
+# -> accepted
+
+# 7) check the sink
+curl -s http://localhost:8025/api/v2/messages
+# -> {"total":1,...}: Subject "[Notion] page.updated: Q3 competency review",
+#    From n8n@example.test, To notifications@example.test, body with URL/actor/timestamp
+
+# cleanup
+docker rm -f n8n-mailhog
+docker compose --profile automation down -v
+```
+
+Verified results (2026-11-18, `n8nio/n8n:1.63.4`):
+
+| Check | Observed result |
+| ----- | --------------- |
+| `n8n import:credentials` with plaintext JSON | `Successfully imported 1 credential.`; Postgres stores `U2FsdGVk…` (encrypted with the instance key), not plaintext |
+| `n8n import:workflow --separate` | `Successfully imported 1 workflow.`; placeholder credential id preserved in the DB and resolved at execution |
+| webhook trigger | HTTP `200`, body `accepted` |
+| MailHog API `/api/v2/messages` | `total: 1`; From `n8n@example.test`, To `notifications@example.test`, Subject `[Notion] page.updated: Q3 competency review`; text body contains URL, page id, actor, timestamp and the n8n execution id |
+| n8n execution | `status: success`; run data contains `Summary: email sent` and SMTP response `250 Ok: queued as …`; neither error nor skip node ran |
+| empty body `{}` | HTTP `200 accepted`; execution success through *Log skipped notification*; no email |
+| SMTP sink stopped | HTTP `200 accepted`; 3 attempts, then *Log email failure* with `ECONNREFUSED`; execution still success |
+| `n8n execute --id=<id>` (manual trigger) | execution success; demo email `[Notion] workflow.test: Manual test of the Notion notification workflow` delivered |
+| `n8n --version` | `1.63.4` |
+
+Notes and limits:
+
+* The credential `id` must match the id referenced by the node.
+  `REPLACE_WITH_SMTP_CREDENTIAL_ID` is used only to test the committed export
+  **unmodified**; for a real deployment create the credential normally and
+  either select it in the UI or import a copy of the workflow with the real id
+  substituted. Never commit credential exports (`--decrypted` writes plaintext
+  secrets).
+* The webhook was reached at `http://localhost:5678` (same machine). A real
+  Notion cloud automation needs a **public HTTPS** URL — see the exposure notes
+  above; a real SMTP relay (TLS/STARTTLS, provider auth, port 465/587) is also
+  **not** covered by the MailHog test, which is plaintext and unauthenticated by
+  design.
+* On a fresh stack the editor has no login until an owner is created; the
+  `N8N_BASIC_AUTH_*` variables in compose are **ignored by n8n 1.63.4**
+  (verified: `/rest/settings` answers `200` unauthenticated and the image
+  contains no basic-auth middleware). This affects only UI access, not the
+  import/webhook flow.
 
 ## Import
 
 ```bash
-cd .worktrees/platform
+cd .worktrees/<branch>
 cp .env.example .env                       # set INGESTION_URL / TELEGRAM_CHAT_ID / SMTP_* / MAIL_* if needed
-make up-automation                         # or: docker compose --profile automation up -d n8n n8n-postgres
+docker compose --profile automation up -d n8n n8n-postgres   # or: make up-automation
 
-# import the committed workflows
-make import-n8n FILE=nightly_ingestion.json
-make import-n8n FILE=notion_email_notifications.json
-# equivalent:
-docker compose --profile automation exec n8n n8n import:workflow --input=/workflows/nightly_ingestion.json
+# first start: create the owner account in the UI (http://localhost:5678), or
+# on a disposable database bootstrap it non-interactively:
+#   docker compose --profile automation exec n8n n8n user-management:reset
+# The n8n CLI runs as the instance owner; without an owner the imports below
+# fail with "Failed to find owner" on a brand-new database.
+
+# import the committed workflows (single-object exports => --separate, see caveat)
+docker compose --profile automation exec n8n sh -c \
+  'mkdir -p /tmp/n8n-import && cp /workflows/*.json /tmp/n8n-import/ && \
+   n8n import:workflow --separate --input=/tmp/n8n-import'
+
+# import the SMTP credential without the UI (plaintext JSON, encrypted at rest;
+# see "SMTP configuration" for the file format and how to get it into the container)
+docker compose --profile automation exec n8n n8n import:credentials --input=/tmp/smtp-credential.json
 
 # activate after configuring credentials/environment
+docker compose --profile automation exec n8n n8n list:workflow     # verify, copy the id
 docker compose --profile automation exec n8n n8n update:workflow --id=<workflow-id> --active=true
 docker compose --profile automation restart n8n
-docker compose exec n8n n8n list:workflow     # verify
 ```
 
-`make import-n8n` resolves `FILE` inside `/workflows` (the mounted directory),
-so use just the file name. Importing does not activate the workflow.
+`--separate` imports every `*.json` in the directory. The `make import-n8n`
+target resolves `FILE` inside `/workflows` (the mounted directory), but it uses
+`--input=<single file>` and therefore hits the pinned-image caveat below; use the
+`--separate` commands above on n8n 1.63.4. Importing does not activate the
+workflow, and activation only takes effect after an n8n restart (the CLI prints
+the same warning).
 
 > **Pinned n8n 1.63.4 CLI caveat (verified).** `n8n import:workflow
 > --input=<file>` expects a JSON **array** of workflows, while the committed
@@ -257,25 +433,26 @@ cross-check of the deployment wiring below. `make check-deploy`
 
 ## Required environment / credentials
 
-Set these for the `n8n` service (wired in `docker-compose.yml` from `.env`;
-`SMTP_*` / `MAIL_*` still need to be added to the service environment — see the
-SMTP section above):
+Set these for the `n8n` service (`docker-compose.yml` already passes
+`INGESTION_URL`, `TELEGRAM_CHAT_ID`, `SMTP_*` and `MAIL_*` through from `.env` —
+leave the `.env` values empty to skip the corresponding workflow):
 
 | Variable | Required | Meaning |
 | -------- | -------- | ------- |
 | `INGESTION_URL` | yes | Full URL of the ingestion endpoint, e.g. `http://api:8080/api/v1/ingest`. The workflow is a no-op without it. |
 | `TELEGRAM_CHAT_ID` | only for alerts | Target chat for the disabled Telegram node, e.g. `-1001234567890`. |
-| `N8N_BASIC_AUTH_*` | yes (local) | n8n UI login (from compose env). |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | yes for email | SMTP relay used by the Notion notifications workflow. Must be passed to the `n8n` service environment (see the SMTP section above for the compose snippet). |
+| `N8N_BASIC_AUTH_*` | ignored | Still passed by compose, but **n8n 1.63.4 ignores basic-auth environment variables** (verified: `/rest/settings` answers `200` unauthenticated and the image has no basic-auth middleware). Access is controlled by n8n user management — create the owner account in the UI on first start. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | yes for email | SMTP relay used by the Notion notifications workflow; wired into the `n8n` service environment by compose. |
 | `MAIL_FROM` / `MAIL_TO` | yes for email | From address and recipient(s) evaluated by the email node; validated together with the SMTP variables. |
 
-Credentials (create in **n8n → Credentials**, never in git):
+Credentials (create in **n8n → Credentials** or import non-interactively with
+`n8n import:credentials`, never in git):
 
 * `Telegram bot` — bot token from BotFather; assign it to the
   *Notify error* node and replace the placeholder credential id in the UI.
 * `SMTP account` — host/port/user/password for the email workflow; assign it to
   the *Send email via SMTP* node and replace the placeholder credential id in
-  the UI (details in the SMTP section above).
+  the UI, or import it via the CLI (details in the SMTP section above).
 * Optionally header-auth/API-key credential for the ingestion endpoint; add it
   to the HTTP Request node if the API requires authentication.
 

@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "name": "data-analyst-standard-conflict",
+  "description": "Hybrid data analyst case: standard and vacancy disagree on a function title; standard wins by source priority.",
+  "tags": ["data-analyst", "hybrid", "conflict"],
+  "profession": "Аналитик данных",
+  "respondent": {
+    "id": "resp-da-2",
+    "name": "Демо-аналитик",
+    "role": "Аналитик данных",
+    "level": "senior",
+    "profession": "Аналитик данных"
+  },
+  "answers": {
+    "role": "Я аналитик данных, отвечаю за отчётность и качество данных в продуктовой команде.",
+    "function": "Моя функция — отчётность и визуализация: готовлю регулярные отчёты и дашборды.",
+    "task": "Пишу SQL-запросы к хранилищу и строю дашборды для продуктовых команд.",
+    "action": "Оптимизирую SQL-запросы и проверяю выгрузки перед публикацией отчёта."
+  },
+  "sources": [
+    { "id": "src-interview", "type": "interview", "title": "Интервью аналитика данных" },
+    { "id": "src-standard", "type": "standard", "title": "Профстандарт аналитика данных" },
+    { "id": "src-vacancy", "type": "vacancy", "title": "Вакансия аналитика данных" }
+  ],
+  "standard": [
+    {
+      "id": "fn-shared",
+      "type": "function",
+      "title": "Анализ требований",
+      "evidence": [
+        {
+          "id": "ev-std-1",
+          "source_id": "src-standard",
+          "ref_id": "std-3.1",
+          "quote": "Анализ и формализация требований"
+        }
+      ]
+    }
+  ],
+  "vacancy": [
+    {
+      "id": "fn-shared",
+      "type": "function",
+      "title": "Сбор данных",
+      "evidence": [
+        {
+          "id": "ev-vac-1",
+          "source_id": "src-vacancy",
+          "ref_id": "vac-req-2",
+          "quote": "Сбор и подготовка данных"
+        }
+      ]
+    }
+  ],
+  "script": {
+    "analyst": {
+      "entities": [
+        {
+          "id": "role-analyst",
+          "type": "role",
+          "title": "Аналитик данных",
+          "confidence": 0.95,
+          "evidence": [
+            {
+              "id": "ev-role-1",
+              "source_id": "src-interview",
+              "ref_id": "answer-1",
+              "quote": "Я аналитик данных, отвечаю за отчётность и качество данных в продуктовой команде."
+            }
+          ]
+        },
+        {
+          "id": "fn-reporting",
+          "type": "function",
+          "title": "Отчётность и визуализация",
+          "confidence": 0.9,
+          "evidence": [
+            {
+              "id": "ev-fn-1",
+              "source_id": "src-interview",
+              "ref_id": "answer-2",
+              "quote": "Моя функция — отчётность и визуализация: готовлю регулярные отчёты и дашборды."
+            }
+          ]
+        },
+        {
+          "id": "task-sql",
+          "type": "task",
+          "title": "Писать SQL-запросы",
+          "confidence": 0.9,
+          "evidence": [
+            {
+              "id": "ev-task-1",
+              "source_id": "src-interview",
+              "ref_id": "answer-3",
+              "quote": "Пишу SQL-запросы к хранилищу и строю дашборды для продуктовых команд."
+            }
+          ]
+        },
+        {
+          "id": "act-optimize",
+          "type": "action",
+          "title": "Оптимизировать SQL-запросы",
+          "confidence": 0.85,
+          "evidence": [
+            {
+              "id": "ev-act-1",
+              "source_id": "src-interview",
+              "ref_id": "answer-4",
+              "quote": "Оптимизирую SQL-запросы и проверяю выгрузки перед публикацией отчёта."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "status": "done",
+    "questions": 6,
+    "fallbacks": 0,
+    "tree_nodes": 5,
+    "node_types": ["role", "function", "task", "action"],
+    "min_evidence_per_node": 1,
+    "evidence": 6,
+    "conflicts": 1,
+    "conflict_winners": ["standard"],
+    "conflict_values": [2],
+    "model_calls": 7
+  }
+}
