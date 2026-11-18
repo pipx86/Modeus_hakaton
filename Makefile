@@ -1,10 +1,11 @@
-# Activity Descriptor — Go backend DevOps entry points.
+# Activity Descriptor вЂ” Go backend DevOps entry points.
 #
 # `make` is optional: every target is a thin wrapper around a command that is
 # documented in docs/ (and can be run directly, e.g. on Windows in pwsh).
 SHELL := /bin/sh
 
 GO ?= go
+PYTHON ?= python3
 COMPOSE ?= docker compose
 COMPOSE_FILE ?= docker-compose.yml
 IMAGE ?= activity-descriptor-api:local
@@ -32,6 +33,12 @@ help:
 ## env: create .env from .env.example when missing
 env:
 	@if [ ! -f .env ]; then cp .env.example .env; echo "created .env (local placeholders only)"; else echo ".env already exists"; fi
+
+## deps: install Go modules, frontend packages and Python tooling
+deps:
+	$(GO) mod download
+	cd frontend && npm ci
+	$(PYTHON) -m pip install -r requirements-dev.txt
 
 # --- build & quality -------------------------------------------------------
 
@@ -81,7 +88,7 @@ run:
 token:
 	$(GO) run ./cmd/local-token -role admin
 
-## e2e: run the offline interview → analysis → synthesis pipeline (fake model, no DB)
+## e2e: run the offline interview в†’ analysis в†’ synthesis pipeline (fake model, no DB)
 e2e:
 	$(GO) run ./cmd/e2e -out e2e-output.json
 
@@ -155,4 +162,4 @@ import-n8n:
 clean:
 	rm -rf bin coverage.out e2e-output.json
 
-.PHONY: help env build test test-race vet fmt fmt-check lint tidy ci run token e2e demo-smoke docker-build docker-size up down logs up-monitoring up-automation check-compose check-deploy import-n8n clean
+.PHONY: help env deps build test test-race vet fmt fmt-check lint tidy ci run token e2e demo-smoke docker-build docker-size up down logs up-monitoring up-automation check-compose check-deploy import-n8n clean

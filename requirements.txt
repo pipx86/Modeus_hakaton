@@ -1,0 +1,8 @@
+# Python runtime dependencies for repository tooling.
+#
+# The application is Go (see go.mod) with a Node frontend (frontend/package.json);
+# Python is used only by helper scripts. scripts/check_deploy.py parses YAML assets
+# (compose, Prometheus, Grafana, CI), so PyYAML is required.
+#
+# Install: python -m pip install -r requirements.txt
+PyYAML>=6.0,<7

@@ -1,0 +1,11 @@
+# Python development dependencies.
+#
+# Install on top of the runtime requirements:
+#   python -m pip install -r requirements-dev.txt
+#
+# The project has no Python test suite yet; pytest and ruff are included so the
+# tooling in scripts/ can be linted and covered when tests are added.
+-r requirements.txt
+
+pytest>=8.0,<9
+ruff>=0.6,<1
