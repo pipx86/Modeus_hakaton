@@ -25,8 +25,8 @@
 | Jaeger | `http://127.0.0.1:16686/` | `200`, Jaeger UI |
 
 ```powershell
-# из корня репозитория (backend требует DATABASE_URL и JWT_SECRET)
-go run ./cmd/server
+# из корня репозитория: скрипт сам читает .env и .secrets/llm.env
+pwsh -ExecutionPolicy Bypass -File scripts/run-server.ps1
 
 # в отдельном терминале — frontend
 cd frontend
@@ -289,9 +289,9 @@ python scripts/demo_data.py --delete-run <run-id> --allow-completed --yes
 - [ ] Если LLM медленный/недоступен — показывать записанный ранее `done`-прогон,
       а не запускать новый pipeline.
 - [ ] Не запускать `demo_data.py --cleanup-failed --yes` во время демо.
-- [ ] При сбое backend смотреть `logs/app.log`; после рестарта backend in-memory
-      чат-сессии теряются, но деревья и снимки завершённых прогонов остаются в
-      PostgreSQL.
+- [ ] При сбое backend смотреть `logs/app.log`; история чата завершённых прогонов
+      сохраняется в PostgreSQL (`run_chat_messages`), но активное интервью после
+      рестарта не продолжается. Деревья и снимки также остаются в БД.
 
 **После демо**
 
@@ -313,7 +313,7 @@ python scripts/demo_data.py --delete-run <run-id> --allow-completed --yes
 | `--full`: `status=failed` | `logs/app.log`: `finalizer: analyze: … timeout` | повторить позже; провайдер был недоступен; failed-прогон убрать через `demo_data.py` |
 | `snapshots` WARN | снимки появились только у новых прогонов | выполнить `--full`, чтобы получить прогон со снимком |
 | `review queue` 501 | backend запущен без PostgreSQL | запустить `cmd/server` с `DATABASE_URL` |
-| `messages` 404 после рестарта backend | in-memory чат-сессия пропала | это ожидаемо; дерево/снимки прогона сохраняются |
+| `messages` 404 после рестарта backend | run не найден или миграция `run_chat_messages` не применена | история завершённых прогонов сохраняется; активное интервью после рестарта не продолжается |
 | `demo_data.py` удалил не всё | у прогона не статус `failed` | завершённые удаляются только явным `--delete-run … --allow-completed --yes` |
 | в отчёте есть «вечный» `running` | backend не обрабатывает этот прогон | удалить явно: `--delete-run <id> --yes`; `--cleanup-failed` его не тронет |
 | `demo_data.py` 401/403 | токен не admin | `go run ./cmd/local-token -role admin`, передать через `DEMO_TOKEN` или `--token` |
