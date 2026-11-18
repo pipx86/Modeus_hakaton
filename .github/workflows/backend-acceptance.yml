@@ -42,6 +42,11 @@ jobs:
         run: |
           goose -dir .ci-db/migrations postgres "$DATABASE_URL" up
           goose -table goose_vector_versions -dir .ci-db/migrations_optional/vector postgres "$DATABASE_URL" up
+      - name: Применить новые миграции текущей ветки
+        # .ci-db — отдельная ветка миграций и может отставать от backend-кода.
+        # Догоняем её миграциями из проверяемой ветки, чтобы acceptance видел
+        # актуальную схему (например, evidence.status).
+        run: goose -dir migrations postgres "$DATABASE_URL" up
       - name: Проверить бэкенд и общий сценарий
         env:
           INGEST_TEST_DATABASE_URL: postgres://postgres:acceptance-only@127.0.0.1:5432/acceptance?sslmode=disable
