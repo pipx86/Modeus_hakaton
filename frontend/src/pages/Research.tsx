@@ -14,6 +14,7 @@
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
+import { RecommendationsTab } from "@/components/RecommendationsTab"
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -1249,6 +1250,9 @@ export function Research() {
           <TabsTrigger value="chat" className={TAB_TRIGGER_CLASS}>
             Чат
           </TabsTrigger>
+          <TabsTrigger value="recommendations" className={TAB_TRIGGER_CLASS}>
+            Рекомендации
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="sources">
           <SourcesTab />
@@ -1258,6 +1262,9 @@ export function Research() {
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab runId={id} active={!loading && !error} runStatus={run?.status} stage={run?.stage} />
+        </TabsContent>
+        <TabsContent value="recommendations">
+          <RecommendationsTab runId={id} status={run?.status} active={!loading && !error} />
         </TabsContent>
       </Tabs>
     </div>

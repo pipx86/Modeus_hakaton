@@ -49,6 +49,8 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 // after all questions are answered and before the run is marked done.
 type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
 
+const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
+
 // Service owns one interviewer session per run.
 type Service struct {
 	client        llm.ChatClient
@@ -132,8 +134,17 @@ func (s *Service) Start(runID, profession string) error {
 	s.mu.Unlock()
 
 	sess.mu.Lock()
+	sess.seq++
+	welcome := Message{
+		ID:        fmt.Sprintf("msg-%s-%d", runID, sess.seq),
+		Role:      "agent",
+		Content:   welcomeMessage,
+		CreatedAt: time.Now().UTC(),
+	}
+	sess.messages = append(sess.messages, welcome)
 	sess.asking = true
 	sess.mu.Unlock()
+	s.publish(runID, Event{Type: "agent_message", Message: &welcome})
 	s.publish(runID, Event{Type: "agent_thinking"})
 	go s.askNext(runID, sess)
 	return nil

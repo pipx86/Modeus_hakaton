@@ -43,7 +43,7 @@ func TestServiceStartsAndPosts(t *testing.T) {
 	}
 	waitFor(t, time.Second, func() bool {
 		messages, err := service.Messages("run-1")
-		return err == nil && len(messages) == 1 && messages[0].Role == "agent"
+		return err == nil && len(messages) >= 2 && messages[0].Role == "agent"
 	})
 
 	message, err := service.Post("run-1", "Я аналитик данных, отвечаю за отчётность.")
@@ -55,7 +55,7 @@ func TestServiceStartsAndPosts(t *testing.T) {
 	}
 	waitFor(t, time.Second, func() bool {
 		messages, err := service.Messages("run-1")
-		return err == nil && len(messages) >= 3
+		return err == nil && len(messages) >= 4
 	})
 }
 
@@ -66,7 +66,7 @@ func TestServiceFallsBackWithoutProvider(t *testing.T) {
 	}
 	waitFor(t, time.Second, func() bool {
 		messages, err := service.Messages("run-2")
-		return err == nil && len(messages) == 1 && messages[0].Role == "agent"
+		return err == nil && len(messages) >= 2 && messages[0].Role == "agent"
 	})
 }
 
@@ -80,18 +80,18 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 	}
 	waitFor(t, 3*time.Second, func() bool {
 		messages, err := service.Messages("run-3")
-		return err == nil && len(messages) >= 1
+		return err == nil && len(messages) >= 2
 	})
 	for i := 0; i < 6; i++ {
 		waitFor(t, 3*time.Second, func() bool {
 			messages, err := service.Messages("run-3")
-			return err == nil && len(messages) >= 2*i+1
+			return err == nil && len(messages) >= 2*i+2
 		})
 		if _, err := service.Post("run-3", "Конкретный ответ с достаточным количеством слов."); err != nil {
 			t.Fatalf("Post %d: %v", i, err)
 		}
 		if i < 5 {
-			next := 2*i + 3
+			next := 2*i + 4
 			waitFor(t, 3*time.Second, func() bool {
 				messages, err := service.Messages("run-3")
 				return err == nil && len(messages) >= next
@@ -115,7 +115,7 @@ func TestSubscribeReceivesEvents(t *testing.T) {
 	}
 	waitFor(t, time.Second, func() bool {
 		messages, err := service.Messages("run-4")
-		return err == nil && len(messages) >= 1
+		return err == nil && len(messages) >= 2
 	})
 	events, cancel, err := service.Subscribe("run-4")
 	if err != nil {
@@ -168,7 +168,7 @@ func TestServiceCallsFinalizerAfterInterview(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		waitFor(t, time.Second, func() bool {
 			messages, err := service.Messages("run-6")
-			return err == nil && len(messages) >= 2*i+1
+			return err == nil && len(messages) >= 2*i+2
 		})
 		if _, err := service.Post("run-6", "Конкретный ответ про аналитику данных."); err != nil {
 			t.Fatalf("Post %d: %v", i, err)
