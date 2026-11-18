@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 import { setFetchHandler } from "@/test/fetch-stub"
@@ -25,12 +24,6 @@ function renderPage() {
 function happyHandler() {
   return setFetchHandler(async (url, init) => {
     const method = init?.method ?? "GET"
-    if (url.endsWith("/api/v1/sources") && method === "GET") {
-      return { status: 200, body: [] }
-    }
-    if (url.endsWith("/api/v1/sources") && method === "POST") {
-      return { status: 201, body: { id: "s-1", type: "vacancy", title: "Тестовая вакансия" } }
-    }
     if (url.endsWith("/api/v1/runs") && method === "POST") {
       return { status: 201, body: { id: "run-42", status: "pending", profession: "Data Scientist" } }
     }
@@ -39,14 +32,15 @@ function happyHandler() {
 }
 
 describe("NewResearch", () => {
-  it("рендерит форму, блок источников и шаги процесса", async () => {
+  it("рендерит форму и шаги процесса без блока загрузки источников", async () => {
     setFetchHandler(async () => ({ status: 200, body: [] }))
     renderPage()
     await act(async () => {})
 
     expect(screen.getByText("Новое исследование")).toBeInTheDocument()
     expect(screen.getByLabelText("Профессия / роль")).toBeInTheDocument()
-    expect(screen.getByText("Источники к прогону")).toBeInTheDocument()
+    expect(screen.queryByText("Источники к прогону")).not.toBeInTheDocument()
+    expect(screen.queryByText("Добавить источник")).not.toBeInTheDocument()
     expect(screen.getByText("Как это работает")).toBeInTheDocument()
     expect(screen.getByText(/Собирается информация о реальной деятельности/)).toBeInTheDocument()
     expect(screen.getByText(/Строится дерево/)).toBeInTheDocument()
@@ -120,37 +114,6 @@ describe("NewResearch", () => {
     expect(screen.getByText("Не длиннее 120 символов")).toBeInTheDocument()
   })
 
-  it("черновик источника нельзя добавить без названия, лимит названия работает", async () => {
-    setFetchHandler(async () => ({ status: 200, body: [] }))
-    renderPage()
-    await act(async () => {})
-
-    expect(screen.getByRole("button", { name: "Добавить источник" })).toBeDisabled()
-
-    fireEvent.change(screen.getByLabelText("Название"), { target: { value: "а".repeat(201) } })
-    expect(screen.getByText("Не длиннее 200 символов")).toBeInTheDocument()
-  })
-
-  it("добавляет и удаляет черновик источника с меткой типа", async () => {
-    setFetchHandler(async () => ({ status: 200, body: [] }))
-    renderPage()
-    await act(async () => {})
-    const user = userEvent.setup()
-
-    // Radix Select — кнопка с попапом, поэтому не fireEvent.change, а два клика.
-    await user.click(screen.getByLabelText("Тип"))
-    await user.click(await screen.findByRole("option", { name: "Вакансия" }))
-
-    fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Тестовая вакансия" } })
-    fireEvent.click(screen.getByRole("button", { name: "Добавить источник" }))
-
-    expect(screen.getByText("Тестовая вакансия")).toBeInTheDocument()
-    expect(screen.getByText("Тестовая вакансия").closest("li")).toHaveTextContent("· Вакансия")
-
-    fireEvent.click(screen.getByRole("button", { name: "Удалить черновик Тестовая вакансия" }))
-    expect(screen.queryByText("Тестовая вакансия")).not.toBeInTheDocument()
-  })
-
   it("запускает прогон и переходит на его страницу", async () => {
     happyHandler()
     renderPage()
@@ -165,12 +128,11 @@ describe("NewResearch", () => {
     expect(probe).toHaveTextContent("/research/run-42")
   })
 
-  it("показывает ошибку API при создании источника", async () => {
+  it("показывает ошибку API при запуске прогона", async () => {
     setFetchHandler(async (url, init) => {
       const method = init?.method ?? "GET"
-      if (url.endsWith("/api/v1/sources") && method === "GET") return { status: 200, body: [] }
-      if (url.endsWith("/api/v1/sources") && method === "POST") {
-        return { status: 422, body: { code: "VALIDATION", message: "title: слишком длинное название" } }
+      if (url.endsWith("/api/v1/runs") && method === "POST") {
+        return { status: 422, body: { code: "VALIDATION", message: "profession: слишком длинное название" } }
       }
       return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
     })
@@ -178,16 +140,13 @@ describe("NewResearch", () => {
     await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
-    fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Черновик" } })
-    fireEvent.click(screen.getByRole("button", { name: "Добавить источник" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
-    expect(await screen.findByText("title: слишком длинное название")).toBeInTheDocument()
+    expect(await screen.findByText("profession: слишком длинное название")).toBeInTheDocument()
   })
 
   it("сетевой сбой показывает сообщение о недоступности сервера", async () => {
-    setFetchHandler(async (_url, init) => {
-      if ((init?.method ?? "GET") === "GET") return { status: 200, body: [] }
+    setFetchHandler(async () => {
       throw new Error("offline")
     })
     renderPage()
@@ -201,15 +160,5 @@ describe("NewResearch", () => {
         "Сервер недоступен. Проверьте, что бэкенд или мок запущен (npm run mock).",
       ),
     ).toBeInTheDocument()
-  })
-
-  it("при недоступном сервере блок источников показывает короткую пометку", async () => {
-    setFetchHandler(async () => {
-      throw new Error("offline")
-    })
-    renderPage()
-    await act(async () => {})
-
-    expect(screen.getByText("Сервер недоступен")).toBeInTheDocument()
   })
 })

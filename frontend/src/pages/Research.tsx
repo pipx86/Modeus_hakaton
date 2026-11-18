@@ -14,7 +14,7 @@
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -26,7 +26,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -143,10 +142,6 @@ function EmptyState({
 function SourcesTab() {
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
-  const [type, setType] = useState<SourceType>("document")
-  const [title, setTitle] = useState("")
-  const [content, setContent] = useState("")
-  const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [quotesSourceId, setQuotesSourceId] = useState<string | null>(null)
   const [quotes, setQuotes] = useState<Evidence[]>([])
@@ -266,29 +261,6 @@ function SourcesTab() {
     toast.success(action === "approve" ? "Цитата подтверждена" : "Цитата отклонена")
   }
 
-  const create = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!title.trim() || saving) return
-    setSaving(true)
-    try {
-      const { data, error } = await apiClient.POST("/sources", {
-        body: { type, title: title.trim(), content: content.trim() || undefined },
-      })
-      setSaving(false)
-      if (error) {
-        toast.error("Не удалось добавить источник", { description: error.message })
-        return
-      }
-      setTitle("")
-      setContent("")
-      if (data) setSources((prev) => [data, ...prev])
-      toast.success("Источник добавлен")
-    } catch {
-      setSaving(false)
-      toast.error("Сервер недоступен", { description: "Источник не добавлен." })
-    }
-  }
-
   const remove = async (sourceId: string) => {
     let error: { message?: string } | undefined
     try {
@@ -315,58 +287,6 @@ function SourcesTab() {
 
   return (
     <div className="space-y-6">
-      <Card className="gap-4 p-5">
-        <CardHeader>
-          <CardTitle>Добавить источник</CardTitle>
-          <CardDescription>
-            Загрузите документ, вакансию или запись интервью для анализа.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={create} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
-              <div className="space-y-2">
-                <Label htmlFor="source-type">Тип</Label>
-                <Select value={type} onValueChange={(value) => setType(value as SourceType)}>
-                  <SelectTrigger id="source-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SOURCE_TYPE_LABELS) as SourceType[]).map((key) => (
-                      <SelectItem key={key} value={key}>
-                        {SOURCE_TYPE_LABELS[key]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source-title">Название</Label>
-                <Input
-                  id="source-title"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Например: Вакансия Data Scientist"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="source-content">Содержимое</Label>
-              <Textarea
-                id="source-content"
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                placeholder="Текст вакансии, профстандарта или расшифровка интервью…"
-                rows={4}
-              />
-            </div>
-            <Button type="submit" disabled={!title.trim() || saving}>
-              {saving && <Loader2Icon className="size-4 animate-spin" />}
-              {saving ? "Добавление…" : "Добавить источник"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
       {loadError ? (
         <div className="rounded-xl border border-destructive/50 p-6 text-center text-sm text-destructive">
           {loadError}

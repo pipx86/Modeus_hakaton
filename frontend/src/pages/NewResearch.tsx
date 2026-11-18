@@ -1,23 +1,18 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { apiClient, type SourceType } from "@/lib/api/client"
+import { apiClient } from "@/lib/api/client"
 import { stripControlChars } from "@/lib/security"
 import {
   AlertCircleIcon,
   FileSearchIcon,
-  FileTextIcon,
   Loader2Icon,
   MessageSquareTextIcon,
   NetworkIcon,
-  PlusIcon,
-  XIcon,
 } from "lucide-react"
 
 const STEPS = [
@@ -41,21 +36,7 @@ const ROLE_SUGGESTIONS: RoleSuggestion[] = [
   { title: "DevOps-инженер" },
 ]
 
-const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-  vacancy: "Вакансия",
-  interview: "Интервью",
-  standard: "Профстандарт",
-  document: "Документ",
-}
-
 const PROFESSION_MAX = 120
-const TITLE_MAX = 200
-
-interface SourceDraft {
-  type: SourceType
-  title: string
-  content: string
-}
 
 export function NewResearch() {
   const navigate = useNavigate()
@@ -65,25 +46,8 @@ export function NewResearch() {
   const [apiError, setApiError] = useState<string | null>(null)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
-  const [existingCount, setExistingCount] = useState<number | null>(null)
-  const [drafts, setDrafts] = useState<SourceDraft[]>([])
-  const [qType, setQType] = useState<SourceType>("document")
-  const [qTitle, setQTitle] = useState("")
-  const [qContent, setQContent] = useState("")
   const [roleOpen, setRoleOpen] = useState(false)
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null)
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { data } = await apiClient.GET("/sources")
-        setExistingCount(data?.length ?? 0)
-      } catch {
-        setExistingCount(null)
-      }
-    }
-    void load()
-  }, [])
 
   const professionError =
     profession.trim().length === 0
@@ -99,28 +63,7 @@ export function NewResearch() {
     return (role.levels ?? []).some((level) => level.toLowerCase().includes(query))
   })
 
-  const qTitleTrimmed = qTitle.trim()
-  const qTitleError =
-    qTitleTrimmed.length === 0
-      ? "Введите название источника"
-      : qTitleTrimmed.length > TITLE_MAX
-        ? `Не длиннее ${TITLE_MAX} символов`
-        : null
-
   const canSubmit = !professionError && !submitting
-  const canAddDraft = !qTitleError
-
-  const addDraft = () => {
-    if (!canAddDraft) return
-    setDrafts((prev) => [...prev, { type: qType, title: qTitleTrimmed, content: qContent.trim() }])
-    setQType("document")
-    setQTitle("")
-    setQContent("")
-  }
-
-  const removeDraft = (index: number) => {
-    setDrafts((prev) => prev.filter((_, position) => position !== index))
-  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -130,23 +73,6 @@ export function NewResearch() {
     if (!canSubmit) return
     setSubmitting(true)
     try {
-      const results = await Promise.all(
-        drafts.map((draft) =>
-          apiClient.POST("/sources", {
-            body: {
-              type: draft.type,
-              title: stripControlChars(draft.title),
-              content: draft.content ? stripControlChars(draft.content) : undefined,
-            },
-          }),
-        ),
-      )
-      const failed = results.find((result) => result.error)
-      if (failed?.error) {
-        setApiError(failed.error.message)
-        toast.error("Не удалось добавить источник", { description: failed.error.message })
-        return
-      }
       const { data: run, error: runError } = await apiClient.POST("/runs", {
         body: { profession: stripControlChars(profession).trim() },
       })
@@ -168,12 +94,12 @@ export function NewResearch() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-      <Card className="gap-4 p-5">
+    <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
+      <Card className="gap-4 overflow-visible p-5" style={{ overflow: "visible" }}>
         <CardHeader>
           <CardTitle>Новое исследование</CardTitle>
           <CardDescription>
-            Выберите роль и при необходимости добавьте источники. Агенты запустят анализ по ним.
+            Укажите роль — агенты проведут интервью и построят дерево деятельности.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -265,84 +191,6 @@ export function NewResearch() {
               )}
             </div>
 
-            <div className="space-y-3 rounded-xl border p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Источники к прогону</p>
-                <span className="text-xs text-muted-foreground">
-                  {existingCount === null
-                    ? "Сервер недоступен"
-                    : `На сервере уже ${existingCount}. Агенты учтут их вместе с новыми`}
-                </span>
-              </div>
-
-              {drafts.length > 0 && (
-                <ul className="flex flex-wrap gap-2">
-                  {drafts.map((draft, index) => (
-                    <li
-                      key={`${draft.title}-${index}`}
-                      className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs"
-                    >
-                      <FileTextIcon className="size-3 shrink-0 text-muted-foreground" />
-                      <span className="max-w-40 truncate">{draft.title}</span>
-                      <span className="text-muted-foreground">· {SOURCE_TYPE_LABELS[draft.type]}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeDraft(index)}
-                        aria-label={`Удалить черновик ${draft.title}`}
-                        className="text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        <XIcon className="size-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-                <div className="space-y-1.5">
-                  <Label htmlFor="quick-type">Тип</Label>
-                  <Select value={qType} onValueChange={(value) => setQType(value as SourceType)}>
-                    <SelectTrigger id="quick-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(SOURCE_TYPE_LABELS) as SourceType[]).map((key) => (
-                        <SelectItem key={key} value={key}>
-                          {SOURCE_TYPE_LABELS[key]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="quick-title">Название</Label>
-                  <Input
-                    id="quick-title"
-                    value={qTitle}
-                    onChange={(event) => setQTitle(event.target.value)}
-                    placeholder="Вакансия"
-                    maxLength={TITLE_MAX}
-                  />
-                  {qTitle.length > 0 && qTitleError && (
-                    <p className="text-xs text-destructive">{qTitleError}</p>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="quick-content">Содержимое (необязательно)</Label>
-                <Textarea
-                  id="quick-content"
-                  value={qContent}
-                  onChange={(event) => setQContent(event.target.value)}
-                  placeholder="Текст вакансии, профстандарта или расшифровка интервью…"
-                  rows={3}
-                />
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={addDraft} disabled={!canAddDraft}>
-                <PlusIcon className="size-4" />
-                Добавить источник
-              </Button>
-            </div>
 
             {apiError && (
               <p className="flex items-center gap-1.5 text-sm text-destructive">

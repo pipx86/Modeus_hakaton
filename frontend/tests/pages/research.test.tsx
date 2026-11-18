@@ -135,24 +135,15 @@ describe("Research", () => {
     expect(await screen.findByText(/Запущено/)).toBeInTheDocument()
   })
 
-  it("добавляет источник через форму и показывает его в списке", async () => {
+  it("не показывает форму загрузки источников — только список", async () => {
     stubRun()
 
     renderPage()
     await screen.findByRole("heading", { name: "Data Scientist" })
 
-    fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Новый документ" } })
-    fireEvent.click(screen.getByRole("button", { name: "Добавить источник" }))
-
-    expect(await screen.findByText("Новый документ")).toBeInTheDocument()
-    const post = fetchCalls().find(
-      (call) => call.url.endsWith("/api/v1/sources") && call.init.method === "POST",
-    )
-    expect(post).toBeDefined()
-    expect(JSON.parse(String(post!.init.body))).toMatchObject({
-      type: "document",
-      title: "Новый документ",
-    })
+    expect(screen.queryByRole("button", { name: "Добавить источник" })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Название")).not.toBeInTheDocument()
+    expect(screen.queryByText("Добавить источник")).not.toBeInTheDocument()
   })
 
   it("пустое дерево показывает подсказку ожидания на вкладке «Дерево»", async () => {
