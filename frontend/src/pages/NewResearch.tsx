@@ -20,40 +20,13 @@ import {
   XIcon,
 } from "lucide-react"
 
-/** Тонкая стрелка между уровнями дерева: длинный штрих и маленький наконечник. */
-function FlowArrow() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 16 8"
-      className="mx-1 inline-block h-2 w-3.5 shrink-0 align-middle text-muted-foreground/70"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.1"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M1 4h12" />
-      <path d="M10.5 1.9 13 4l-2.5 2.1" />
-    </svg>
-  )
-}
-
 const STEPS = [
   { icon: MessageSquareTextIcon, title: "Интервью", description: "Собирается информация о реальной деятельности специалиста." },
   { icon: FileSearchIcon, title: "Анализ данных", description: "Анализируются вакансии, профстандарты и методички." },
   {
     icon: NetworkIcon,
     title: "Синтез дерева",
-    description: (
-      <>
-        Строится дерево{" "}
-        <span className="whitespace-nowrap font-medium text-foreground/80">
-          функции <FlowArrow /> задачи <FlowArrow /> действия
-        </span>{" "}
-        по собранным данным.
-      </>
-    ),
+    description: "Строится дерево функции, задачи и действия по собранным данным.",
   },
 ]
 
