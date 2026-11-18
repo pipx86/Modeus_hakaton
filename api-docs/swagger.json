@@ -927,6 +927,103 @@
         }
       }
     },
+    "/reviews/evidence/progress": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Evidence review progress counters",
+        "description": "Returns how many evidence rows are pending, approved and rejected. Without `run_id` the counters are global across all runs; with `run_id` they are scoped to that run. `total` always equals `pending + approved + rejected`. Status is read from `evidence.status` with legacy records treated as `pending`. Used by the review progress counter and the keyboard review mode; expert roles only.",
+        "operationId": "getReviewProgress",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "description": "Optional run UUID filter. A malformed UUID is a 400; a valid but unknown run id is a 404 (so the UI can tell a typo from an empty run).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review counters for the requested scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewProgress"
+                },
+                "examples": {
+                  "global": {
+                    "summary": "Counters across all runs",
+                    "value": {
+                      "scope": "global",
+                      "pending": 7,
+                      "approved": 12,
+                      "rejected": 3,
+                      "total": 22
+                    }
+                  },
+                  "scopedToRun": {
+                    "summary": "Counters for one run",
+                    "value": {
+                      "scope": "run",
+                      "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                      "pending": 2,
+                      "approved": 5,
+                      "rejected": 1,
+                      "total": 8
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "run_id is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "run_id must be a UUID"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The referenced run does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "run not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
     "/runs": {
       "get": {
         "tags": [
@@ -1050,6 +1147,105 @@
           },
           "504": {
             "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/estimate": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Estimate the next run (duration, tokens, cost)",
+        "description": "Read-only pre-run estimate built only from data already stored by this backend; no external provider is called. Duration is the median wall-clock time of completed runs of the same profession (matched case-insensitively and trimmed) and type, falling back to all completed runs of the type and then to documented constants. Tokens are the mean attributed LLM usage of the profession history, or a per-request mean from stored usage multiplied by the expected call count, or documented constants. Cost is `null` unless a recorded price or the `COST_ESTIMATE_USD_PER_1M_TOKENS` fallback price is available (never silently reported as zero). `confidence` is a three-state label: high with at least 10 duration and 10 token samples, medium with at least 3 of both, low otherwise or when a default-based input is used. `sample_size` is the number of completed runs behind the duration estimate; `method` names the inputs that were used.",
+        "operationId": "getRunEstimate",
+        "parameters": [
+          {
+            "name": "profession",
+            "in": "query",
+            "required": true,
+            "description": "Target profession.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "description": "Run type the estimate is for.",
+            "schema": {
+              "$ref": "#/components/schemas/RunType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pre-run estimate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunEstimate"
+                },
+                "example": {
+                  "profession": "Аналитик данных",
+                  "type": "chat",
+                  "sample_size": 12,
+                  "estimated_tokens": 9800,
+                  "estimated_duration_seconds": 95,
+                  "estimated_cost_usd": 0.0123,
+                  "confidence": "high",
+                  "method": "profession_history"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "profession is missing/blank, or type is missing or not chat/batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missingProfession": {
+                    "summary": "Missing or blank profession",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "profession is required"
+                    }
+                  },
+                  "invalidType": {
+                    "summary": "Missing or unsupported run type",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "type must be chat or batch"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "description": "The stored run history could not be read. The estimate is never silently replaced by defaults on a storage error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL",
+                  "message": "failed to read run history"
+                }
+              }
+            }
           }
         }
       }
@@ -1295,6 +1491,11 @@
         "summary": "Attach a standard or vacancy source to a run",
         "description": "Creates a standard/vacancy source and links it to the run through\n`run_sources`, so the analyst can quote it and the synthesizer can\ndetect cross-source conflicts. The source is available to finalization\nimmediately. Admin and teacher only.\n",
         "operationId": "attachRunSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1369,6 +1570,934 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/runs/{id}/cost": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Actual LLM cost and usage of a run",
+        "description": "Read-only report of the LLM usage attributed to one run: request count, prompt/completion/total tokens, recorded cost (`null` when the provider reported no price, never silently zero), per-model and per-agent breakdowns, request-status counts and the run duration (finished duration, elapsed time for a running run, or `null` when the run never started). `attribution` says how requests were attributed: `run_id` (exact, recorded run context), `time_window` (requests created during the run window; approximate) or `none`; `attribution_ambiguous` is true when the time window overlaps another run. `estimate` is the same profession/type estimate as `GET /runs/estimate`, recomputed without this run so actual and expected can be compared. Matches the read roles of `GET /runs/{id}`.",
+        "operationId": "getRunCost",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual run usage plus the recomputed estimate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCost"
+                },
+                "example": {
+                  "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                  "profession": "Аналитик данных",
+                  "type": "chat",
+                  "status": "done",
+                  "started_at": "2026-11-18T10:00:00Z",
+                  "finished_at": "2026-11-18T10:01:36Z",
+                  "duration_seconds": 96,
+                  "request_count": 7,
+                  "prompt_tokens": 7000,
+                  "completion_tokens": 2800,
+                  "total_tokens": 9800,
+                  "cost_usd": 0.0123,
+                  "by_model": [
+                    {
+                      "model": "openai/gpt-4o-mini",
+                      "request_count": 7,
+                      "prompt_tokens": 7000,
+                      "completion_tokens": 2800,
+                      "total_tokens": 9800,
+                      "cost_usd": 0.0123
+                    }
+                  ],
+                  "by_agent": [
+                    {
+                      "agent": "interviewer",
+                      "request_count": 6,
+                      "prompt_tokens": 6000,
+                      "completion_tokens": 2400,
+                      "total_tokens": 8400,
+                      "cost_usd": 0.0105
+                    },
+                    {
+                      "agent": "analyst",
+                      "request_count": 1,
+                      "prompt_tokens": 1000,
+                      "completion_tokens": 400,
+                      "total_tokens": 1400,
+                      "cost_usd": 0.0018
+                    }
+                  ],
+                  "status_counts": [
+                    {
+                      "status": "ok",
+                      "count": 7
+                    }
+                  ],
+                  "attribution": "run_id",
+                  "attribution_ambiguous": false,
+                  "estimate": {
+                    "profession": "Аналитик данных",
+                    "type": "chat",
+                    "sample_size": 12,
+                    "estimated_tokens": 9800,
+                    "estimated_duration_seconds": 95,
+                    "estimated_cost_usd": 0.0123,
+                    "confidence": "high",
+                    "method": "profession_history"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/insights": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Consolidated tree insights for a run",
+        "description": "One deterministic payload for the mentor insights. `provenance` gives per-node source count, source types in trust order and evidence count; `health` gives the 0..100 tree quality score with its groundedness/completeness/duplicates/orphans breakdown, the weights, the raw counts and the formula; `flags` lists red flags from the five fixed rules (`SUSPICIOUS_TITLE`, `DUPLICATE_TITLE`, `SINGLE_WEAK_SOURCE`, `NO_CHILDREN`, `NO_EVIDENCE`) with parallel `codes`/`reasons`; `market_heat` overlays skill frequencies on node text with source `run.skill_freq` when the run has skill frequencies, otherwise `vacancy_sources` (deterministic extraction from vacancy/standard source content, with `sample_size`) or `none`; `coverage` is the source-type matrix; `sources` is run-source metadata; `node_explanations` is template-only \"why this node\" text. All collections are non-null (`[]`/`{}`), no LLM or external calls are made. Requires PostgreSQL and linked run sources; the in-memory demo store returns 501.",
+        "operationId": "getRunInsights",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Consolidated insights payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insights"
+                },
+                "example": {
+                  "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                  "provenance": {
+                    "nodes": {
+                      "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
+                        "source_count": 2,
+                        "source_types": [
+                          "interview",
+                          "standard"
+                        ],
+                        "evidence_count": 2
+                      },
+                      "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c": {
+                        "source_count": 1,
+                        "source_types": [
+                          "interview"
+                        ],
+                        "evidence_count": 1
+                      }
+                    }
+                  },
+                  "health": {
+                    "score": 85,
+                    "breakdown": {
+                      "groundedness": 100,
+                      "completeness": 50,
+                      "duplicates": 100,
+                      "orphans": 100
+                    },
+                    "weights": {
+                      "groundedness": 0.4,
+                      "completeness": 0.3,
+                      "duplicates": 0.2,
+                      "orphans": 0.1
+                    },
+                    "counts": {
+                      "node_count": 2,
+                      "grounded_nodes": 2,
+                      "duplicate_nodes": 0,
+                      "orphan_nodes": 0,
+                      "childless_nodes": 1
+                    },
+                    "formula": "score = round(0.40*groundedness + 0.30*completeness + 0.20*duplicates + 0.10*orphans). All components are 0..100 quality scores where 100 is best: groundedness = share of nodes with at least one evidence record; completeness = share of structurally complete nodes (role/function/task nodes with at least one child, action leaves are complete by design); duplicates = share of nodes whose (type, normalized title) is unique; orphans = share of nodes whose parent exists (roots have no parent by design). An empty tree scores 0."
+                  },
+                  "flags": [
+                    {
+                      "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                      "codes": [
+                        "NO_CHILDREN"
+                      ],
+                      "reasons": [
+                        "У узла типа task нет дочерних узлов — уровень не раскрыт, добавьте декомпозицию"
+                      ]
+                    }
+                  ],
+                  "market_heat": {
+                    "source": "run.skill_freq",
+                    "top": [
+                      {
+                        "skill": "SQL",
+                        "frequency": 42
+                      }
+                    ],
+                    "nodes": {
+                      "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
+                        "score": 42,
+                        "matches": [
+                          "SQL"
+                        ]
+                      }
+                    }
+                  },
+                  "coverage": {
+                    "columns": [
+                      "interview",
+                      "standard",
+                      "vacancy",
+                      "document"
+                    ],
+                    "rows": [
+                      {
+                        "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                        "title": "Собирать требования",
+                        "type": "task",
+                        "cells": {
+                          "interview": 1,
+                          "standard": 1,
+                          "vacancy": 0,
+                          "document": 0
+                        }
+                      }
+                    ]
+                  },
+                  "sources": [
+                    {
+                      "id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                      "type": "interview",
+                      "title": "Интервью с ведущим аналитиком",
+                      "priority": 300
+                    },
+                    {
+                      "id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
+                      "type": "standard",
+                      "title": "Профессиональный стандарт аналитика",
+                      "priority": 200
+                    }
+                  ],
+                  "node_explanations": {
+                    "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
+                      "summary": "Узел «Собирать требования» (task) включён в дерево по подтверждениям: цитат 2, источников 2, типы источников interview, standard; максимальный приоритет — interview (300).",
+                      "evidence": [
+                        {
+                          "quote": "Каждую неделю я собираю требования у заказчика.",
+                          "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                          "source_type": "interview",
+                          "priority": 300,
+                          "ref_id": "frag-12",
+                          "status": "pending"
+                        }
+                      ]
+                    },
+                    "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c": {
+                      "summary": "Узел «Собирать требования еженедельно» (action) включён в дерево по подтверждениям: цитат 1, источников 1, типы источников interview; максимальный приоритет — interview (300).",
+                      "evidence": [
+                        {
+                          "quote": "Каждую неделю я собираю требования у заказчика.",
+                          "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                          "source_type": "interview",
+                          "priority": 300,
+                          "ref_id": "frag-12",
+                          "status": "pending"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/coverage": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Source-type coverage matrix for a run",
+        "description": "Returns the coverage matrix of role/function/task rows by source-type evidence counts. JSON is the default; any `format` value other than `csv` (compared case-insensitively and trimmed) also selects JSON. `format=csv` returns the same matrix as a text/csv attachment with the header `node_id,title,type,interview,standard,vacancy,document`. Every column is always present (cells are 0 when no source of that type is linked) and action nodes are excluded from the rows. Requires PostgreSQL; the in-memory demo store returns 501.",
+        "operationId": "getRunCoverage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "csv selects text/csv; any other value (or none) returns JSON.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coverage matrix as JSON (default) or as a CSV attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageResponse"
+                },
+                "example": {
+                  "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                  "columns": [
+                    "interview",
+                    "standard",
+                    "vacancy",
+                    "document"
+                  ],
+                  "rows": [
+                    {
+                      "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                      "title": "Собирать требования",
+                      "type": "task",
+                      "cells": {
+                        "interview": 1,
+                        "standard": 1,
+                        "vacancy": 0,
+                        "document": 0
+                      }
+                    }
+                  ]
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "node_id,title,type,interview,standard,vacancy,document\n6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11,Собирать требования,task,1,1,0,0\n"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/compare": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Compare two research runs",
+        "description": "Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. Guest may read.",
+        "operationId": "compareRuns",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "against",
+            "in": "query",
+            "required": true,
+            "description": "Base run id; must be a UUID and must differ from the path run id. The path run is the head of the comparison.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run-to-run tree diff with match counters and a story.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCompare"
+                },
+                "example": {
+                  "run_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+                  "against_run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                  "profession": "Аналитик данных",
+                  "same_profession": true,
+                  "match": {
+                    "by_id": 0,
+                    "by_title": 2,
+                    "unmatched": 2
+                  },
+                  "added": [
+                    {
+                      "id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                      "type": "action",
+                      "title": "Собирать требования еженедельно",
+                      "parent_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                      "evidence": [
+                        {
+                          "id": "e1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                          "node_id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                          "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                          "ref_id": "frag-12",
+                          "quote": "Каждую неделю я собираю требования у заказчика.",
+                          "status": "pending"
+                        }
+                      ]
+                    }
+                  ],
+                  "removed": [
+                    {
+                      "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+                      "type": "task",
+                      "title": "Готовить отчёты",
+                      "evidence": [
+                        {
+                          "id": "b2c3d4e5-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+                          "node_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+                          "source_id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
+                          "ref_id": "frag-7",
+                          "quote": "Готовлю еженедельные отчёты для руководителя.",
+                          "status": "approved"
+                        }
+                      ]
+                    }
+                  ],
+                  "changed": [
+                    {
+                      "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                      "before": {
+                        "id": "3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d",
+                        "type": "task",
+                        "title": "Собирать требования",
+                        "evidence": [
+                          {
+                            "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                            "node_id": "3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d",
+                            "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                            "ref_id": "frag-7",
+                            "quote": "Собираю требования у заказчика.",
+                            "status": "approved"
+                          }
+                        ]
+                      },
+                      "after": {
+                        "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                        "type": "task",
+                        "title": "Собирать требования к интеграции",
+                        "evidence": [
+                          {
+                            "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                            "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                            "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                            "ref_id": "frag-7",
+                            "quote": "Собираю требования у заказчика.",
+                            "status": "approved"
+                          }
+                        ]
+                      },
+                      "fields": [
+                        "title"
+                      ]
+                    }
+                  ],
+                  "summary": {
+                    "added": 1,
+                    "removed": 1,
+                    "changed": 1
+                  },
+                  "story": "Узлов добавлено: 1, удалено: 1, изменено: 1. Добавлен узел «Собирать требования еженедельно». Удалён узел «Готовить отчёты». Изменён узел «Собирать требования к интеграции»: название."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "against is missing, is not a UUID, or equals the path run id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missingAgainst": {
+                    "summary": "Missing base run",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "against parameter is required"
+                    }
+                  },
+                  "invalidAgainst": {
+                    "summary": "Base run is not a UUID",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "against must be a run UUID"
+                    }
+                  },
+                  "sameRun": {
+                    "summary": "Base run equals the head run",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "against must differ from id"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "One of the runs does not exist (including an invalid UUID in the path).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "run not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The runs have different professions or one run has no saved tree.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "professionMismatch": {
+                    "summary": "Different professions",
+                    "value": {
+                      "code": "RUN_PROFESSION_MISMATCH",
+                      "message": "runs have different professions"
+                    }
+                  },
+                  "treeMissing": {
+                    "summary": "One run has no saved tree",
+                    "value": {
+                      "code": "RUN_TREE_MISSING",
+                      "message": "one of the runs has no saved tree"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/zun/suggestions": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Rule-based ZUN suggestions for a run tree",
+        "description": "Returns deterministic, rule-based knowledge/skills/abilities suggestions for every node of the run tree, in tree order. No LLM is used: `source` is always `rule`. A node with a non-empty ZUN keeps it untouched — its suggestion lists are empty and `can_apply` is false — while a node without a ZUN always gets a non-empty fallback suggestion for the node type and profession. Expert roles only.",
+        "operationId": "listZunSuggestions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One suggestion per tree node; [] when the tree is empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ZunSuggestion"
+                  }
+                },
+                "example": [
+                  {
+                    "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                    "node_title": "Собирать требования",
+                    "knowledge": [
+                      "SQL-запросы и реляционные базы данных",
+                      "PostgreSQL"
+                    ],
+                    "skills": [
+                      "Анализировать данные и требования"
+                    ],
+                    "abilities": [
+                      "Ответственность за результат"
+                    ],
+                    "source": "rule",
+                    "current_zun": null,
+                    "can_apply": true
+                  },
+                  {
+                    "node_id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
+                    "node_title": "Собирать требования еженедельно",
+                    "knowledge": [],
+                    "skills": [],
+                    "abilities": [],
+                    "source": "rule",
+                    "current_zun": {
+                      "knowledge": [
+                        "SQL-запросы и реляционные базы данных"
+                      ],
+                      "skills": [
+                        "Анализировать данные и требования"
+                      ],
+                      "abilities": [
+                        "Ответственность за результат"
+                      ]
+                    },
+                    "can_apply": false
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "The run id is empty (only possible when the handler is called outside the router).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "run id is required"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/runs/{id}/zun/suggestions/apply": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Apply a rule-based ZUN suggestion to one node",
+        "description": "Persists knowledge/skills/abilities to one node of the run tree, but only when the node has no ZUN yet. An existing manual or auto-generated ZUN is never overwritten: the request fails with 409 `ZUN_ALREADY_SET` (the caller should re-read suggestions). Items are normalized: trimmed, inner spaces collapsed, empty items dropped, case-insensitive dedupe, at most 200 characters per item and 50 items per list. At least one non-empty item across the three lists is required and `node_id` is mandatory. The node must belong to the run (404 otherwise). Expert roles only.",
+        "operationId": "applyZunSuggestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZunApplyRequest"
+              },
+              "example": {
+                "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                "knowledge": [
+                  "SQL-запросы и реляционные базы данных",
+                  "PostgreSQL"
+                ],
+                "skills": [
+                  "Анализировать данные и требования"
+                ],
+                "abilities": [
+                  "Ответственность за результат"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ZUN saved for the node; the returned suggestion is no longer applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZunApplyResponse"
+                },
+                "example": {
+                  "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                  "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                  "node_title": "Собирать требования",
+                  "source": "rule",
+                  "applied": true,
+                  "can_apply": false,
+                  "current_zun": {
+                    "knowledge": [
+                      "SQL-запросы и реляционные базы данных",
+                      "PostgreSQL"
+                    ],
+                    "skills": [
+                      "Анализировать данные и требования"
+                    ],
+                    "abilities": [
+                      "Ответственность за результат"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON, unknown fields, trailing data, a missing node_id, an empty ZUN payload, or a list/item over the documented limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "emptyPayload": {
+                    "summary": "No ZUN items supplied",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "at least one ZUN item is required"
+                    }
+                  },
+                  "itemTooLong": {
+                    "summary": "One item exceeds the length limit",
+                    "value": {
+                      "code": "BAD_REQUEST",
+                      "message": "ZUN item is longer than 200 characters"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The run does not exist or the node does not belong to it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "run or node not found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The node already has a non-empty ZUN; suggestions never overwrite it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "ZUN_ALREADY_SET",
+                  "message": "node already has ZUN; automatic suggestion does not overwrite it"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/evidence/{evidence_id}/context": {
+      "get": {
+        "tags": [
+          "evidences"
+        ],
+        "summary": "Evidence context in the interview transcript",
+        "description": "Returns the evidence item (quote, ref_id, node and source titles) plus the full saved interview transcript of the run and the message that best matches the quote, so the UI can scroll to and highlight it after a reload. Matching is deterministic in this order: message id, `answer-N`/`a-N`/`ответ-N` (Nth user reply), `q-N`/`question-N`/`вопрос-N` (Nth interviewer question), `msg-N`/`N` (message sequence), exact quote text, then the best lexical token overlap. `match` is null and `note` explains why when no message matches. `quote_start` and `quote_end` are rune offsets in the message `content` only when the quote is found verbatim (case-insensitive text search included); the lexical fallback has no offsets. `messages` is ordered by sequence (at most 500). Available to every authenticated role. The in-memory demo store serves the evidence with an empty transcript unless the live chat service still holds the dialog.",
+        "operationId": "getEvidenceContext",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/EvidenceContextId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Evidence item, saved transcript and the best matching message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceContext"
+                },
+                "example": {
+                  "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                  "evidence": {
+                    "id": "e1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                    "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                    "node_title": "Собирать требования",
+                    "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
+                    "source_title": "Интервью с ведущим аналитиком",
+                    "source_url": "https://example.com/interviews/42",
+                    "ref_id": "answer-2",
+                    "quote": "Каждую неделю я собираю требования у заказчика.",
+                    "status": "pending"
+                  },
+                  "messages": [
+                    {
+                      "id": "msg-4d7d3a8e-1",
+                      "role": "agent",
+                      "content": "Расскажите, как вы собираете требования?",
+                      "sequence": 1,
+                      "created_at": "2026-11-18T10:00:05Z"
+                    },
+                    {
+                      "id": "msg-4d7d3a8e-2",
+                      "role": "user",
+                      "content": "Каждую неделю я собираю требования у заказчика.",
+                      "sequence": 2,
+                      "created_at": "2026-11-18T10:01:00Z"
+                    }
+                  ],
+                  "match": {
+                    "message_id": "msg-4d7d3a8e-2",
+                    "sequence": 2,
+                    "role": "user",
+                    "strategy": "answer_index",
+                    "contains_quote": true,
+                    "quote": "Каждую неделю я собираю требования у заказчика.",
+                    "quote_start": 0,
+                    "quote_end": 47
+                  },
+                  "note": "ref_id указывает на номер ответа (answer-N): выбрана N-я реплика пользователя"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The run id or evidence id is empty (only possible outside the router).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "run and evidence ids are required"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "The evidence does not exist inside the run (evidence of another run is indistinguishable from a missing one).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_FOUND",
+                  "message": "evidence not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
       }
     },
     "/runs/{id}/export": {
@@ -2114,7 +3243,7 @@
           "runs"
         ],
         "summary": "Diff two snapshots of a run",
-        "description": "Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros).",
+        "description": "Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros, story says the trees are identical). `story` is a deterministic one-line Russian summary of the diff and `story_lines` is the same story line by line (header with counts, then one line per change, at most 20 detail lines followed by an \"Ещё изменений: N.\" overflow line); the counts in both always agree with `summary`.",
         "operationId": "diffRunSnapshots",
         "parameters": [
           {
@@ -2210,7 +3339,13 @@
                         "added": 1,
                         "removed": 0,
                         "changed": 1
-                      }
+                      },
+                      "story": "Узлов добавлено: 1, удалено: 0, изменено: 1. Добавлен узел «Собирать требования еженедельно». Изменён узел «Собирать требования к интеграции»: название.",
+                      "story_lines": [
+                        "Узлов добавлено: 1, удалено: 0, изменено: 1.",
+                        "Добавлен узел «Собирать требования еженедельно».",
+                        "Изменён узел «Собирать требования к интеграции»: название."
+                      ]
                     }
                   }
                 }
@@ -2482,6 +3617,15 @@
         "schema": {
           "type": "string",
           "format": "uuid"
+        }
+      },
+      "EvidenceContextId": {
+        "name": "evidence_id",
+        "in": "path",
+        "required": true,
+        "description": "Evidence identifier. It must belong to the run in the path; evidence of another run is indistinguishable from a missing one (404).",
+        "schema": {
+          "type": "string"
         }
       }
     },
@@ -2787,7 +3931,8 @@
       },
       "Zun": {
         "type": "object",
-        "description": "Knowledge, skills and abilities attached to a tree node.",
+        "nullable": true,
+        "description": "Knowledge, skills and abilities attached to a tree node. In responses that carry an optional ZUN (for example a ZUN suggestion) the value is `null` when the node has no ZUN yet.",
         "additionalProperties": false,
         "properties": {
           "knowledge": {
@@ -3242,7 +4387,9 @@
           "added",
           "removed",
           "changed",
-          "summary"
+          "summary",
+          "story",
+          "story_lines"
         ],
         "additionalProperties": false,
         "properties": {
@@ -3279,6 +4426,17 @@
           },
           "summary": {
             "$ref": "#/components/schemas/SnapshotDiffSummary"
+          },
+          "story": {
+            "type": "string",
+            "description": "Deterministic one-line human-readable description of the diff in Russian (header counts plus up to five details; long titles are truncated and a \"Ещё изменений: N.\" suffix reports omitted details). Equal trees produce \"Изменений нет: деревья идентичны.\"."
+          },
+          "story_lines": {
+            "type": "array",
+            "description": "The same story line by line: a header with counts followed by one line per change; at most 20 detail lines, then an overflow line. Equal trees produce a single identical-trees line.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -3559,6 +4717,1219 @@
           },
           "read_only": {
             "type": "boolean"
+          }
+        }
+      },
+      "RunEstimate": {
+        "type": "object",
+        "description": "JSON body of GET /runs/estimate (pre-run cost and time estimate).",
+        "required": [
+          "profession",
+          "type",
+          "sample_size",
+          "estimated_tokens",
+          "estimated_duration_seconds",
+          "estimated_cost_usd",
+          "confidence",
+          "method"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "profession": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/RunType"
+          },
+          "sample_size": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of completed runs behind the duration estimate (0 when defaults are used)."
+          },
+          "estimated_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "estimated_duration_seconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "nullable": true,
+            "description": "Estimated cost in USD, or null when no honest estimate is possible (no recorded price and no COST_ESTIMATE_USD_PER_1M_TOKENS fallback).",
+            "minimum": 0
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Three-state confidence label derived from sample sizes (high: at least 10 duration and 10 token samples; medium: at least 3 of both; low otherwise or when a default-based input is used)."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "profession_history",
+              "partial_history",
+              "global_history",
+              "defaults"
+            ],
+            "description": "Which inputs the estimate used."
+          }
+        }
+      },
+      "ModelUsage": {
+        "type": "object",
+        "description": "Token (and optional cost) usage of one model inside one run.",
+        "required": [
+          "model",
+          "request_count",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "cost_usd"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "nullable": true,
+            "description": "Recorded cost, or null when the provider reported no price.",
+            "minimum": 0
+          }
+        }
+      },
+      "AgentUsage": {
+        "type": "object",
+        "description": "Token (and optional cost) usage of one agent inside one run.",
+        "required": [
+          "agent",
+          "request_count",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "cost_usd"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "nullable": true,
+            "description": "Recorded cost, or null when the provider reported no price.",
+            "minimum": 0
+          }
+        }
+      },
+      "RequestStatusCount": {
+        "type": "object",
+        "description": "One bucket of the LLM request status breakdown (for example ok or error).",
+        "required": [
+          "status",
+          "count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RunCost": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/cost (actual usage plus the recomputed estimate).",
+        "required": [
+          "run_id",
+          "profession",
+          "type",
+          "status",
+          "duration_seconds",
+          "request_count",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "cost_usd",
+          "by_model",
+          "by_agent",
+          "status_counts",
+          "attribution",
+          "attribution_ambiguous",
+          "estimate"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profession": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/RunType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "description": "Finished duration, elapsed time of a running run measured at request time, or null when the run never started."
+          },
+          "request_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "description": "Sum of recorded costs, or null when no request has a recorded cost."
+          },
+          "by_model": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelUsage"
+            }
+          },
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentUsage"
+            }
+          },
+          "status_counts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequestStatusCount"
+            }
+          },
+          "attribution": {
+            "type": "string",
+            "enum": [
+              "run_id",
+              "time_window",
+              "none"
+            ],
+            "description": "How LLM requests were attributed to the run: exact recorded run context, the run time window (possibly approximate), or no attributable data."
+          },
+          "attribution_ambiguous": {
+            "type": "boolean",
+            "description": "True when the time-window attribution may include requests of a parallel run."
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/RunEstimate"
+          }
+        }
+      },
+      "InsightsNodeProvenance": {
+        "type": "object",
+        "description": "How one node is grounded by the run sources (evidence is deduplicated).",
+        "required": [
+          "source_count",
+          "source_types",
+          "evidence_count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of distinct evidence source ids on the node."
+          },
+          "source_types": {
+            "type": "array",
+            "description": "Distinct source types in trust-priority order.",
+            "items": {
+              "$ref": "#/components/schemas/SourceType"
+            }
+          },
+          "evidence_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "InsightsProvenance": {
+        "type": "object",
+        "description": "Per-node provenance aggregate; nodes is empty for an empty tree.",
+        "required": [
+          "nodes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "nodes": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InsightsNodeProvenance"
+            }
+          }
+        }
+      },
+      "InsightsHealthBreakdown": {
+        "type": "object",
+        "description": "The four 0..100 quality components of the tree health score (higher is better).",
+        "required": [
+          "groundedness",
+          "completeness",
+          "duplicates",
+          "orphans"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "groundedness": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "completeness": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "duplicates": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "orphans": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "InsightsHealthCounts": {
+        "type": "object",
+        "description": "Raw counters behind the health breakdown.",
+        "required": [
+          "node_count",
+          "grounded_nodes",
+          "duplicate_nodes",
+          "orphan_nodes",
+          "childless_nodes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "grounded_nodes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duplicate_nodes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "orphan_nodes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "childless_nodes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "InsightsHealth": {
+        "type": "object",
+        "description": "Deterministic tree health score with its breakdown, weights, counts and formula.",
+        "required": [
+          "score",
+          "breakdown",
+          "weights",
+          "counts",
+          "formula"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/InsightsHealthBreakdown"
+          },
+          "weights": {
+            "type": "object",
+            "description": "Weight of every health component in the score; the values sum to 1.",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "counts": {
+            "$ref": "#/components/schemas/InsightsHealthCounts"
+          },
+          "formula": {
+            "type": "string",
+            "description": "Human-readable formula and component definitions."
+          }
+        }
+      },
+      "InsightFlag": {
+        "type": "object",
+        "description": "Red flags of one node; codes and reasons are parallel arrays.",
+        "required": [
+          "node_id",
+          "codes",
+          "reasons"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "SUSPICIOUS_TITLE",
+                "DUPLICATE_TITLE",
+                "SINGLE_WEAK_SOURCE",
+                "NO_CHILDREN",
+                "NO_EVIDENCE"
+              ]
+            }
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MarketSkill": {
+        "type": "object",
+        "description": "One row of the market-heat top list.",
+        "required": [
+          "skill",
+          "frequency"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "MarketNodeHeat": {
+        "type": "object",
+        "description": "Market heat matched to one tree node.",
+        "required": [
+          "score",
+          "matches"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sum of the frequencies of the matched skills."
+          },
+          "matches": {
+            "type": "array",
+            "description": "Matched skill names in top-list order.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MarketHeat": {
+        "type": "object",
+        "description": "Market skill frequencies overlaid on the tree.",
+        "required": [
+          "source",
+          "top",
+          "nodes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "run.skill_freq",
+              "vacancy_sources",
+              "none"
+            ],
+            "description": "run.skill_freq — persisted/analysed run skill frequencies; vacancy_sources — deterministic extraction from the content of the run's vacancy/standard sources; none — no market data available."
+          },
+          "sample_size": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of vacancy/standard documents scanned for the vacancy_sources fallback (omitted for other sources)."
+          },
+          "top": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketSkill"
+            }
+          },
+          "nodes": {
+            "type": "object",
+            "description": "Heat per node id; only nodes with matches are present.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MarketNodeHeat"
+            }
+          }
+        }
+      },
+      "CoverageRow": {
+        "type": "object",
+        "description": "One role/function/task row of the source-type coverage matrix.",
+        "required": [
+          "node_id",
+          "title",
+          "type",
+          "cells"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "role",
+              "function",
+              "task"
+            ]
+          },
+          "cells": {
+            "type": "object",
+            "description": "Evidence count per source type; every column is present, 0 when empty.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "Coverage": {
+        "type": "object",
+        "description": "Role/function/task rows by source-type evidence counts.",
+        "required": [
+          "columns",
+          "rows"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "type": "array",
+            "description": "Fixed, ordered column set; every column is always present.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "interview",
+                "standard",
+                "vacancy",
+                "document"
+              ]
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverageRow"
+            }
+          }
+        }
+      },
+      "InsightSource": {
+        "type": "object",
+        "description": "Run source metadata shown next to the insights.",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "priority"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "title": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        }
+      },
+      "ExplanationEvidence": {
+        "type": "object",
+        "description": "One evidence item of a node explanation.",
+        "required": [
+          "quote",
+          "source_id",
+          "source_type",
+          "priority"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "quote": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "ref_id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus"
+          }
+        }
+      },
+      "NodeExplanation": {
+        "type": "object",
+        "description": "Template-only \"why this node\" explanation; summary is never empty.",
+        "required": [
+          "summary",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExplanationEvidence"
+            }
+          }
+        }
+      },
+      "Insights": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/insights; all collections are non-null.",
+        "required": [
+          "run_id",
+          "provenance",
+          "health",
+          "flags",
+          "market_heat",
+          "coverage",
+          "sources",
+          "node_explanations"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/InsightsProvenance"
+          },
+          "health": {
+            "$ref": "#/components/schemas/InsightsHealth"
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InsightFlag"
+            }
+          },
+          "market_heat": {
+            "$ref": "#/components/schemas/MarketHeat"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InsightSource"
+            }
+          },
+          "node_explanations": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NodeExplanation"
+            }
+          }
+        }
+      },
+      "CoverageResponse": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/coverage (default format).",
+        "required": [
+          "run_id",
+          "columns",
+          "rows"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "interview",
+                "standard",
+                "vacancy",
+                "document"
+              ]
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverageRow"
+            }
+          }
+        }
+      },
+      "RunCompareMatch": {
+        "type": "object",
+        "description": "Node-matching counters of a run-to-run comparison.",
+        "required": [
+          "by_id",
+          "by_title",
+          "unmatched"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "by_id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of pairs matched by node id."
+          },
+          "by_title": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of pairs matched semantically by type, normalized title and ancestor path."
+          },
+          "unmatched": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of nodes that could not be matched (equals added + removed)."
+          }
+        }
+      },
+      "RunCompare": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/compare?against={other_run_id}.",
+        "required": [
+          "run_id",
+          "against_run_id",
+          "profession",
+          "same_profession",
+          "match",
+          "added",
+          "removed",
+          "changed",
+          "summary",
+          "story"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "against_run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profession": {
+            "type": "string"
+          },
+          "same_profession": {
+            "type": "boolean",
+            "description": "True when the profession matches after normalization either by runs.profession or by the normalized title of the root role node of both trees."
+          },
+          "match": {
+            "$ref": "#/components/schemas/RunCompareMatch"
+          },
+          "added": {
+            "type": "array",
+            "description": "Nodes that exist only in the head run, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "description": "Nodes that exist only in the base run, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "changed": {
+            "type": "array",
+            "description": "Nodes matched between the runs whose fields changed, sorted by id.",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotNodeChange"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SnapshotDiffSummary"
+          },
+          "story": {
+            "type": "string",
+            "description": "Deterministic one-line human-readable description of the diff in Russian; its counts always agree with summary."
+          }
+        }
+      },
+      "ReviewProgress": {
+        "type": "object",
+        "description": "JSON body of GET /reviews/evidence/progress.",
+        "required": [
+          "scope",
+          "pending",
+          "approved",
+          "rejected",
+          "total"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "run"
+            ],
+            "description": "global for counters across all runs; run for a run-scoped counter."
+          },
+          "run_id": {
+            "type": "string",
+            "description": "Present only when scope is run."
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "approved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rejected": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Always equals pending + approved + rejected."
+          }
+        }
+      },
+      "ZunSuggestion": {
+        "type": "object",
+        "description": "One rule-based ZUN suggestion for a tree node.",
+        "required": [
+          "node_id",
+          "node_title",
+          "knowledge",
+          "skills",
+          "abilities",
+          "source",
+          "current_zun",
+          "can_apply"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "knowledge": {
+            "type": "array",
+            "description": "Suggested knowledge items; empty when the node already has a ZUN.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "abilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "rule"
+            ],
+            "description": "Always rule; ZUN suggestions never come from an LLM."
+          },
+          "current_zun": {
+            "$ref": "#/components/schemas/Zun"
+          },
+          "can_apply": {
+            "type": "boolean",
+            "description": "True only when the node has no ZUN and the suggestion is non-empty."
+          }
+        }
+      },
+      "ZunApplyRequest": {
+        "type": "object",
+        "description": "Body of POST /runs/{id}/zun/suggestions/apply.",
+        "required": [
+          "node_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "knowledge": {
+            "type": "array",
+            "description": "Knowledge items; at least one non-empty item across all three lists is required.",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "skills": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "abilities": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        }
+      },
+      "ZunApplyResponse": {
+        "type": "object",
+        "description": "Result of a successful ZUN apply (an updated, no-longer-applicable suggestion).",
+        "required": [
+          "run_id",
+          "node_id",
+          "node_title",
+          "source",
+          "applied",
+          "can_apply",
+          "current_zun"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "rule"
+            ]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "can_apply": {
+            "type": "boolean",
+            "description": "Always false after a successful apply."
+          },
+          "current_zun": {
+            "$ref": "#/components/schemas/Zun"
+          }
+        }
+      },
+      "EvidenceContextItem": {
+        "type": "object",
+        "description": "Evidence plus the node/source titles needed by the review panel.",
+        "required": [
+          "id",
+          "node_id",
+          "source_id",
+          "quote",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_title": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "ref_id": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus"
+          }
+        }
+      },
+      "ChatTranscriptMessage": {
+        "type": "object",
+        "description": "One saved interview chat message; sequence is the 1-based position in the dialog.",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "sequence",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EvidenceTranscriptMatch": {
+        "type": "object",
+        "nullable": true,
+        "description": "The chat message that best matches the evidence quote; null when nothing matches.",
+        "required": [
+          "message_id",
+          "sequence",
+          "role",
+          "strategy",
+          "contains_quote",
+          "quote"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent"
+            ]
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "message_id",
+              "answer_index",
+              "question_index",
+              "sequence",
+              "quote",
+              "token_overlap"
+            ],
+            "description": "Which matching rule selected the message: ref_id equals the message id; answer-N (Nth user reply); q-N (Nth interviewer question); msg-N/N (message sequence); quote text search; best lexical token overlap."
+          },
+          "contains_quote": {
+            "type": "boolean",
+            "description": "True when the quote is contained in the message content."
+          },
+          "quote": {
+            "type": "string"
+          },
+          "quote_start": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Rune offset of the quote start in content; present only for verbatim (case-insensitive included) matches."
+          },
+          "quote_end": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Rune offset of the quote end in content; present only for verbatim (case-insensitive included) matches."
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Lexical-overlap score (0..1); present for token_overlap matches."
+          }
+        }
+      },
+      "EvidenceContext": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/evidence/{evidence_id}/context.",
+        "required": [
+          "run_id",
+          "evidence",
+          "messages",
+          "match",
+          "note"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceContextItem"
+          },
+          "messages": {
+            "type": "array",
+            "description": "Saved transcript ordered by sequence (at most 500 messages).",
+            "items": {
+              "$ref": "#/components/schemas/ChatTranscriptMessage"
+            }
+          },
+          "match": {
+            "$ref": "#/components/schemas/EvidenceTranscriptMatch"
+          },
+          "note": {
+            "type": "string",
+            "description": "Human-readable explanation of the chosen match strategy (or why nothing matched)."
           }
         }
       }

@@ -1,106 +1,382 @@
-# Остаток задач и сверка с фичами наставника
+# Backend-фичи наставника: статус и фронт-контракт
 
-Срез: 19.11.2026, ветка `feature/roman/ai`, после commit `3a49c73`.
-Файл — рабочая карта остатка; при изменении статуса обновляйте его, а не держите в переписке.
+Срез: 19.11.2026, ветка `feature/roman/ai`.
+Роли разделены: **Роман+агенты — backend**, **Миша — full frontend**.
 
-## 1. Что уже закрыто
+## 1. Итог
 
-- CI: lint, unit/race, acceptance, db-check, migrations, frontend, Docker — зелёные.
-- Live chat: interviewer → analyst → deterministic synthesizer → tree → Stepik.
-- Live batch: `POST /runs {type:"batch", transcript}` → `domain.Orchestrate` → AI steps → SaveAITree.
-- Durable chat: `run_chat_messages`, история переживает рестарт backend.
-- Live multi-source: standard/vacancy источники, provenance, конфликты, `GET /runs/{id}/conflicts`.
-- Snapshot diff, review queue, export `json`/`md`.
-- n8n: webhook → реальный SMTP (Ethereal) и публичный HTTPS (Cloudflare quick tunnel) проверены live; Notion не нужен.
-- Monitoring: Grafana без anonymous, Prometheus без DOWN-target, alerts, dashboards.
-- Live-eval: `cmd/live-eval`, 2/2 кейса на реальной модели (baseline + standard-conflict).
-- Startup: `scripts/run-server.ps1` читает `.env` + `.secrets/llm.env`.
+Backend-контракты готовы для всех 12 фич. Фронт Миши уже частично реализован (коммит `65504e4`), остальные фичи ждут новых API.
 
-## 1a. Фронтенд-часть фич наставника (сделано 19.11)
+## 1a. Фронтенд-часть, уже сделанная Мишей
 
-Фронт сделан без изменений бэкенда, на существующих данных:
+Уже реализовано на существующих данных:
 
-- **#1 Provenance Score** - бейдж «N типов» в строке дерева; типы агрегируются на клиенте из `evidence.source_id` + `GET /sources`.
-- **#2 «Почему этот узел здесь»** - в диалоге узла: тип/название/приоритет источника у каждой цитаты и шаблонное объяснение без LLM.
-- **#4 Snapshot Story** - человеческий changelog по diff + кнопка «Скопировать changelog».
-- **#5 Red Flags** - фильтр «Проблемные» и причины: общее название, дубль, нет детей, нет evidence, единственный слабый источник.
-- **#6 Evidence → транскрипт** - кнопка «В интервью» у цитаты: переход на вкладку чата, скролл к сообщению по `ref_id`/тексту и подсветка.
-- **#7 Review Progress + клавиатура** - «Подтверждено X из Y», клавиши `A`/`R`/стрелки в очереди проверки.
-- **#11 Run-to-run сравнение** - страница `/compare`: два done-прогона, added/removed/changed на клиенте, экспорт JSON.
+- #1 Provenance Score — бейдж «N типов» в дереве;
+- #2 «Почему этот узел здесь» — источник/приоритет/объяснение в диалоге узла;
+- #4 Snapshot Story — changelog + копирование;
+- #5 Red Flags — фильтр «Проблемные» с причинами;
+- #6 Evidence → транскрипт — кнопка «В интервью», скролл/подсветка;
+- #7 Review Progress + hotkeys — прогресс и клавиши approve/reject;
+- #11 Run-to-run — страница `/compare`.
 
-Осталось на бэке (фронт ждёт контракт): **#3** Tree Health Score, **#8** поле `skill_freq` в `Run`, **#9** `GET /runs/{id}/coverage`, **#10** предложения ЗУН с accept/reject, **#12** оценка стоимости/времени до запуска.
+После backend-контрактов ниже фронт может перейти на более точные данные: `story/story_lines`, `insights`, `coverage`, `zun`, `estimate/cost`, `evidence context`.
 
-## 2. Незавершённые задачи (наш backlog)
+## 2. Статус всех фич
 
-### P0 / перед показом
+| # | Фича | Backend | Frontend |
+|---:|---|---|---|
+| 1 | Provenance Score | готово: `/insights.provenance` | готово (клиентская агрегация; можно перевести на API) |
+| 2 | Why this node | готово: `/insights.node_explanations` | готово |
+| 3 | Tree Health Score | готово: `/insights.health` | нет |
+| 4 | Snapshot Story | готово: `story`, `story_lines` в snapshot diff | готово |
+| 5 | Red Flags | готово: `/insights.flags` | готово |
+| 6 | Evidence → транскрипт | готово: `/runs/{id}/evidence/{evidence_id}/context` | готово |
+| 7 | Review Progress | готово: `/reviews/evidence/progress` | готово |
+| 8 | Market Heat Overlay | готово: `/insights.market_heat` | нет |
+| 9 | Coverage Matrix | готово: `/runs/{id}/coverage` (+CSV) | нет |
+| 10 | Auto-ZUN | готово: suggestions + apply | нет |
+| 11 | Run-to-run | готово: `/runs/{id}/compare` | готово (клиентский diff; можно перевести на API) |
+| 12 | Cost/Time Estimate | готово: `/runs/estimate`, `/runs/{id}/cost` | нет |
 
-- [ ] **UI конфликтов**: фронт, вкладка «Конфликты» по `GET /runs/{id}/conflicts`.
-  - Данные и live-run `d6193771…` (9 конфликтов) уже есть.
-- [ ] **Active SSE**: EventSource не умеет Authorization; фронту нужен `fetch` + `ReadableStream` или dev-прокси с токеном.
-  - Durable history завершённых run уже работает; active session — in-memory.
-- [ ] **Реальный SMTP**: сейчас live-проверен Ethereal (тестовый ящик), нужен корпоративный SMTP и постоянный получатель.
-- [ ] **Постоянный HTTPS webhook**: сейчас Cloudflare quick tunnel (временный URL); нужен домен/постоянный туннель.
+## 3. Backend-контракты для Миши
 
-### P1 / продукт
+## 2. Backend-контракты для Миши
 
-- [ ] **Docker full backend**: `Dockerfile` собирает demo `cmd/api`, а не `cmd/server`; нужен `server` service + env_file + миграции.
-- [ ] **Batch UI**: фронт создаёт только chat-run; нужен ввод transcript/type=batch или отдельный batch-сценарий.
-- [ ] **Production ops**: TLS, Alertmanager, HA, retention/backups, Jaeger persistence, auth для Prometheus/Grafana.
-- [ ] **Frontend UX**: guest видит write-кнопки; сырые английские 403; часть состояний чата/источников.
-- [ ] **HH app-token refresh**: токен вручную, нужен владелец/процедура обновления.
-- [ ] **Multi-source limits**: analyst обрезает источник до ~2000 символов, extra LLM-call на каждый standard/vacancy, conflicts только при distinct title/description.
+### #1/#2/#3/#5/#8 — один insights-запрос
 
-## 3. Фичи наставника: сверка с текущим кодом
+```http
+GET /api/v1/runs/{id}/insights
+```
 
-Условные статусы: `готово` / `частично` / `нет`.
-«Наше» — то, что уже реализовано или начато в этом репозитории; назначение владельцев из списка наставника сохранено.
+Роли: `admin`, `teacher`, `rop`, `guest`.
 
-| # | Фича | Статус | Что уже есть | Чего не хватает |
-|---:|---|---|---|---|
-| 1 | Provenance Score (Rustam + Mikhail) | **частично** | evidence хранит `source_id`; finalizer различает interview/standard/vacancy; live multi-source и конфликты | агрегация «число типов источников» в `GET /tree`, поле score, бейдж в `activity-tree.tsx`, тест агрегации |
-| 2 | «Почему этот узел здесь» (Mikhail + Egor) | **частично** | диалог узла в `activity-tree.tsx` показывает evidence/цитаты/статус | тип источника, `Source.Priority`, шаблонное обоснование, открытие для любого узла, тест |
-| 3 | Tree Health Score (Rustam + Mikhail) | **нет** | — | score 0–100, разбивка groundedness/полнота/дубли/сироты, API/бейдж, docs/тесты |
-| 4 | Snapshot Story (Egor + Mikhail) | **частично** | `snapshot_diff.go`, вкладка «Снимки и проверка», added/removed/changed, evidence | человеческий changelog, кнопка копирования, тест пустого diff |
-| 5 | Red Flags фильтр (Rustam + Mikhail) | **нет** | — | 5 правил, причина у каждого флага, фильтр в дереве, тест |
-| 6 | Evidence → транскрипт (Mikhail + Egor) | **частично** | durable chat (`run_chat_messages`), `ref_id` в evidence/очереди, citations в `ChatTab` | клик по цитате → скролл к сообщению интервью + подсветка, после перезагрузки, тест |
-| 7 | Review Progress + клавиатура (Mikhail) | **частично** | review queue и approve/reject, snapshot-review | «подтверждено X из Y», hotkeys approve/reject/next, счётчик из API, тест |
-| 8 | Market Heat Overlay (**Роман** + Mikhail) | **частично** | `Run.SkillFreq`, `analysis` считает частоты, backend хранит `skill_freq` | overlay в `activity-tree.tsx`, топ-10, легенда/тултип, маппинг-тест |
-| 9 | Coverage Matrix (Rustam + Mikhail) | **нет** | — | `GET /runs/{id}/coverage`, таблица функции×источники, пустые клетки, CSV, тест |
-| 10 | Auto-ZUN предложения (**Роман** + Mikhail) | **частично** | `domain.Zun`, `enrichZun` в chat-finalize, показ ЗУН в дереве, PATCH узла | rule-based предложения, accept/reject, защита ручных значений, тест на 10 узлах; batch ZUN не подключён |
-| 11 | Run-to-run сравнение (Egor + Mikhail) | **нет** | — | `GET /runs?profession`, diff двух done-прогонов, страница, экспорт, тест |
-| 12 | Оценка стоимости/времени (**Роман** + Mikhail) | **частично** | `llm_requests`/`llm_usage`, админ-статистика токенов и latency | оценка до старта в `NewResearch.tsx`, факт после, отклонение, тест |
+Ответ:
 
-### Итог по 12 фичам
+```json
+{
+  "run_id": "...",
+  "provenance": {
+    "nodes": {
+      "<node_id>": {
+        "source_count": 2,
+        "source_types": ["interview", "standard"],
+        "evidence_count": 3
+      }
+    }
+  },
+  "health": {
+    "score": 97,
+    "breakdown": {
+      "groundedness": 100,
+      "completeness": 89,
+      "duplicates": 100,
+      "orphans": 100
+    },
+    "weights": {
+      "groundedness": 0.4,
+      "completeness": 0.3,
+      "duplicates": 0.2,
+      "orphans": 0.1
+    },
+    "counts": {},
+    "formula": "..."
+  },
+  "flags": [
+    {
+      "node_id": "...",
+      "codes": ["NO_CHILDREN"],
+      "reasons": ["..."]
+    }
+  ],
+  "market_heat": {
+    "source": "run.skill_freq | vacancy_sources | none",
+    "sample_size": 2,
+    "top": [{"skill": "sql", "frequency": 2}],
+    "nodes": {
+      "<node_id>": {"score": 2, "matches": ["sql"]}
+    }
+  },
+  "coverage": {
+    "columns": ["interview", "standard", "vacancy", "document"],
+    "rows": [
+      {
+        "node_id": "...",
+        "title": "...",
+        "type": "function",
+        "cells": {"interview": 2, "standard": 0, "vacancy": 1, "document": 0}
+      }
+    ]
+  },
+  "sources": [{"id": "...", "type": "...", "title": "...", "priority": 300}],
+  "node_explanations": {
+    "<node_id>": {
+      "summary": "...",
+      "evidence": [
+        {"quote": "...", "source_id": "...", "source_type": "interview", "priority": 300}
+      ]
+    }
+  }
+}
+```
 
-- полностью готово: **0**;
-- частично: **8** (#1, #2, #4, #6, #7, #8, #10, #12);
-- отсутствует: **4** (#3, #5, #9, #11).
+Health: `score = round(0.40*groundedness + 0.30*completeness + 0.20*duplicates + 0.10*orphans)`. `duplicates`/`orphans` — quality (100 = нет проблем); сырые counts — в `health.counts`.
 
-### Что из этого «наше» (Роман)
+Flags коды:
 
-Прямые фичи:
-- #8 Market Heat Overlay — есть backend `SkillFreq`, нет UI;
-- #10 Auto-ZUN — есть auto-enrichment и показ, нет suggestions/accept-reject;
-- #12 Cost/Time Estimate — есть post-fact usage, нет pre-run estimate.
+```text
+SUSPICIOUS_TITLE
+DUPLICATE_TITLE
+SINGLE_WEAK_SOURCE
+NO_CHILDREN
+NO_EVIDENCE
+```
 
-Смежное, уже сделанное нами:
-- #1 provenance foundation (source types/evidence/conflicts);
-- #4 snapshot diff backend + UI;
-- #6 durable chat + `ref_id`/citations foundation;
-- #7 review queue foundation.
+### #9 Coverage Matrix
 
-## 4. Рекомендуемый порядок
+```http
+GET /api/v1/runs/{id}/coverage
+GET /api/v1/runs/{id}/coverage?format=csv
+```
 
-1. #7 Review Progress + hotkeys — быстрый фронт, высокая польза для демо.
-2. #4 Snapshot Story — поверх готового diff.
-3. #2 Why this node + #1 Provenance Score — один backend-агрегат + панель/бейдж.
-4. #5 Red Flags — правила поверх дерева.
-5. #8 Market Heat / #10 Auto-ZUN / #12 Cost — наши P2, если остаётся время.
-6. #9 Coverage / #11 Run-to-run / #3 Tree Health — после MVP.
+JSON: `{run_id, columns, rows}`.
+CSV:
+
+```text
+node_id,title,type,interview,standard,vacancy,document
+```
+
+### #4 Snapshot Story
+
+Уже существующий diff теперь дополнительно возвращает:
+
+```json
+{
+  "story": "Узлов добавлено: 0, удалено: 0, изменено: 1. ...",
+  "story_lines": [
+    "Узлов добавлено: 0, удалено: 0, изменено: 1.",
+    "Изменён узел «Отчёт»: подтверждения."
+  ]
+}
+```
+
+Место: `GET /runs/{id}/snapshots/{head}/diff?against={base}`.
+
+### #11 Run-to-run
+
+```http
+GET /api/v1/runs/{id}/compare?against={other_run_id}
+```
+
+Роли: `admin`, `teacher`, `rop`, `guest`.
+
+Ответ:
+
+```json
+{
+  "run_id": "...",
+  "against_run_id": "...",
+  "profession": "Data Analyst",
+  "same_profession": true,
+  "match": {"by_id": 0, "by_title": 12, "unmatched": 2},
+  "added": [],
+  "removed": [],
+  "changed": [
+    {"id": "...", "before": {}, "after": {}, "fields": ["description"]}
+  ],
+  "summary": {"added": 0, "removed": 0, "changed": 1},
+  "story": "..."
+}
+```
+
+Матчинг: id → semantic `type + normalized(title) + ancestor path`; UUID независимых прогонов не совпадают, поэтому основной путь — semantic.
+
+### #7 Review Progress
+
+```http
+GET /api/v1/reviews/evidence/progress
+GET /api/v1/reviews/evidence/progress?run_id={id}
+```
+
+Роли: `admin`, `teacher`, `rop`.
+
+```json
+{
+  "scope": "global | run",
+  "run_id": "...",
+  "pending": 12,
+  "approved": 30,
+  "rejected": 2,
+  "total": 44
+}
+```
+
+### #10 Auto-ZUN
+
+```http
+GET /api/v1/runs/{id}/zun/suggestions
+```
+
+Роли: `admin`, `teacher`, `rop`.
+Ответ — массив:
+
+```json
+[
+  {
+    "node_id": "...",
+    "node_title": "...",
+    "knowledge": ["..."],
+    "skills": ["..."],
+    "abilities": ["..."],
+    "source": "rule",
+    "current_zun": null,
+    "can_apply": true
+  }
+]
+```
+
+Apply:
+
+```http
+POST /api/v1/runs/{id}/zun/suggestions/apply
+{
+  "node_id": "...",
+  "knowledge": ["..."],
+  "skills": ["..."],
+  "abilities": ["..."]
+}
+```
+
+Ответ: `{run_id,node_id,node_title,source,applied,can_apply,current_zun}`.
+Если ZUN уже заполнен — `409 ZUN_ALREADY_SET`; ручные значения не перезаписываются.
+
+### #6 Evidence → транскрипт
+
+```http
+GET /api/v1/runs/{id}/evidence/{evidence_id}/context
+```
+
+Роли: все авторизованные.
+
+```json
+{
+  "run_id": "...",
+  "evidence": {
+    "id": "...",
+    "node_id": "...",
+    "node_title": "...",
+    "source_id": "...",
+    "source_title": "...",
+    "ref_id": "answer-2",
+    "quote": "...",
+    "status": "pending"
+  },
+  "messages": [
+    {"id": "msg-...", "role": "user", "content": "...", "sequence": 4, "created_at": "..."}
+  ],
+  "match": {
+    "message_id": "msg-...",
+    "sequence": 4,
+    "role": "user",
+    "strategy": "ref_id",
+    "contains_quote": true,
+    "quote": "...",
+    "quote_start": 0,
+    "quote_end": 20,
+    "score": 1
+  },
+  "note": "..."
+}
+```
+
+`match` может быть `null`; `quote_start/quote_end` — rune offsets для подсветки.
+
+### #12 Cost/Time Estimate
+
+До старта:
+
+```http
+GET /api/v1/runs/estimate?profession=Data%20Analyst&type=chat
+```
+
+Роли: `admin`, `teacher`, `rop`.
+
+```json
+{
+  "profession": "Data Analyst",
+  "type": "chat",
+  "sample_size": 3,
+  "estimated_tokens": 4200,
+  "estimated_duration_seconds": 180,
+  "estimated_cost_usd": null,
+  "confidence": "low | medium | high",
+  "method": "profession_history | partial_history | global_history | defaults"
+}
+```
+
+После прогона:
+
+```http
+GET /api/v1/runs/{id}/cost
+```
+
+Роли: как `GET /runs/{id}`.
+
+```json
+{
+  "run_id": "...",
+  "profession": "Data Analyst",
+  "type": "chat",
+  "status": "done",
+  "started_at": "...",
+  "finished_at": "...",
+  "duration_seconds": 142,
+  "request_count": 7,
+  "prompt_tokens": 1200,
+  "completion_tokens": 800,
+  "total_tokens": 2000,
+  "cost_usd": null,
+  "by_model": [],
+  "by_agent": [],
+  "status_counts": [],
+  "attribution": "run_id | time_window | none",
+  "attribution_ambiguous": false,
+  "estimate": {}
+}
+```
+
+`cost_usd` может быть `null`, если провайдер не отдал стоимость; это честное «неизвестно».
+
+## 3. Что осталось фронту (Миша)
+
+1. Вкладка/блок Insights: provenance, health, flags, market heat, coverage.
+2. Бейдж provenance у узла.
+3. Панель «Почему этот узел здесь» на `node_explanations`.
+4. Health badge + разбивка.
+5. Red Flags фильтр.
+6. Snapshot Story: `story`/`story_lines` + copy.
+7. Evidence → transcript: `match.message_id`, `sequence`, `quote_start/quote_end`.
+8. Review progress + hotkeys.
+9. Market heat overlay.
+10. Coverage matrix + CSV download.
+11. Auto-ZUN suggestions/apply.
+12. Run-to-run compare page.
+13. Cost estimate before start + actual after.
+
+## 4. Остаток вне фич наставника
+
+- UI конфликтов (`GET /runs/{id}/conflicts`) — фронт.
+- Active SSE через `fetch` с Authorization — фронт.
+- Docker full backend `cmd/server` — backend/service.
+- Реальный корпоративный SMTP + постоянный HTTPS webhook — внешние доступы.
+- Production ops: TLS, Alertmanager, HA, retention.
+- Batch UI: `type=batch` + transcript.
+- HH token refresh.
+- Multi-source extraction limits (~2000 символов на источник, +1 LLM call на источник).
 
 ## 5. Проверки
 
 - `go test ./...` — зелёный.
+- `go vet ./...` — зелёный.
 - `python scripts/check_deploy.py` — `deploy config OK`.
-- `python scripts/demo_preflight.py` — `READY` (после рестарта backend проверить LLM env).
-- `go run ./cmd/live-eval -env-file .secrets/llm.env` — 2/2 live.
+- OpenAPI: 36 paths / 45 operations, 0 unresolved refs, 272 examples valid.
+- Live API проверены на `d619…`: insights (health 97), coverage JSON/CSV, compare 200, review progress, ZUN, evidence context, estimate, cost.

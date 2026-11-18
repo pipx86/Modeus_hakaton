@@ -16,6 +16,7 @@ import (
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/embeddings"
 	"activity-descriptor/internal/llm"
+	"activity-descriptor/internal/llmobs"
 	"activity-descriptor/internal/search"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -112,6 +113,9 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 	if deps.store == nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: store is required")
 	}
+	// Every LLM call of the finalizer (analyst and best-effort ZUN enrichment)
+	// is made for this run, so the recorder attributes llm_requests to it.
+	ctx = llmobs.WithRunID(ctx, runID)
 	transcript := transcriptFromSession(session)
 	setFinalizeStage(deps.store, runID, domain.StageAnalysis)
 

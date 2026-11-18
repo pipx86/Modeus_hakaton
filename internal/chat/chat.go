@@ -18,6 +18,7 @@ import (
 	"activity-descriptor/internal/agent/interviewer"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/llm"
+	"activity-descriptor/internal/llmobs"
 )
 
 // Citation is an optional reference attached to an agent message. The field is
@@ -325,6 +326,10 @@ func (s *Service) askNext(runID string, sess *session) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
+	// Name the run in the audit context, so the LLM request rows written by
+	// llmobs.Recorder carry llm_requests.run_id and the run cost endpoint can
+	// attribute the interviewer calls exactly.
+	ctx = llmobs.WithRunID(ctx, runID)
 
 	sess.mu.Lock()
 	question, err := sess.session.Next(ctx)
@@ -355,6 +360,9 @@ func (s *Service) complete(runID, profession string, state domain.InterviewSessi
 	status := domain.RunDone
 	if s.finalizer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		// The finalizer makes the analyst (and optional ZUN) LLM calls; the run
+		// id in the context attributes them to this run.
+		ctx = llmobs.WithRunID(ctx, runID)
 		finalStatus, err := s.finalizer(ctx, runID, profession, state)
 		cancel()
 		if err != nil {

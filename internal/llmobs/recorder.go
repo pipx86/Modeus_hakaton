@@ -35,6 +35,8 @@ func NewRecorder(next llm.ChatClient, store RecordStore, agent, provider, model 
 }
 
 // Chat records the request before the provider call and the response after it.
+// The run id attached to ctx with WithRunID is stored as llm_requests.run_id,
+// so the request is attributed to that run; without it the column stays NULL.
 // Audit failures never change the model answer: observability is best effort.
 func (r *Recorder) Chat(ctx context.Context, messages []llm.Message) (string, error) {
 	if r == nil || r.Next == nil {
@@ -44,6 +46,7 @@ func (r *Recorder) Chat(ctx context.Context, messages []llm.Message) (string, er
 	traceID := randomHex(16)
 	requestID, auditErr := r.Store.CreateRequest(ctx, Request{
 		TraceID:     traceID,
+		RunID:       RunIDFromContext(ctx),
 		Agent:       r.Agent,
 		Provider:    r.Provider,
 		Model:       r.Model,

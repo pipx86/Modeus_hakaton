@@ -11,6 +11,7 @@ import (
 	"activity-descriptor/internal/agent/synthesizer"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/llm"
+	"activity-descriptor/internal/llmobs"
 )
 
 // Data keys used by the AI batch steps. run.Data is ephemeral: it exists only
@@ -70,6 +71,10 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	if err != nil {
 		return fmt.Errorf("agent analysis step: analyst: %w", err)
 	}
+	// Attribute every analyst LLM request to this batch run, so
+	// llm_requests.run_id is populated for the run cost endpoint instead of
+	// depending on a time-window guess.
+	ctx = llmobs.WithRunID(ctx, run.ID)
 	analysis, err := agentInstance.Analyze(ctx, agent.AnalystInput{
 		SessionID:  run.ID,
 		Profession: run.Profession,

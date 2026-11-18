@@ -33,8 +33,16 @@ import (
 //	  "removed": [domain.Node, …],   // узлы только в base, отсортированы по id
 //	  "changed": [{"id": "…", "before": domain.Node, "after": domain.Node,
 //	               "fields": ["title", "description", "evidence"]}],
-//	  "summary": {"added": 0, "removed": 0, "changed": 1}
+//	  "summary": {"added": 0, "removed": 0, "changed": 1},
+//	  "story": "Узлов добавлено: 0, удалено: 0, изменено: 1. Изменён узел «Отчёт»: подтверждения.",
+//	  "story_lines": ["Узлов добавлено: 0, удалено: 0, изменено: 1.", "Изменён узел «Отчёт»: подтверждения."]
 //	}
+//
+// `story`/`story_lines` — детерминированное человекочитаемое описание diff'а
+// на русском языке (см. comparison_story.go). Количества в заголовке истории
+// всегда совпадают с `summary`; подробности идут в порядке added → removed →
+// changed, внутри категории — по id узла, поля изменения — в порядке
+// title, description, type, parent_id, evidence; длина строки ограничена.
 //
 // Узлы и подтверждения возвращаются в том же виде, что и в дереве
 // исследования (domain.Node / domain.Evidence), поэтому у каждого evidence
@@ -102,6 +110,14 @@ type snapshotDiffResponse struct {
 	Removed []domain.Node        `json:"removed"`
 	Changed []snapshotNodeChange `json:"changed"`
 	Summary snapshotDiffSummary  `json:"summary"`
+	// Story — одна строка человекочитаемого описания diff'а на русском языке.
+	// Строится хендлером из тех же Added/Removed/Changed через общий с
+	// run-to-run сравнением helper buildComparisonStory (comparison_story.go).
+	Story string `json:"story"`
+	// StoryLines — то же описание построчно: заголовок с количествами и по
+	// строке на каждое изменение; длинные истории обрезаются с пометкой
+	// «Ещё изменений: N.».
+	StoryLines []string `json:"story_lines"`
 }
 
 // snapshotTreeDocument — формат столбца snapshots.tree (см.
@@ -459,5 +475,10 @@ func (s *Server) handleSnapshotDiff(w http.ResponseWriter, r *http.Request) {
 		snapshotDiffError(w, err)
 		return
 	}
+	// Story строится на HTTP-слое, а не в хранилище: репозиторий отдаёт только
+	// структурированный diff, а человекочитаемое описание собирается общим
+	// helper'ом (тем же, что использует run-to-run comparison), поэтому старые
+	// реализации snapshotDiffer не обязаны его знать.
+	result.Story, result.StoryLines = buildComparisonStory(result.Added, result.Removed, result.Changed)
 	writeJSON(w, http.StatusOK, result)
 }
