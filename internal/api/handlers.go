@@ -97,6 +97,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
+	mux.HandleFunc("POST /api/v1/sources/upload", s.handleUploadSource)
 	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
 	mux.HandleFunc("GET /api/v1/sources/{id}", s.handleGetSource)
 	mux.HandleFunc("GET /api/v1/evidences", s.handleListEvidences)

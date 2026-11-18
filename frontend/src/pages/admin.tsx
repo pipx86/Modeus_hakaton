@@ -21,10 +21,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { Sparkline } from "@/components/charts"
-import { apiBaseUrl, apiClient, apiToken, type Run, type SourceType } from "@/lib/api/client"
+import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
 import {
   averageHistogramMs,
@@ -125,7 +124,8 @@ export function Admin() {
   const [sources, setSources] = useState<AdminSource[]>([])
   const [sourceType, setSourceType] = useState("document")
   const [sourceTitle, setSourceTitle] = useState("")
-  const [sourceContent, setSourceContent] = useState("")
+  const [sourceFile, setSourceFile] = useState<File | null>(null)
+  const [sourceFileKey, setSourceFileKey] = useState(0)
   const [sourceSaving, setSourceSaving] = useState(false)
 
   const session = (() => {
@@ -224,29 +224,37 @@ export function Admin() {
 
   const addSource = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmed = sourceTitle.trim()
-    if (!trimmed || sourceSaving) return
+    if (!sourceFile || sourceSaving) return
     setSourceSaving(true)
     try {
-      const { data, error } = await apiClient.POST("/sources", {
-        body: {
-          type: sourceType as SourceType,
-          title: trimmed,
-          content: sourceContent.trim() || undefined,
-        },
+      const form = new FormData()
+      form.append("file", sourceFile)
+      form.append("type", sourceType)
+      if (sourceTitle.trim()) form.append("title", sourceTitle.trim())
+
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/sources/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
       })
-      if (error) {
-        toast.error("Не удалось добавить материал", { description: error.message })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null
+        toast.error("Не удалось загрузить файл", {
+          description: payload?.message ?? `HTTP ${response.status}`,
+        })
         return
       }
+      const created = (await response.json()) as AdminSource
       setSourceTitle("")
-      setSourceContent("")
-      if (data) setSources((prev) => [data, ...prev])
-      toast.success("Материал добавлен", {
+      setSourceFile(null)
+      setSourceFileKey((value) => value + 1)
+      setSources((prev) => [created, ...prev])
+      toast.success("Материал загружен", {
         description: "Аналитик будет учитывать его в следующих прогонах.",
       })
     } catch {
-      toast.error("Сервер недоступен", { description: "Материал не добавлен." })
+      toast.error("Сервер недоступен", { description: "Файл не загружен." })
     } finally {
       setSourceSaving(false)
     }
@@ -669,8 +677,8 @@ export function Admin() {
         <CardHeader>
           <CardTitle className="text-base">Материалы для аналитика</CardTitle>
           <CardDescription>
-            Документы, вакансии и профстандарты, на которые агент аналитик опирается при разборе
-            интервью. Доступны всем новым прогонам.
+            Загрузите PDF, DOCX или текстовый файл — текст извлечётся автоматически. Материалы
+            доступны всем новым прогонам, аналитик опирается на них при разборе интервью.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -692,28 +700,31 @@ export function Admin() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="material-title">Название</Label>
+                <Label htmlFor="material-title">Название (необязательно)</Label>
                 <Input
                   id="material-title"
                   value={sourceTitle}
                   onChange={(event) => setSourceTitle(event.target.value)}
-                  placeholder="Например: Профстандарт аналитика данных"
+                  placeholder="По умолчанию — имя файла"
                   maxLength={200}
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="material-content">Содержимое</Label>
-              <Textarea
-                id="material-content"
-                value={sourceContent}
-                onChange={(event) => setSourceContent(event.target.value)}
-                placeholder="Текст документа, вакансии или стандарта…"
-                rows={3}
+              <Label htmlFor="material-file">Файл</Label>
+              <Input
+                key={sourceFileKey}
+                id="material-file"
+                type="file"
+                accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json"
+                onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
               />
+              <p className="text-xs text-muted-foreground">
+                PDF, DOCX, TXT, MD, CSV или JSON · до 20 МБ. Текст извлекается автоматически.
+              </p>
             </div>
-            <Button type="submit" size="sm" disabled={!sourceTitle.trim() || sourceSaving}>
-              {sourceSaving ? "Добавление…" : "Добавить материал"}
+            <Button type="submit" size="sm" disabled={!sourceFile || sourceSaving}>
+              {sourceSaving ? "Загрузка…" : "Загрузить файл"}
             </Button>
           </form>
 

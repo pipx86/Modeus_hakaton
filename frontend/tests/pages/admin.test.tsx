@@ -117,10 +117,9 @@ describe("админка", () => {
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
   })
 
-  it("добавляет и удаляет материал для аналитика", async () => {
+  it("загружает файл материала и удаляет его", async () => {
     storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
     let created = false
-    let postedTitle = ""
 
     setFetchHandler(async (url, init) => {
       const method = init?.method ?? "GET"
@@ -132,14 +131,12 @@ describe("админка", () => {
       if (url.endsWith("/api/v1/sources") && method === "GET") {
         return {
           status: 200,
-          body: created ? [{ id: "s-2", type: "document", title: postedTitle }] : [],
+          body: created ? [{ id: "s-2", type: "document", title: "role" }] : [],
         }
       }
-      if (url.endsWith("/api/v1/sources") && method === "POST") {
-        const body = JSON.parse(String(init.body)) as { title: string }
-        postedTitle = body.title
+      if (url.endsWith("/api/v1/sources/upload") && method === "POST") {
         created = true
-        return { status: 201, body: { id: "s-2", type: "document", title: body.title } }
+        return { status: 201, body: { id: "s-2", type: "document", title: "role" } }
       }
       if (url.includes("/api/v1/sources/s-2") && method === "DELETE") {
         created = false
@@ -151,20 +148,17 @@ describe("админка", () => {
     renderAdmin()
 
     expect(await screen.findByText("Материалов пока нет.")).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("Название"), {
-      target: { value: "Профстандарт аналитика" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Добавить материал" }))
+    expect(screen.getByRole("button", { name: "Загрузить файл" })).toBeDisabled()
 
-    expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
-    expect(postedTitle).toBe("Профстандарт аналитика")
+    const file = new File(["# Роль\nТекст документа"], "role.md", { type: "text/markdown" })
+    fireEvent.change(screen.getByLabelText("Файл"), { target: { files: [file] } })
+    fireEvent.click(screen.getByRole("button", { name: "Загрузить файл" }))
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Удалить материал Профстандарт аналитика" }),
-    )
-    await waitFor(() =>
-      expect(screen.queryByText("Профстандарт аналитика")).not.toBeInTheDocument(),
-    )
+    expect(await screen.findByText("role")).toBeInTheDocument()
+    expect(fetchCalls().some((call) => call.url.endsWith("/api/v1/sources/upload"))).toBe(true)
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить материал role" }))
+    await waitFor(() => expect(screen.queryByText("role")).not.toBeInTheDocument())
   })
 
   it("фильтрует LLM-запросы по агенту", async () => {

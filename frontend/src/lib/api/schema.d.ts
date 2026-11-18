@@ -45,6 +45,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sources/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a document as a source
+         * @description Extracts text from PDF, DOCX, TXT, MD, CSV or JSON and stores it as a global source that the analyst can use in new runs. The title defaults to the file name; the type defaults to `document`.
+         */
+        post: operations["uploadSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sources/{id}": {
         parameters: {
             query?: never;
@@ -1104,6 +1124,50 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    uploadSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description Document to extract text from (max 20 MB).
+                     */
+                    file: string;
+                    /** @description Optional display title; defaults to the file name. */
+                    title?: string;
+                    type?: components["schemas"]["SourceType"];
+                };
+            };
+        };
+        responses: {
+            /** @description Created source with extracted text. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description File is larger than 20 MB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             500: components["responses"]["InternalError"];
         };
     };
