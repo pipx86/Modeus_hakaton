@@ -26,7 +26,7 @@ export function RunStageStepper({ stage, failed }: { stage?: Run["stage"]; faile
 
   return (
     <ol
-      className="flex flex-wrap items-center gap-x-1 gap-y-1.5 text-xs"
+      className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1.5 text-xs"
       aria-label="Этапы исследования"
     >
       {RUN_STAGES.map((step, index) => {
