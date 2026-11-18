@@ -31,7 +31,7 @@ export function Admin() {
   const [users, setUsers] = useState<DemoUser[]>([])
   const [runs, setRuns] = useState<Run[]>([])
   const [health, setHealth] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(isAdmin)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const session = (() => {
@@ -40,13 +40,9 @@ export function Admin() {
   })()
 
   useEffect(() => {
-    if (!isAdmin) {
-      setLoading(false)
-      return
-    }
+    if (!isAdmin) return
     let cancelled = false
     const load = async () => {
-      setLoading(true)
       const [usersResponse, runsResponse, healthResponse] = await Promise.all([
         apiClient.GET("/users"),
         apiClient.GET("/runs"),

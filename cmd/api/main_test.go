@@ -130,13 +130,13 @@ func TestChatFlowWithJWT(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &messages); err != nil {
 			t.Fatalf("decode messages: %v", err)
 		}
-		if len(messages) > 0 || time.Now().After(deadline) {
+		if len(messages) >= 2 || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if len(messages) == 0 {
-		t.Fatal("expected the fallback interviewer to ask a question")
+	if len(messages) < 2 {
+		t.Fatal("expected a greeting and the fallback interviewer question")
 	}
 	if messages[0].Role != "agent" || messages[0].Content == "" {
 		t.Fatalf("first message = %+v, want a non-empty agent question", messages[0])
