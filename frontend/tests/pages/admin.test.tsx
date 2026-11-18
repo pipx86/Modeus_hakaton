@@ -39,6 +39,12 @@ function stubAdminData() {
     if (url.endsWith("/api/v1/health")) {
       return { status: 200, body: { status: "ok" } }
     }
+    if (url.endsWith("/api/v1/sources")) {
+      return {
+        status: 200,
+        body: [{ id: "s-1", type: "document", title: "Профстандарт аналитика" }],
+      }
+    }
     if (url.includes("/api/v1/llm/usage")) {
       return {
         status: 200,
@@ -104,6 +110,8 @@ describe("админка", () => {
     expect(screen.getByText("HTTP 5xx")).toBeInTheDocument()
     expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
     expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
+    expect(screen.getByText("Материалы для аналитика")).toBeInTheDocument()
+    expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
     expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
   })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   ActivityIcon,
@@ -12,11 +12,14 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { Sparkline } from "@/components/charts"
-import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
+import { apiBaseUrl, apiClient, apiToken, type Run, type SourceType } from "@/lib/api/client"
 import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
 import {
   averageHistogramMs,
@@ -50,6 +53,20 @@ interface ModelUsage {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+}
+
+interface AdminSource {
+  id: string
+  type: string
+  title: string
+  content?: string
+}
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  vacancy: "Вакансия",
+  interview: "Интервью",
+  standard: "Профстандарт",
+  document: "Документ",
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -96,9 +113,15 @@ export function Admin() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [llmRequests, setLlmRequests] = useState<LlmRequest[]>([])
   const [llmUsage, setLlmUsage] = useState<ModelUsage[]>([])
+  const [llmUsageError, setLlmUsageError] = useState(false)
   const [llmLoading, setLlmLoading] = useState(false)
   const [agentFilter, setAgentFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [sources, setSources] = useState<AdminSource[]>([])
+  const [sourceType, setSourceType] = useState("document")
+  const [sourceTitle, setSourceTitle] = useState("")
+  const [sourceContent, setSourceContent] = useState("")
+  const [sourceSaving, setSourceSaving] = useState(false)
 
   const session = (() => {
     const token = getValidToken()
@@ -121,7 +144,7 @@ export function Admin() {
     await Promise.resolve()
     setLlmLoading(true)
     try {
-      const params = new URLSearchParams({ limit: "50" })
+      const params = new URLSearchParams({ limit: "20" })
       if (agentFilter !== "all") params.set("agent", agentFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
       const token = getValidToken() ?? apiToken
@@ -141,12 +164,15 @@ export function Admin() {
       if (usageResponse.ok) {
         const payload = (await usageResponse.json()) as { items?: ModelUsage[] }
         setLlmUsage(payload.items ?? [])
+        setLlmUsageError(false)
       } else {
         setLlmUsage([])
+        setLlmUsageError(true)
       }
     } catch {
       setLlmRequests([])
       setLlmUsage([])
+      setLlmUsageError(true)
     } finally {
       setLlmLoading(false)
     }
@@ -156,15 +182,17 @@ export function Admin() {
     if (!isAdmin) return
     let cancelled = false
     const load = async () => {
-      const [usersResponse, runsResponse, healthResponse] = await Promise.all([
+      const [usersResponse, runsResponse, healthResponse, sourcesResponse] = await Promise.all([
         apiClient.GET("/users"),
         apiClient.GET("/runs"),
         apiClient.GET("/health"),
+        apiClient.GET("/sources"),
       ])
       await loadMetrics()
       if (cancelled) return
       if (usersResponse.data) setUsers(usersResponse.data)
       if (runsResponse.data) setRuns(runsResponse.data)
+      if (sourcesResponse.data) setSources(sourcesResponse.data)
       setHealth(healthResponse.data?.status ?? "недоступен")
       setLoading(false)
     }
@@ -187,6 +215,50 @@ export function Admin() {
     await loadMetrics()
     await loadLlmRequests()
     setRefreshing(false)
+  }
+
+  const addSource = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const trimmed = sourceTitle.trim()
+    if (!trimmed || sourceSaving) return
+    setSourceSaving(true)
+    try {
+      const { data, error } = await apiClient.POST("/sources", {
+        body: {
+          type: sourceType as SourceType,
+          title: trimmed,
+          content: sourceContent.trim() || undefined,
+        },
+      })
+      if (error) {
+        toast.error("Не удалось добавить материал", { description: error.message })
+        return
+      }
+      setSourceTitle("")
+      setSourceContent("")
+      if (data) setSources((prev) => [data, ...prev])
+      toast.success("Материал добавлен", {
+        description: "Аналитик будет учитывать его в следующих прогонах.",
+      })
+    } catch {
+      toast.error("Сервер недоступен", { description: "Материал не добавлен." })
+    } finally {
+      setSourceSaving(false)
+    }
+  }
+
+  const removeSource = async (sourceId: string) => {
+    try {
+      const { error } = await apiClient.DELETE("/sources/{id}", { params: { path: { id: sourceId } } })
+      if (error) {
+        toast.error("Не удалось удалить материал", { description: error.message })
+        return
+      }
+      setSources((prev) => prev.filter((item) => item.id !== sourceId))
+      toast.success("Материал удалён")
+    } catch {
+      toast.error("Сервер недоступен", { description: "Материал не удалён." })
+    }
   }
 
   const removeRun = async (run: Run) => {
@@ -277,6 +349,12 @@ export function Admin() {
     return { min, max, avg }
   }, [llmLatencies])
 
+  const tokenStats = useMemo(() => {
+    const total = llmUsage.reduce((sum, item) => sum + item.total_tokens, 0)
+    const requests = llmUsage.reduce((sum, item) => sum + item.requests, 0)
+    return { total, requests }
+  }, [llmUsage])
+
   const routeStats = useMemo(() => {
     const map = new Map<
       string,
@@ -358,7 +436,7 @@ export function Admin() {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi label="Исследования" value={String(stats.total)} hint={`в работе: ${stats.running}`} />
         <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
         <Kpi
@@ -376,74 +454,16 @@ export function Admin() {
           value={formatMs(stats.apiLatency)}
           hint={stats.runLatency !== null ? `прогон: ${formatMs(stats.runLatency)}` : "без учёта SSE"}
         />
+        <Kpi
+          label="Токенов за 24 часа"
+          value={llmUsageError ? "—" : tokenStats.total.toLocaleString("ru-RU")}
+          hint={
+            llmUsageError
+              ? "нет доступа к расходу"
+              : `${tokenStats.requests.toLocaleString("ru-RU")} запросов к моделям`
+          }
+        />
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <UsersIcon className="size-4 shrink-0" />
-            Пользователи
-          </CardTitle>
-          <CardDescription>Демонстрационные учётные записи и их права.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : (
-            <ul className="divide-y">
-              {users.map((user) => (
-                <li key={user.subject} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="font-medium">{user.subject}</span>
-                  <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                    {ROLE_LABEL[user.role] ?? user.role}
-                  </Badge>
-                  {user.read_only && (
-                    <span className="text-xs text-muted-foreground">только чтение</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Исследования</CardTitle>
-          <CardDescription>Всего: {runs.length}. Удаление необратимо.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Исследований нет.</p>
-          ) : (
-            <ul className="divide-y">
-              {runs.map((run) => (
-                <li key={run.id} className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <Link to={`/research/${run.id}`} className="block truncate font-medium hover:underline">
-                      {run.profession}
-                    </Link>
-                  </div>
-                  <StatusBadge status={run.status} />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Удалить исследование ${run.profession}`}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    disabled={deletingId === run.id}
-                    onClick={() => void removeRun(run)}
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
@@ -451,7 +471,7 @@ export function Admin() {
             <ActivityIcon className="size-4 shrink-0" />
             LLM-запросы
           </CardTitle>
-          <CardDescription>Последние обращения к модели: статус, латентность, ошибки.</CardDescription>
+          <CardDescription>Последние 20 обращений к модели: статус, латентность, ошибки.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -527,7 +547,47 @@ export function Admin() {
           )}
         </CardContent>
       </Card>
-
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Токены по моделям</CardTitle>
+          <CardDescription>Расход за последние 24 часа: запросы и токены.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {llmUsageError ? (
+            <p className="text-sm text-destructive">
+              Не удалось загрузить расход токенов. Проверьте, что вы вошли с ролью admin и бэкенд
+              отвечает на /api/v1/llm/usage.
+            </p>
+          ) : llmUsage.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Данных о расходе пока нет.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Модель</th>
+                    <th className="py-2 pr-3 font-medium">Запросы</th>
+                    <th className="py-2 pr-3 font-medium">Промпт</th>
+                    <th className="py-2 pr-3 font-medium">Ответ</th>
+                    <th className="py-2 font-medium">Всего токенов</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {llmUsage.map((usage) => (
+                    <tr key={usage.model} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3 font-mono text-xs">{usage.model}</td>
+                      <td className="py-2 pr-3">{usage.requests}</td>
+                      <td className="py-2 pr-3">{usage.prompt_tokens.toLocaleString("ru-RU")}</td>
+                      <td className="py-2 pr-3">{usage.completion_tokens.toLocaleString("ru-RU")}</td>
+                      <td className="py-2 font-medium">{usage.total_tokens.toLocaleString("ru-RU")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Латентность LLM</CardTitle>
@@ -546,7 +606,6 @@ export function Admin() {
           )}
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Ошибки LLM</CardTitle>
@@ -567,7 +626,115 @@ export function Admin() {
           )}
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Метрики агентов</CardTitle>
+          <CardDescription>Вызовы, ошибки и средняя латентность по агентам.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {agents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Метрик агентов пока нет.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Агент</th>
+                    <th className="py-2 pr-3 font-medium">Вызовы</th>
+                    <th className="py-2 pr-3 font-medium">Ошибки</th>
+                    <th className="py-2 font-medium">Средняя латентность</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agents.map((agent) => (
+                    <tr key={agent.agent} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3">{agent.agent}</td>
+                      <td className="py-2 pr-3">{agent.calls}</td>
+                      <td className="py-2 pr-3">{agent.errors}</td>
+                      <td className="py-2">{formatMs(agent.avgMs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Материалы для аналитика</CardTitle>
+          <CardDescription>
+            Документы, вакансии и профстандарты, на которые агент аналитик опирается при разборе
+            интервью. Доступны всем новым прогонам.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={addSource} className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+              <div className="space-y-2">
+                <Label htmlFor="material-type">Тип</Label>
+                <Select value={sourceType} onValueChange={setSourceType}>
+                  <SelectTrigger id="material-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SOURCE_TYPE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="material-title">Название</Label>
+                <Input
+                  id="material-title"
+                  value={sourceTitle}
+                  onChange={(event) => setSourceTitle(event.target.value)}
+                  placeholder="Например: Профстандарт аналитика данных"
+                  maxLength={200}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="material-content">Содержимое</Label>
+              <Textarea
+                id="material-content"
+                value={sourceContent}
+                onChange={(event) => setSourceContent(event.target.value)}
+                placeholder="Текст документа, вакансии или стандарта…"
+                rows={3}
+              />
+            </div>
+            <Button type="submit" size="sm" disabled={!sourceTitle.trim() || sourceSaving}>
+              {sourceSaving ? "Добавление…" : "Добавить материал"}
+            </Button>
+          </form>
 
+          {sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Материалов пока нет.</p>
+          ) : (
+            <ul className="divide-y">
+              {sources.map((source) => (
+                <li key={source.id} className="flex items-center gap-3 py-3 text-sm">
+                  <Badge variant="secondary">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</Badge>
+                  <span className="min-w-0 flex-1 truncate">{source.title}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Удалить материал ${source.title}`}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => void removeSource(source.id)}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">HTTP по маршрутам</CardTitle>
@@ -604,79 +771,71 @@ export function Admin() {
           )}
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Токены по моделям</CardTitle>
-          <CardDescription>Расход за последние 24 часа: запросы и токены.</CardDescription>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <UsersIcon className="size-4 shrink-0" />
+            Пользователи
+          </CardTitle>
+          <CardDescription>Демонстрационные учётные записи и их права.</CardDescription>
         </CardHeader>
         <CardContent>
-          {llmUsage.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Данных о расходе пока нет.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs text-muted-foreground">
-                  <tr className="border-b">
-                    <th className="py-2 pr-3 font-medium">Модель</th>
-                    <th className="py-2 pr-3 font-medium">Запросы</th>
-                    <th className="py-2 pr-3 font-medium">Промпт</th>
-                    <th className="py-2 pr-3 font-medium">Ответ</th>
-                    <th className="py-2 font-medium">Всего токенов</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {llmUsage.map((usage) => (
-                    <tr key={usage.model} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3 font-mono text-xs">{usage.model}</td>
-                      <td className="py-2 pr-3">{usage.requests}</td>
-                      <td className="py-2 pr-3">{usage.prompt_tokens.toLocaleString("ru-RU")}</td>
-                      <td className="py-2 pr-3">{usage.completion_tokens.toLocaleString("ru-RU")}</td>
-                      <td className="py-2 font-medium">{usage.total_tokens.toLocaleString("ru-RU")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {loading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
             </div>
+          ) : (
+            <ul className="divide-y">
+              {users.map((user) => (
+                <li key={user.subject} className="flex flex-wrap items-center gap-3 py-3">
+                  <span className="font-medium">{user.subject}</span>
+                  <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                    {ROLE_LABEL[user.role] ?? user.role}
+                  </Badge>
+                  {user.read_only && (
+                    <span className="text-xs text-muted-foreground">только чтение</span>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Метрики агентов</CardTitle>
-          <CardDescription>Вызовы, ошибки и средняя латентность по агентам.</CardDescription>
+          <CardTitle className="text-base">Исследования</CardTitle>
+          <CardDescription>Всего: {runs.length}. Удаление необратимо.</CardDescription>
         </CardHeader>
         <CardContent>
-          {agents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Метрик агентов пока нет.</p>
+          {runs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Исследований нет.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs text-muted-foreground">
-                  <tr className="border-b">
-                    <th className="py-2 pr-3 font-medium">Агент</th>
-                    <th className="py-2 pr-3 font-medium">Вызовы</th>
-                    <th className="py-2 pr-3 font-medium">Ошибки</th>
-                    <th className="py-2 font-medium">Средняя латентность</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agents.map((agent) => (
-                    <tr key={agent.agent} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{agent.agent}</td>
-                      <td className="py-2 pr-3">{agent.calls}</td>
-                      <td className="py-2 pr-3">{agent.errors}</td>
-                      <td className="py-2">{formatMs(agent.avgMs)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="divide-y">
+              {runs.map((run) => (
+                <li key={run.id} className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <Link to={`/research/${run.id}`} className="block truncate font-medium hover:underline">
+                      {run.profession}
+                    </Link>
+                  </div>
+                  <StatusBadge status={run.status} />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Удалить исследование ${run.profession}`}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    disabled={deletingId === run.id}
+                    onClick={() => void removeRun(run)}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Состояние сервиса</CardTitle>
