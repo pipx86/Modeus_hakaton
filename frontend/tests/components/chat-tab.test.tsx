@@ -2,6 +2,7 @@
  * Тесты вкладки чата: история, отправка, индикатор «агент думает», обрыв SSE
  * и переход на поллинг. Сеть подменяется fetch-стабом, EventSource — фейком.
  */
+import { StrictMode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
@@ -106,6 +107,21 @@ describe("ChatTab", () => {
     )
     expect(post).toBeDefined()
     expect(JSON.parse(String(post!.init.body))).toEqual({ content: "Анализирую данные" })
+  })
+
+  it("не теряет ответ пользователя в StrictMode", async () => {
+    stubChat()
+    render(
+      <StrictMode>
+        <ChatTab runId="7" active />
+      </StrictMode>,
+    )
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Ответ в StrictMode" } })
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }))
+
+    expect(await screen.findByText("Ответ в StrictMode")).toBeInTheDocument()
   })
 
   it("не отправляет пустой ответ", async () => {

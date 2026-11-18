@@ -28,12 +28,10 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
     // Бэкенд может вернуть объект ошибки вместо массива — не роняем вкладку.
     if (!Array.isArray(incoming)) return
-    setMessages((prev) => {
-      const fresh = incoming.filter((message) => !knownIds.current.has(message.id))
-      if (fresh.length === 0) return prev
-      for (const message of fresh) knownIds.current.add(message.id)
-      return [...prev, ...fresh]
-    })
+    const fresh = incoming.filter((message) => !knownIds.current.has(message.id))
+    if (fresh.length === 0) return
+    for (const message of fresh) knownIds.current.add(message.id)
+    setMessages((prev) => [...prev, ...fresh])
   }, [])
 
   const loadHistory = useCallback(async () => {
@@ -57,6 +55,12 @@ export function ChatTab({ runId, active, runStatus }: ChatTabProps) {
       setLoading(false)
     }
   }, [runId, appendMessages])
+
+  useEffect(() => {
+    // Новый прогон — новый чат: старые id не должны блокировать загрузку истории.
+    knownIds.current = new Set()
+    setMessages([])
+  }, [runId])
 
   useEffect(() => {
     // История загружается из API; состояние обновляется асинхронно после ответа.
