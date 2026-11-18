@@ -1,2 +1,47 @@
-bin/\n*.exe\n*.test\ncoverage.out\ncoverage-db.out\ncoverage-db-unit.out\ne2e-output.json\n.env\n.env.*\n!.env.example\ngo.work\ngo.work.sum\nnode_modules/\ndata/acceptance/\ndata/reports/\nlogs/\n
+# --- Go / build artifacts ---
+bin/
+*.exe
+*.test
+coverage.out
+coverage-db.out
+coverage-db-unit.out
+e2e-output.json
+
+# --- Environment and secrets ---
+.env
+.env.*
+!.env.example
 .secrets/
+go.work
+go.work.sum
+
+# --- Node / frontend ---
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Generated data ---
+data/acceptance/
+data/reports/
+
+# --- Editors and OS ---
+**/.vscode/*
+!**/.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
