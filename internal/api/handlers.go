@@ -583,7 +583,7 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/{id}/approve [post]
 func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 	id := r.PathValue("id")
@@ -619,7 +619,7 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/{id}/reject [post]
 func (s *Server) handleRejectEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 	id := r.PathValue("id")
@@ -740,7 +740,7 @@ type bulkApproveResponse struct {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/bulk-approve [post]
 func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 

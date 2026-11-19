@@ -217,7 +217,7 @@ func (c *reviewProgressCounts) add(status domain.EvidenceStatus) {
 // @Security     BearerAuth
 // @Router       /api/v1/reviews/evidence/progress [get]
 func (s *Server) handleReviewProgress(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 	runID, err := parseReviewProgressQuery(r.URL.Query())

@@ -77,7 +77,7 @@ export function CompareRuns() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Сравнение прогонов</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Сравнение исследований</h1>
         <p className="text-sm text-muted-foreground">
           Выберите два завершённых исследования, чтобы увидеть, что изменилось в дереве.
         </p>

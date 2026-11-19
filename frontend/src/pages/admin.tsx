@@ -82,6 +82,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
 const ROLE_LABEL: Record<string, string> = {
   admin: "Администратор",
   user: "Пользователь",
+  specialist: "Специалист",
 }
 
 function scoreTextClass(total: number): string {
