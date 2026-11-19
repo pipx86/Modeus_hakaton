@@ -181,7 +181,13 @@ type AgentSynthesisStep struct {
 	// Synthesizer is the deterministic merge agent. A nil value falls back to
 	// the default synthesizer, which keeps direct step construction working.
 	Synthesizer Synthesizer
+	// ZunEnricher optionally fills knowledge/skills/abilities after synthesis.
+	ZunEnricher ZunEnricher
 }
+
+// ZunEnricher adds ZUN to a synthesized tree. It is best-effort: the caller
+// decides whether an enrichment failure should fail the run.
+type ZunEnricher func(ctx context.Context, profession string, nodes []domain.Node) []domain.Node
 
 // Name implements domain.Step.
 func (s *AgentSynthesisStep) Name() domain.Stage { return domain.StageSynthesis }
@@ -212,6 +218,9 @@ func (s *AgentSynthesisStep) Execute(ctx context.Context, run *domain.Run) error
 	}
 	if run.Data == nil {
 		run.Data = make(map[string]any)
+	}
+	if s.ZunEnricher != nil {
+		out.Tree = s.ZunEnricher(ctx, run.Profession, out.Tree)
 	}
 	run.Data[DataKeyTree] = out.Tree
 	run.Data[DataKeyConflicts] = out.Conflicts

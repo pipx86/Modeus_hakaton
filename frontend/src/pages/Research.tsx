@@ -1084,6 +1084,7 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
+  const [zunCount, setZunCount] = useState<number | null>(null)
   const [view, setView] = useState<"list" | "correlation">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
@@ -1092,6 +1093,32 @@ function TreeTab({
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const treeCorrelation = useMemo(() => buildTreeCorrelation(nodes), [nodes])
+
+  useEffect(() => {
+    if (!id || readOnly || nodes.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setZunCount(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/runs/{id}/zun/suggestions", {
+          params: { path: { id } },
+        })
+        if (!cancelled) {
+          setZunCount(
+            Array.isArray(data) ? data.filter((item) => item.can_apply).length : null,
+          )
+        }
+      } catch {
+        if (!cancelled) setZunCount(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id, nodes, readOnly])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1379,7 +1406,7 @@ function TreeTab({
           onClick={() => setZunOpen(true)}
         >
           <SparklesIcon className="size-3.5" />
-          Предложить ЗУН
+          ЗУН по исследованию{zunCount !== null ? `: ${zunCount}` : ""}
         </Button>
         )}
         <Button
@@ -1521,6 +1548,7 @@ function TreeTab({
         open={zunOpen}
         onOpenChange={setZunOpen}
         onApplied={() => {
+          setZunCount(null)
           void load()
         }}
       />

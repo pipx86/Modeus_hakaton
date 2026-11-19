@@ -179,6 +179,9 @@ func run(ctx context.Context, c config) error {
 		Store:                pgStore,
 		VacancyTopK:          10,
 		AITimeout:            aiStepTimeout(),
+		ZunEnricher: func(ctx context.Context, profession string, nodes []domain.Node) []domain.Node {
+			return enrichZun(ctx, analystClient, profession, nodes)
+		},
 	})
 	logging.Logger.Info("batch pipeline configured",
 		"ai", batchPlan.HasAI(),

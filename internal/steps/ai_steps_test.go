@@ -222,13 +222,24 @@ func TestAgentAnalysisAndSynthesisSteps(t *testing.T) {
 		t.Fatalf("interview_nodes = %#v", run.Data[DataKeyInterviewNodes])
 	}
 
-	synthesis := &AgentSynthesisStep{Synthesizer: newRealSynthesizer(t)}
+	synthesis := &AgentSynthesisStep{
+		Synthesizer: newRealSynthesizer(t),
+		ZunEnricher: func(_ context.Context, _ string, nodes []domain.Node) []domain.Node {
+			for index := range nodes {
+				nodes[index].Zun = &domain.Zun{Knowledge: []string{"Тестовое знание"}}
+			}
+			return nodes
+		},
+	}
 	if err := synthesis.Execute(context.Background(), run); err != nil {
 		t.Fatalf("synthesis: %v", err)
 	}
 	tree, ok := run.Data[DataKeyTree].([]domain.Node)
 	if !ok || len(tree) == 0 {
 		t.Fatalf("tree = %#v", run.Data[DataKeyTree])
+	}
+	if tree[0].Zun == nil || len(tree[0].Zun.Knowledge) == 0 {
+		t.Fatalf("ZUN enricher was not applied: %#v", tree[0])
 	}
 	if _, ok := run.Data[DataKeyConflicts].([]domain.Conflict); !ok {
 		t.Fatalf("conflicts = %#v", run.Data[DataKeyConflicts])
