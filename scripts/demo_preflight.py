@@ -826,8 +826,9 @@ def run_quick_checks(args) -> tuple[list[CheckResult], dict]:
         run_id = completed_run.get("id")
         try:
             response = client.get(f"/api/v1/runs/{run_id}/tree")
-            if response.status == 200 and isinstance(response.json(), list):
-                nodes = response.json()
+            payload = response.json() if response.status == 200 else None
+            nodes = payload.get("nodes", []) if isinstance(payload, dict) else payload
+            if response.status == 200 and isinstance(nodes, list):
                 if nodes:
                     checks.append(
                         CheckResult(
@@ -1203,8 +1204,9 @@ def run_full_pipeline(args, context: dict, checks: list[CheckResult]) -> dict:
     # Tree ------------------------------------------------------------------ #
     try:
         response = client.get(f"/api/v1/runs/{run_id}/tree")
-        if response.status == 200 and isinstance(response.json(), list):
-            nodes = response.json()
+        payload = response.json() if response.status == 200 else None
+        nodes = payload.get("nodes", []) if isinstance(payload, dict) else payload
+        if response.status == 200 and isinstance(nodes, list):
             summary["tree_nodes"] = len(nodes)
             if nodes:
                 checks.append(

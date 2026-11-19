@@ -224,6 +224,9 @@ def fetch_rows(client: ApiClient, include_nodes: bool) -> tuple[list[RunRow], di
                 except DemoAPIError:
                     nodes_by_id[run_id] = None
                 else:
+                    # /tree возвращает {nodes, insights}; старый формат — массив узлов.
+                    if isinstance(tree, dict):
+                        tree = tree.get("nodes")
                     nodes_by_id[run_id] = len(tree) if isinstance(tree, list) else None
             else:
                 nodes_by_id[run_id] = None

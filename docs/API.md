@@ -55,7 +55,8 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 
 | Метод и путь | Назначение | Роли | Основные ответы |
 | --- | --- | --- | --- |
-| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, teacher, rop, guest | 200, 404, 500 || `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
+| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, teacher, rop, guest | 200, 404, 500 |
+| `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
 | `GET /reviews/evidence?status=&limit=&offset=` | Очередь спорных подтверждений для эксперта: `status=pending\|rejected`, `limit` 1..200 (50), `offset` >= 0; пустая страница — `[]` | admin, teacher, rop | 200, 400, 501 |
 | `POST /evidences/{id}/reject` | Отклонить подтверждение (только pending) | admin, teacher | 204, 404, 409 `ALREADY_REJECTED`/`ALREADY_APPROVED` |
 | `GET /evidences/{id}` | Подтверждение + legacy-флаг `approved` | admin, teacher, rop, guest | 200, 404, 501 |
