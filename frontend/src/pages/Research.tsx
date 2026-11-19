@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { normalizeText } from "@/lib/text"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
@@ -1175,7 +1176,7 @@ function TreeTab({
       const text = await response.text()
       downloadText(
         format === "md" ? "run.md" : "run.json",
-        text,
+        normalizeText(text),
         format === "md" ? "text/markdown;charset=utf-8" : "application/json;charset=utf-8",
       )
     } catch {

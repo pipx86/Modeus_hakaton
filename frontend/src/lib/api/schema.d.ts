@@ -486,7 +486,7 @@ export interface paths {
         };
         /**
          * Rule-based ZUN suggestions for a run tree
-         * @description Returns deterministic, rule-based knowledge/skills/abilities suggestions for every node of the run tree, in tree order. No LLM is used: `source` is always `rule`. A node with a non-empty ZUN keeps it untouched — its suggestion lists are empty and `can_apply` is false — while a node without a ZUN always gets a non-empty fallback suggestion for the node type and profession. Expert roles only.
+         * @description Returns deterministic, rule-based knowledge/skills/abilities suggestions for every node of the run tree, in tree order. No LLM is used: `source` is always `rule`. A node with a non-empty ZUN keeps it untouched - its suggestion lists are empty and `can_apply` is false - while a node without a ZUN always gets a non-empty fallback suggestion for the node type and profession. Expert roles only.
          */
         get: operations["listZunSuggestions"];
         put?: never;
@@ -1300,7 +1300,7 @@ export interface components {
         /** @description Market skill frequencies overlaid on the tree. */
         MarketHeat: {
             /**
-             * @description run.skill_freq — persisted/analysed run skill frequencies; vacancy_sources — deterministic extraction from the content of the run's vacancy/standard sources; none — no market data available.
+             * @description run.skill_freq - persisted/analysed run skill frequencies; vacancy_sources - deterministic extraction from the content of the run's vacancy/standard sources; none - no market data available.
              * @enum {string}
              */
             source: "run.skill_freq" | "vacancy_sources" | "none";
@@ -2903,7 +2903,7 @@ export interface operations {
                      *             "NO_CHILDREN"
                      *           ],
                      *           "reasons": [
-                     *             "У узла типа task нет дочерних узлов — уровень не раскрыт, добавьте декомпозицию"
+                     *             "У узла типа task нет дочерних узлов - уровень не раскрыт, добавьте декомпозицию"
                      *           ]
                      *         }
                      *       ],
@@ -2961,7 +2961,7 @@ export interface operations {
                      *       ],
                      *       "node_explanations": {
                      *         "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11": {
-                     *           "summary": "Узел «Собирать требования» (task) включён в дерево по подтверждениям: цитат 2, источников 2, типы источников interview, standard; максимальный приоритет — interview (300).",
+                     *           "summary": "Узел «Собирать требования» (task) включён в дерево по подтверждениям: цитат 2, источников 2, типы источников interview, standard; максимальный приоритет - interview (300).",
                      *           "evidence": [
                      *             {
                      *               "quote": "Каждую неделю я собираю требования у заказчика.",
@@ -2974,7 +2974,7 @@ export interface operations {
                      *           ]
                      *         },
                      *         "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c": {
-                     *           "summary": "Узел «Собирать требования еженедельно» (action) включён в дерево по подтверждениям: цитат 1, источников 1, типы источников interview; максимальный приоритет — interview (300).",
+                     *           "summary": "Узел «Собирать требования еженедельно» (action) включён в дерево по подтверждениям: цитат 1, источников 1, типы источников interview; максимальный приоритет - interview (300).",
                      *           "evidence": [
                      *             {
                      *               "quote": "Каждую неделю я собираю требования у заказчика.",
@@ -3611,7 +3611,7 @@ export interface operations {
                      *
                      *     | Node | Quote | Source | Ref ID | Status |
                      *     | --- | --- | --- | --- | --- |
-                     *     | `node-function` — Аналитика требований | Цитата про анализ требований | `src-interview` (interview) | `ref-function` | approved |
+                     *     | `node-function` - Аналитика требований | Цитата про анализ требований | `src-interview` (interview) | `ref-function` | approved |
                      *
                      *     ## Conflicts
                      *

@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { Sparkline } from "@/components/charts"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
+import { normalizeDashes } from "@/lib/text"
 import {
   averageHistogramMs,
   fetchMetricsText,
@@ -160,14 +161,14 @@ export function Admin() {
 
       if (requestsResponse.ok) {
         const payload = (await requestsResponse.json()) as { items?: LlmRequest[] }
-        setLlmRequests(payload.items ?? [])
+        setLlmRequests(normalizeDashes(payload.items ?? []))
       } else {
         setLlmRequests([])
       }
 
       if (usageResponse.ok) {
         const payload = (await usageResponse.json()) as { items?: ModelUsage[] }
-        setLlmUsage(payload.items ?? [])
+        setLlmUsage(normalizeDashes(payload.items ?? []))
         setLlmUsageError(false)
       } else {
         setLlmUsage([])
@@ -244,7 +245,7 @@ export function Admin() {
         })
         return
       }
-      const created = (await response.json()) as AdminSource
+      const created = normalizeDashes((await response.json()) as AdminSource)
       setSourceTitle("")
       setSourceFile(null)
       setSourceFileKey((value) => value + 1)

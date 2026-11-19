@@ -16,6 +16,7 @@ import { downloadText } from "@/lib/export-tree"
 import { SOURCE_TYPE_LABEL } from "@/lib/status"
 import { NODE_TYPE_LABELS } from "@/components/activity-tree-model"
 import { DownloadIcon, Loader2Icon } from "lucide-react"
+import { normalizeText } from "@/lib/text"
 
 export function CoverageTab({ runId }: { runId: string }) {
   const [coverage, setCoverage] = useState<CoverageResponse | null>(null)
@@ -63,7 +64,7 @@ export function CoverageTab({ runId }: { runId: string }) {
         toast.error("Не удалось скачать CSV", { description: `HTTP ${response.status}` })
         return
       }
-      downloadText("coverage.csv", await response.text(), "text/csv;charset=utf-8")
+      downloadText("coverage.csv", normalizeText(await response.text()), "text/csv;charset=utf-8")
     } catch {
       toast.error("Сервер недоступен", { description: "CSV не скачан." })
     } finally {

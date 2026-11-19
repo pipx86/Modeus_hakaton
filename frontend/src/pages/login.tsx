@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { apiBaseUrl } from "@/lib/api/client"
+import { normalizeText } from "@/lib/text"
 import {
   clearToken,
   decodeToken,
@@ -106,8 +107,12 @@ export function Login() {
       )
       storeToken(result.token)
       if (result.user) {
-        setProfile(result.user)
-        window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(result.user))
+        const profile = {
+          ...result.user,
+          display_name: normalizeText(result.user.display_name),
+        }
+        setProfile(profile)
+        window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile))
       }
       const payload = decodeToken(result.token)
       setSession(payload)
