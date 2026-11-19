@@ -761,13 +761,18 @@ func (s *Service) failSession(sess *session) {
 	s.notifyFinish(sess.runID, domain.RunFailed)
 }
 
+// finalizerTimeout bounds the post-interview analyst/synthesizer pipeline. It
+// is intentionally generous: a long transcript and several source extractions
+// can legitimately take tens of minutes.
+const finalizerTimeout = 60 * time.Minute
+
 func (s *Service) complete(sess *session) {
 	status := domain.RunDone
 	if finalizer := s.finalizerFn(); finalizer != nil {
 		sess.mu.Lock()
 		state := sess.session.State()
 		sess.mu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), finalizerTimeout)
 		// The finalizer makes the analyst (and optional ZUN) LLM calls; the run
 		// id in the context attributes them to this run.
 		ctx = llmobs.WithRunID(ctx, sess.runID)

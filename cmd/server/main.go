@@ -48,6 +48,21 @@ func loadConfig() (config, error) {
 	return c, nil
 }
 
+// aiStepTimeout returns the per-attempt budget of an AI batch step. The
+// default is one hour because analyst extraction can span many sources.
+func aiStepTimeout() time.Duration {
+	const defaultTimeout = time.Hour
+	raw := strings.TrimSpace(os.Getenv("AI_STEP_TIMEOUT_S"))
+	if raw == "" {
+		return defaultTimeout
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return defaultTimeout
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // sourceAutoIndexEnabled reports whether new sources should be indexed in the
 // background. Enabled by default; SOURCE_AUTO_INDEX=false disables the
 // background embedding calls (for example on a server without Ollama).
@@ -163,6 +178,7 @@ func run(ctx context.Context, c config) error {
 		Synthesizer:          batchSynth,
 		Store:                pgStore,
 		VacancyTopK:          10,
+		AITimeout:            aiStepTimeout(),
 	})
 	logging.Logger.Info("batch pipeline configured",
 		"ai", batchPlan.HasAI(),
