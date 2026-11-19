@@ -783,6 +783,29 @@ paths:
           $ref: '#/components/responses/InternalError'
       security:
       - bearerAuth: []
+  /dashboard/skills:
+    get:
+      tags:
+      - dashboard
+      summary: Co-occurrence graph of tree competencies
+      description: Deterministic graph of function/task/action titles that appear
+        together in completed run trees. Available to admin and user.
+      operationId: getDashboardSkills
+      responses:
+        '200':
+          description: Competency graph and the number of runs used.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillGraphResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+      - bearerAuth: []
   /runs:
     get:
       tags:
@@ -3693,6 +3716,58 @@ components:
               type: number
               minimum: -1
               maximum: 1
+    SkillGraphNode:
+      type: object
+      required:
+      - id
+      - label
+      - type
+      - count
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+    SkillGraphEdge:
+      type: object
+      required:
+      - source
+      - target
+      - weight
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        weight:
+          type: integer
+          minimum: 1
+    SkillGraphResponse:
+      type: object
+      required:
+      - sample_size
+      - nodes
+      - edges
+      additionalProperties: false
+      properties:
+        sample_size:
+          type: integer
+          minimum: 0
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillGraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillGraphEdge'
     RunEstimate:
       type: object
       description: JSON body of GET /runs/estimate (pre-run cost and time estimate).

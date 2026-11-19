@@ -74,6 +74,18 @@ func TestDashboardCorrelation(t *testing.T) {
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: %d", unauthorized.Code)
 	}
+
+	graphRecorder := do(t, handler, http.MethodGet, "/api/v1/dashboard/skills", "admin", "")
+	if graphRecorder.Code != http.StatusOK {
+		t.Fatalf("skills status = %d: %s", graphRecorder.Code, graphRecorder.Body.String())
+	}
+	var graph skillGraphResponse
+	if err := json.Unmarshal(graphRecorder.Body.Bytes(), &graph); err != nil {
+		t.Fatal(err)
+	}
+	if graph.SampleSize != 3 || len(graph.Nodes) == 0 {
+		t.Fatalf("unexpected skills graph: %+v", graph)
+	}
 }
 
 func TestDashboardCorrelationEmpty(t *testing.T) {

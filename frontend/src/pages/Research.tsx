@@ -61,6 +61,7 @@ import {
   Loader2Icon,
   NetworkIcon,
   PrinterIcon,
+  SearchIcon,
   Share2Icon,
   SparklesIcon,
   PencilIcon,
@@ -116,6 +117,13 @@ function formatDate(value?: string) {
     month: "long",
     year: "numeric",
   }).format(date)
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "-"
+  if (ms < 60_000) return `${Math.round(ms / 1000)} с`
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} мин`
+  return `${(ms / 3_600_000).toFixed(1)} ч`
 }
 
 /**
@@ -1072,6 +1080,12 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchHits, setSearchHits] = useState<
+    { ref_id?: string; source_id?: string; quote: string; score: number }[]
+  >([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1082,6 +1096,40 @@ function TreeTab({
       // Инсайты необязательны: дерево и без них остаётся рабочим.
     }
   }, [id])
+
+  const runSourceSearch = async () => {
+    const query = searchQuery.trim()
+    if (query.length < 2) {
+      setSearchError("Введите минимум 2 символа")
+      return
+    }
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const { data, error: requestError } = await apiClient.GET("/runs/{id}/search", {
+        params: { path: { id }, query: { q: query, limit: 8, strategy: "hybrid" } },
+      })
+      if (requestError) {
+        setSearchError(requestError.message)
+        setSearchHits([])
+        return
+      }
+      setSearchHits(
+        (data?.hits ?? []).map((hit) => ({
+          ref_id: hit.ref_id,
+          source_id: hit.source_id,
+          quote: hit.quote ?? "",
+          score: hit.score ?? 0,
+        })),
+      )
+      if ((data?.hits ?? []).length === 0) setSearchError("Ничего не найдено")
+    } catch {
+      setSearchError("Поиск недоступен: проверьте PostgreSQL и индекс источников")
+      setSearchHits([])
+    } finally {
+      setSearching(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -1121,8 +1169,7 @@ function TreeTab({
     }
   }, [])
 
-  const load = useCallback(async () => {
-    try {
+  const load = useCallback(async () => {    try {
       const { data } = await apiClient.GET("/runs/{id}/tree", {
         params: { path: { id } },
       })
@@ -1236,49 +1283,97 @@ function TreeTab({
   return (
     <>
       {cost && cost.request_count > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          <span>Запросов: {cost.request_count}</span>
-          <span>Токенов: {cost.total_tokens.toLocaleString("ru-RU")}</span>
-          {cost.duration_seconds !== null && (
+        <div className="mb-3 space-y-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>Запросов: {cost.request_count}</span>
+            <span>Токенов: {cost.total_tokens.toLocaleString("ru-RU")}</span>
+            {cost.duration_seconds !== null && (
+              <span>
+                Длительность: {Math.max(1, Math.round(cost.duration_seconds / 60))} мин
+              </span>
+            )}
             <span>
-              Длительность: {Math.max(1, Math.round(cost.duration_seconds / 60))} мин
+              Стоимость:{" "}
+              {cost.cost_usd === null
+                ? "неизвестна"
+                : `$${cost.cost_usd.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}`}
             </span>
-          )}
-          <span>
-            Стоимость:{" "}
-            {cost.cost_usd === null
-              ? "неизвестна"
-              : `$${cost.cost_usd.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}`}
-          </span>
-          {cost.estimate && (
-            <span>
-              Оценка: {cost.estimate.estimated_tokens.toLocaleString("ru-RU")} токенов
-              {cost.estimate.estimated_tokens > 0 && (
-                <>
-                  {" "}
-                  · отклонение{" "}
-                  {Math.round(
-                    ((cost.total_tokens - cost.estimate.estimated_tokens) /
-                      cost.estimate.estimated_tokens) *
-                      100,
-                  )}
-                  %
-                </>
-              )}
-              {cost.duration_seconds !== null &&
-                cost.estimate.estimated_duration_seconds > 0 && (
+            {cost.estimate && (
+              <span>
+                Оценка: {cost.estimate.estimated_tokens.toLocaleString("ru-RU")} токенов
+                {cost.estimate.estimated_tokens > 0 && (
                   <>
                     {" "}
-                    · время{" "}
+                    · отклонение{" "}
                     {Math.round(
-                      ((cost.duration_seconds - cost.estimate.estimated_duration_seconds) /
-                        cost.estimate.estimated_duration_seconds) *
+                      ((cost.total_tokens - cost.estimate.estimated_tokens) /
+                        cost.estimate.estimated_tokens) *
                         100,
                     )}
                     %
                   </>
                 )}
-            </span>
+                {cost.duration_seconds !== null &&
+                  cost.estimate.estimated_duration_seconds > 0 && (
+                    <>
+                      {" "}
+                      · время{" "}
+                      {Math.round(
+                        ((cost.duration_seconds - cost.estimate.estimated_duration_seconds) /
+                          cost.estimate.estimated_duration_seconds) *
+                          100,
+                      )}
+                      %
+                    </>
+                  )}
+              </span>
+            )}
+          </div>
+          {(cost.by_model.length > 0 || cost.by_agent.length > 0) && (
+            <details className="border-t pt-2" open>
+              <summary className="cursor-pointer select-none text-foreground/80">
+                Детализация токенов по моделям и агентам
+              </summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {(
+                  [
+                    ["Модели", cost.by_model.map((item) => ({ name: item.model, ...item }))],
+                    ["Агенты", cost.by_agent.map((item) => ({ name: item.agent, ...item }))],
+                  ] as const
+                ).map(([title, items]) => (
+                  <div key={title} className="space-y-1">
+                    <p className="font-medium text-foreground/80">{title}</p>
+                    {items.length === 0 ? (
+                      <p>Нет данных</p>
+                    ) : (
+                      items.map((item) => (
+                        <div key={item.name} className="space-y-0.5">
+                          <div className="flex justify-between gap-2">
+                            <span className="truncate" title={item.name}>
+                              {item.name}
+                            </span>
+                            <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{
+                                width: `${cost.total_tokens > 0 ? (item.total_tokens / cost.total_tokens) * 100 : 0}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ))}
+              </div>
+              {cost.attribution_ambiguous && (
+                <p className="mt-2 text-warning">
+                  Атрибуция по времени может включать запросы параллельного прогона.
+                </p>
+              )}
+            </details>
           )}
         </div>
       )}
@@ -1303,6 +1398,59 @@ function TreeTab({
           <PrinterIcon className="size-3.5" />
           Печать / PDF
         </Button>
+      </div>
+      <div className="mb-3 space-y-2" data-print-hide>
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void runSourceSearch()
+          }}
+        >
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Поиск по цитатам и источникам"
+              className="h-8 pl-8 text-xs"
+              aria-label="Поиск по цитатам и источникам"
+            />
+          </div>
+          <Button type="submit" size="sm" variant="outline" className="h-8 text-xs" disabled={searching}>
+            {searching ? <Loader2Icon className="size-3.5 animate-spin" /> : "Найти"}
+          </Button>
+        </form>
+        {searchError && <p className="text-xs text-muted-foreground">{searchError}</p>}
+        {searchHits.length > 0 && (
+          <ul className="max-h-52 space-y-1 overflow-auto rounded-lg border bg-muted/10 p-2">
+            {searchHits.map((hit, index) => {
+              const source = hit.source_id ? sourcesById.get(hit.source_id) : undefined
+              return (
+                <li key={`${hit.ref_id ?? index}-${index}`} className="rounded-md border bg-background/60 p-2 text-xs">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-muted-foreground">
+                    <span className="truncate">
+                      {source?.title ?? "Источник"} · {Math.round(hit.score * 100)}%
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-[11px]"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(hit.quote)
+                        toast.success("Цитата скопирована")
+                      }}
+                    >
+                      Копировать
+                    </Button>
+                  </div>
+                  <p className="line-clamp-3 whitespace-pre-wrap break-words">{hit.quote}</p>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </div>
       <ActivityTree
         nodes={nodes}
@@ -1474,9 +1622,21 @@ export function Research() {
             Запущено {formatDate(run.started_at).replace(/\.$/, "")}
           </p>
         )}
-        {run?.stage && run.status !== "done" && (
+        {run?.stage && (
           <div className="mt-3">
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {run.started_at && <span>Старт: {formatDate(run.started_at)}</span>}
+              {run.finished_at && <span>Финиш: {formatDate(run.finished_at)}</span>}
+              {run.started_at && run.finished_at && (
+                <span>
+                  Длительность:{" "}
+                  {formatDuration(
+                    new Date(run.finished_at).getTime() - new Date(run.started_at).getTime(),
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         )}
         {run?.status === "degraded" && (

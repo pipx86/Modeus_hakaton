@@ -824,10 +824,23 @@ function SnapshotDiffSection({
                     Скопировать changelog
                   </Button>
                 </div>
-                {diff.story && (
-                  <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    {diff.story}
-                  </p>
+                {diff.story_lines && diff.story_lines.length > 0 ? (
+                  <ol className="space-y-1 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    {diff.story_lines.map((line, index) => (
+                      <li key={`${index}-${line}`} className="flex gap-2">
+                        <span className="w-4 shrink-0 text-right text-muted-foreground/60">
+                          {index + 1}
+                        </span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  diff.story && (
+                    <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      {diff.story}
+                    </p>
+                  )
                 )}
                 {diff.summary.added === 0 &&
                 diff.summary.removed === 0 &&
@@ -1071,6 +1084,32 @@ function ReviewQueueSection({
                   : `Записей: ${items.length} (лимит ${REVIEW_PAGE_LIMIT})`}
           </span>
         </div>
+        {progress && progress.total > 0 && (
+          <div className="space-y-1">
+            <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-success"
+                style={{ width: `${(progress.approved / progress.total) * 100}%` }}
+                title={`Подтверждено: ${progress.approved}`}
+              />
+              <div
+                className="h-full bg-destructive"
+                style={{ width: `${(progress.rejected / progress.total) * 100}%` }}
+                title={`Отклонено: ${progress.rejected}`}
+              />
+              <div
+                className="h-full bg-warning"
+                style={{ width: `${(progress.pending / progress.total) * 100}%` }}
+                title={`На проверке: ${progress.pending}`}
+              />
+            </div>
+            <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+              <span>● подтверждено {progress.approved}</span>
+              <span>● отклонено {progress.rejected}</span>
+              <span>● на проверке {progress.pending}</span>
+            </div>
+          </div>
+        )}
         <p className="text-[11px] text-muted-foreground">
           Горячие клавиши: A - подтвердить, R - отклонить, N или стрелки - выбрать следующую цитату.
         </p>

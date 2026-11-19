@@ -288,6 +288,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dashboard/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Co-occurrence graph of tree competencies
+         * @description Deterministic graph of function/task/action titles that appear together in completed run trees. Available to admin and user.
+         */
+        get: operations["getDashboardSkills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -1191,6 +1211,22 @@ export interface components {
             metrics: components["schemas"]["CorrelationMetric"][];
             /** @description Symmetric matrix of Pearson coefficients in the range [-1, 1]. */
             matrix: number[][];
+        };
+        SkillGraphNode: {
+            id: string;
+            label: string;
+            type: string;
+            count: number;
+        };
+        SkillGraphEdge: {
+            source: string;
+            target: string;
+            weight: number;
+        };
+        SkillGraphResponse: {
+            sample_size: number;
+            nodes: components["schemas"]["SkillGraphNode"][];
+            edges: components["schemas"]["SkillGraphEdge"][];
         };
         /** @description JSON body of GET /runs/estimate (pre-run cost and time estimate). */
         RunEstimate: {
@@ -2401,6 +2437,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CorrelationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDashboardSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Competency graph and the number of runs used. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillGraphResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
