@@ -88,7 +88,11 @@ function SidebarNav({
   isAdmin: boolean
 }) {
   const { pathname } = useLocation()
-  const items = isAdmin ? [...NAV_ITEMS, ADMIN_ITEM] : NAV_ITEMS
+  const items = (isAdmin ? [...NAV_ITEMS, ADMIN_ITEM] : NAV_ITEMS).filter(
+    (item) =>
+      item.to !== "/research/new" ||
+      (getCurrentRole() !== "guest" && getCurrentRole() !== "student"),
+  )
 
   return (
     <nav className="flex flex-col gap-1 px-3">

@@ -13,13 +13,17 @@ If you only need the demo stack, see [DOCKER.md](DOCKER.md).
 | --------------- | ----------------- | ---- | --------- | ----------- |
 | `migrate` | `migrate` | `goose up` over `./migrations`, one-shot | none | exit code (compose `service_completed_successfully`) |
 | `server` | `server` | `cmd/server` (PostgreSQL + JWT + optional LLM agents) | `8082 -> 8080` | `/app/healthcheck` -> `GET /api/v1/health` |
+| `web-server` | built from `frontend/Dockerfile` | `server` | `8083 -> 80` | `GET /healthz` (frontend + proxy to `server:8080`) |
 | `postgres` | (image) | PostgreSQL 16 + pgvector | `127.0.0.1:5432` | `pg_isready` |
 
 The existing demo services (`api`, `web`) are untouched and still start with a
-plain `docker compose up`; the `server` profile is opt-in.
+plain `docker compose up`; the `server` profile is opt-in. For the full-stack UI
+use `web-server`: it serves the built Vite frontend and proxies `/api` and
+`/swagger` to `server:8080`.
 
-Ports: the demo api uses **8080**, the static web placeholder **8081**, so the
-full backend gets **8082** by default. Everything is overridable via `.env`
+Ports: the demo api uses **8080**, the demo frontend **8081**, the full backend
+**8082**, and the full-stack frontend **8083**. Everything is overridable via
+`.env`.
 (see [.env.example](../.env.example)).
 
 ## Prerequisites
@@ -41,9 +45,9 @@ cp .env.example .env          # optional; keep your local .env if you have one
 # Optional live LLM agents: LLM_API_KEY / LLM_BASE_URL / LLM_MODEL in
 # .secrets/llm.env (without them the backend still runs fallback interviews).
 
-# Build the server + migration images and start the backend.
+# Build the server + migration images and start the backend + full-stack UI.
 # Postgres (-v) and the one-shot migrate service start as dependencies.
-docker compose --profile server up -d --build server
+docker compose --profile server up -d --build server web-server
 
 # Wait for the healthcheck, then probe the backend.
 docker compose --profile server ps

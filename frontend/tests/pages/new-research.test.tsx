@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { describe, expect, it } from "vitest"
-import { setFetchHandler } from "@/test/fetch-stub"
+import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { NewResearch } from "@/pages/NewResearch"
 
 function LocationProbe() {
@@ -173,6 +173,31 @@ describe("NewResearch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Аналитик данных" }))
 
     expect(input).toHaveValue("Аналитик данных")
+  })
+
+  it("запускает batch-прогон с транскриптом", async () => {
+    happyHandler()
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
+      target: { value: "Data Analyst" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Готовый транскрипт" }))
+    fireEvent.change(screen.getByLabelText("Транскрипт интервью"), {
+      target: { value: "Вопрос: что делаешь? Ответ: строю дашборды и проверяю метрики." },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
+    const call = fetchCalls().find(
+      (item) => item.url.endsWith("/api/v1/runs") && item.init.method === "POST",
+    )
+    const body = JSON.parse(String(call?.init.body)) as {
+      type?: string
+      transcript?: string
+    }
+    expect(body.type).toBe("batch")
+    expect(body.transcript).toContain("строю дашборды")
   })
 
   it("показывает оценку токенов и времени до запуска", async () => {

@@ -80,6 +80,13 @@ function stubRun(
       const body = JSON.parse(String(init.body)) as { ids: string[] }
       return { status: 200, body: { approved: body.ids.length, skipped: 0 } }
     }
+    if (url.endsWith("/api/v1/runs/7/sources") && method === "POST") {
+      const body = JSON.parse(String(init.body)) as { type: string; title: string; content: string }
+      return {
+        status: 201,
+        body: { id: "s-new", type: body.type, title: body.title, content: body.content },
+      }
+    }
     if (url.includes("/api/v1/runs/7/conflicts") && method === "GET") {
       return { status: 200, body: overrides.conflicts ?? [] }
     }
@@ -218,6 +225,38 @@ describe("Research", () => {
 
     expect(await screen.findByText("Здоровье: 97")).toBeInTheDocument()
     expect(fetchCalls().some((call) => call.url.includes("/runs/7/insights"))).toBe(false)
+  })
+
+  it("привязывает standard-источник к прогону", async () => {
+    stubRun({ sources: [] })
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Добавить стандарт или вакансию" }),
+    )
+    await userEvent.type(
+      screen.getByLabelText("Название"),
+      "Профстандарт аналитика",
+    )
+    await userEvent.type(
+      screen.getByLabelText("Текст источника"),
+      "Требования к аналитике данных и отчётности.",
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Добавить" }))
+
+    await waitFor(() => {
+      const call = fetchCalls().find(
+        (item) =>
+          item.url.endsWith("/api/v1/runs/7/sources") && item.init.method === "POST",
+      )
+      expect(call).toBeDefined()
+      const body = JSON.parse(String(call!.init.body)) as {
+        type?: string
+        title?: string
+      }
+      expect(body.type).toBe("standard")
+      expect(body.title).toBe("Профстандарт аналитика")
+    })
   })
 
   it("на вкладке «Дерево» рисует узлы из API", async () => {

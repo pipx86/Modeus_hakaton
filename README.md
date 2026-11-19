@@ -16,7 +16,7 @@ npm run dev
 
 `npm run build`, `npm run lint`, `npm run typecheck` и `npm test` выполняют соответствующие проверки frontend. `npm run mock` запускает локальный API-заглушку для интерфейса. По умолчанию клиент обращается к `http://localhost:8080/api/v1`; адрес сервера можно задать через `VITE_API_URL`.
 
-Типы API генерируются из корневого `openapi.yaml` командой `npm run generate-api` (в каталоге `frontend`); отдельной копии контракта больше нет. Frontend также ещё не подключён к Docker Compose: сервис `web` пока отдаёт nginx-заглушку.
+Типы API генерируются из корневого `openapi.yaml` командой `npm run generate-api` (в каталоге `frontend`); отдельной копии контракта больше нет. Frontend собирается в Docker-образ `frontend/Dockerfile`; `docker compose up` поднимает его как сервис `web` на `http://localhost:8081`. Для полного backend (`server` profile) есть `web-server` на `http://localhost:8083`, который проксирует `/api` и `/swagger` в `cmd/server`.
 
 ## Backend
 ### Локальный запуск API

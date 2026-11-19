@@ -428,6 +428,15 @@ describe("ChatTab", () => {
     click.mockRestore()
   })
 
+  it("в режиме просмотра скрывает отправку", async () => {
+    stubChat()
+    render(<ChatTab runId="7" active readOnly />)
+
+    expect(await screen.findByText("Какие задачи вы решаете чаще всего?")).toBeInTheDocument()
+    expect(screen.getByText("Режим просмотра: отправка сообщений недоступна.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Отправить" })).not.toBeInTheDocument()
+  })
+
   it("прокручивает к цитате из интервью и подсвечивает сообщение", async () => {
     stubChat()
     const scroll = vi.fn()

@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { Donut, StackedBars } from "@/components/charts"
 import { apiClient, type Run } from "@/lib/api/client"
+import { getCurrentRole } from "@/lib/auth"
 
 const DAYS = 14
 
@@ -77,6 +78,7 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const canCreate = getCurrentRole() !== "guest" && getCurrentRole() !== "student"
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -230,12 +232,14 @@ export function Dashboard() {
               </Link>
             </Button>
           )}
+          {canCreate && (
           <Button asChild className="w-full sm:w-auto">
             <Link to="/research/new">
               <PlusIcon className="size-4" />
               Новое исследование
             </Link>
           </Button>
+          )}
         </div>
       </div>
 
@@ -378,12 +382,14 @@ export function Dashboard() {
               Создайте первое исследование, чтобы запустить анализ профессиональной деятельности.
             </p>
           </div>
+          {canCreate && (
           <Button asChild>
             <Link to="/research/new">
               <PlusIcon className="size-4" />
               Новое исследование
             </Link>
           </Button>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border">
@@ -401,6 +407,7 @@ export function Dashboard() {
                   <StatusBadge status={run.status} />
                   <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
+                {canCreate && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -410,6 +417,7 @@ export function Dashboard() {
                 >
                   <Trash2Icon className="size-4" />
                 </Button>
+                )}
               </li>
             ))}
           </ul>

@@ -13,7 +13,7 @@
 | Service | Image / build | Profile | Host port | Healthcheck |
 | ------- | ------------- | ------- | --------- | ----------- |
 | `api` | built from `Dockerfile` (default target) | default | 8080 | `/api -healthcheck` (self-probe) |
-| `web` | `nginx:1.27-alpine` (static placeholder) | default | 8081 | `GET /healthz` |
+| `web` | built from `frontend/Dockerfile` (Vite + nginx) | default | 8081 | `GET /healthz` |
 | `postgres` | `pgvector/pgvector:0.8.0-pg16` | default | 5432 | `pg_isready` |
 | `migrate` | built from `Dockerfile` (`migrate` target) | `server` | — | exit code (`service_completed_successfully`) |
 | `server` | built from `Dockerfile` (`server` target) | `server` | 8082 (`SERVER_PORT`) | `/app/healthcheck` -> `GET /api/v1/health` |
@@ -84,7 +84,7 @@ docker compose up -d --build api web postgres
 curl -fsS http://localhost:8080/health
 curl -fsS http://localhost:8080/metrics | head
 curl -fsS http://localhost:8080/api/v1/health
-open http://localhost:8081               # static web placeholder
+open http://localhost:8081               # собранный frontend
 ```
 
 JWT demo (chat endpoints):

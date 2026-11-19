@@ -1217,14 +1217,16 @@ function ReviewQueueSection({
 export function SnapshotReviewTab({
   runId,
   onFocusNode,
+  readOnly = false,
 }: {
   runId: string
   onFocusNode?: (nodeId: string) => void
+  readOnly?: boolean
 }) {
   return (
     <div className="space-y-6">
       <SnapshotDiffSection runId={runId} onFocusNode={onFocusNode} />
-      <ReviewQueueSection runId={runId} onFocusNode={onFocusNode} />
+      {!readOnly && <ReviewQueueSection runId={runId} onFocusNode={onFocusNode} />}
     </div>
   )
 }

@@ -51,13 +51,15 @@ import {
   type Source,
   type SourceType,
 } from "@/lib/api/client"
-import { getValidToken } from "@/lib/auth"
+import { getCurrentRole, getValidToken } from "@/lib/auth"
+import { stripControlChars } from "@/lib/security"
 import { downloadText } from "@/lib/export-tree"
 import { buildSourceIndex } from "@/lib/provenance"
 import {
   CheckIcon,
   DownloadIcon,
   EyeIcon,
+  PlusIcon,
   FileTextIcon,
   Loader2Icon,
   NetworkIcon,
@@ -156,10 +158,25 @@ function EmptyState({
  * «непонятную» ошибку вместо внятного сообщения. Раскрытие цитат ленивое: запрос
  * `GET /evidences?source_id` уходит только когда источник раскрыт, лиших вызовов нет.
  */
-function SourcesTab() {
+function SourcesTab({
+  runId,
+  canAttach,
+  readOnly,
+}: {
+  runId: string
+  canAttach: boolean
+  readOnly: boolean
+}) {
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [attachOpen, setAttachOpen] = useState(false)
+  const [attachType, setAttachType] = useState<"standard" | "vacancy">("standard")
+  const [attachTitle, setAttachTitle] = useState("")
+  const [attachContent, setAttachContent] = useState("")
+  const [attachUrl, setAttachUrl] = useState("")
+  const [attachSaving, setAttachSaving] = useState(false)
   const [quotesSourceId, setQuotesSourceId] = useState<string | null>(null)
   const [quotes, setQuotes] = useState<Evidence[]>([])
   const [quotesLoading, setQuotesLoading] = useState(false)
@@ -212,7 +229,7 @@ function SourcesTab() {
       }
     }
     void load()
-  }, [])
+  }, [reloadToken])
 
   useEffect(() => {
     if (!quotesSourceId) return
@@ -319,8 +336,54 @@ function SourcesTab() {
     toast.success("Источник удалён")
   }
 
+  const attachSource = async () => {
+    if (!attachTitle.trim() || !attachContent.trim()) {
+      toast.error("Заполните название и текст источника")
+      return
+    }
+    setAttachSaving(true)
+    try {
+      const { error } = await apiClient.POST("/runs/{id}/sources", {
+        params: { path: { id: runId } },
+        body: {
+          type: attachType,
+          title: stripControlChars(attachTitle).trim(),
+          content: stripControlChars(attachContent).trim(),
+          source_url: attachUrl.trim() || undefined,
+        },
+      })
+      if (error) {
+        toast.error("Не удалось привязать источник", { description: errorMessage(error) })
+        return
+      }
+      toast.success("Источник привязан к прогону")
+      setAttachOpen(false)
+      setAttachTitle("")
+      setAttachContent("")
+      setAttachUrl("")
+      setReloadToken((token) => token + 1)
+    } catch {
+      toast.error("Сервер недоступен", { description: "Источник не привязан." })
+    } finally {
+      setAttachSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {canAttach && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2.5 text-xs"
+            onClick={() => setAttachOpen(true)}
+          >
+            <PlusIcon className="size-3.5" />
+            Добавить стандарт или вакансию
+          </Button>
+        </div>
+      )}
       {loadError ? (
         <div className="rounded-xl border border-destructive/50 p-6 text-center text-sm text-destructive">
           {loadError}
@@ -376,6 +439,7 @@ function SourcesTab() {
                     size="icon"
                     onClick={() => setDeleteTarget(source)}
                     aria-label="Удалить источник"
+                    disabled={readOnly}
                   >
                     <Trash2Icon className="size-4" />
                   </Button>
@@ -407,7 +471,7 @@ function SourcesTab() {
                         size="sm"
                         variant="outline"
                         className="h-6 px-2 text-xs"
-                        disabled={pendingQuotes.length === 0}
+                        disabled={pendingQuotes.length === 0 || readOnly}
                         onClick={() => void bulkSetStatus("approve")}
                       >
                         Подтвердить все
@@ -416,7 +480,7 @@ function SourcesTab() {
                         size="sm"
                         variant="outline"
                         className="h-6 px-2 text-xs"
-                        disabled={pendingQuotes.length === 0}
+                        disabled={pendingQuotes.length === 0 || readOnly}
                         onClick={() => void bulkSetStatus("reject")}
                       >
                         Отклонить все
@@ -459,6 +523,7 @@ function SourcesTab() {
                             className="size-7 shrink-0"
                             aria-label="Редактировать цитату"
                             onClick={() => openQuoteEditor(quote)}
+                            disabled={readOnly}
                           >
                             <PencilIcon className="size-3.5" />
                           </Button>
@@ -468,6 +533,7 @@ function SourcesTab() {
                             className="size-7 shrink-0"
                             aria-label="Подтвердить цитату из источника"
                             onClick={() => void setQuoteStatus(quote.id, "approve")}
+                            disabled={readOnly}
                           >
                             <CheckIcon className="size-3.5" />
                           </Button>
@@ -477,6 +543,7 @@ function SourcesTab() {
                             className="size-7 shrink-0"
                             aria-label="Отклонить цитату из источника"
                             onClick={() => void setQuoteStatus(quote.id, "reject")}
+                            disabled={readOnly}
                           >
                             <XIcon className="size-3.5" />
                           </Button>
@@ -580,6 +647,80 @@ function SourcesTab() {
               }}
             >
               Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={attachOpen} onOpenChange={setAttachOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Добавить источник к прогону</DialogTitle>
+            <DialogDescription>
+              Стандарт или вакансия сразу попадут в run_sources: аналитик сможет цитировать
+              источник, а синтезатор - находить конфликты между источниками.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Тип источника</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={attachType === "standard" ? "secondary" : "outline"}
+                  aria-pressed={attachType === "standard"}
+                  onClick={() => setAttachType("standard")}
+                >
+                  Профстандарт
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={attachType === "vacancy" ? "secondary" : "outline"}
+                  aria-pressed={attachType === "vacancy"}
+                  onClick={() => setAttachType("vacancy")}
+                >
+                  Вакансия
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="attach-source-title">Название</Label>
+              <Input
+                id="attach-source-title"
+                value={attachTitle}
+                onChange={(event) => setAttachTitle(event.target.value)}
+                placeholder="Например: Профстандарт аналитика данных"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="attach-source-content">Текст источника</Label>
+              <Textarea
+                id="attach-source-content"
+                value={attachContent}
+                onChange={(event) => setAttachContent(event.target.value)}
+                rows={6}
+                placeholder="Вставьте требования, обязанности или текст вакансии..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="attach-source-url">Ссылка (необязательно)</Label>
+              <Input
+                id="attach-source-url"
+                value={attachUrl}
+                onChange={(event) => setAttachUrl(event.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAttachOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={() => void attachSource()} disabled={attachSaving}>
+              {attachSaving && <Loader2Icon className="mr-1 size-4 animate-spin" />}
+              Добавить
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -913,11 +1054,13 @@ function TreeTab({
   active,
   focusNodeId,
   onShowTranscript,
+  readOnly = false,
 }: {
   id: string
   active: boolean
   focusNodeId?: string | null
   onShowTranscript?: (item: Evidence, source?: Source) => void
+  readOnly?: boolean
 }) {
   const [nodes, setNodes] = useState<ActivityNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -1170,6 +1313,7 @@ function TreeTab({
         </div>
       )}
       <div className="mb-3 flex justify-end gap-2" data-print-hide>
+        {!readOnly && (
         <Button
           variant="outline"
           size="sm"
@@ -1179,6 +1323,7 @@ function TreeTab({
           <SparklesIcon className="size-3.5" />
           Предложить ЗУН
         </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -1219,6 +1364,7 @@ function TreeTab({
         sourcesById={sourcesById}
         onShowTranscript={onShowTranscript}
         insights={insights}
+        readOnly={readOnly}
       />
       <NodeEditDialog
         key={editing?.id ?? "closed"}
@@ -1265,6 +1411,10 @@ export function Research() {
   const [searchParams, setSearchParams] = useSearchParams()
   const focusNodeId = searchParams.get("node")
   const guestView = searchParams.get("view") === "guest"
+  const role = getCurrentRole()
+  const readOnly = guestView || role === "guest" || role === "student"
+  const canAttach =
+    !readOnly && (role === null || role === "admin" || role === "teacher")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
     const link = `${window.location.origin}/research/${id}?view=guest`
@@ -1441,7 +1591,7 @@ export function Research() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="sources">
-          <SourcesTab />
+          <SourcesTab runId={id} canAttach={canAttach} readOnly={readOnly} />
         </TabsContent>
         <TabsContent value="tree">
           <TreeTab
@@ -1449,13 +1599,14 @@ export function Research() {
             active={isActive}
             focusNodeId={focusNodeId}
             onShowTranscript={showTranscript}
+            readOnly={readOnly}
           />
         </TabsContent>
         <TabsContent value="coverage">
           <CoverageTab runId={id} />
         </TabsContent>
         <TabsContent value="snapshots">
-          <SnapshotReviewTab runId={id} onFocusNode={focusNode} />
+          <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={readOnly} />
         </TabsContent>
         <TabsContent value="conflicts">
           <ConflictsTab runId={id} onFocusNode={focusNode} />
@@ -1467,6 +1618,7 @@ export function Research() {
             runStatus={run?.status}
             stage={run?.stage}
             focus={chatFocus}
+            readOnly={readOnly}
           />
         </TabsContent>
       </Tabs>

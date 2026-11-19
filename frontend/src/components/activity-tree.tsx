@@ -123,6 +123,7 @@ function EvidenceList({
   onApprove,
   onReject,
   onShowTranscript,
+  readOnly = false,
 }: {
   evidence: Evidence[]
   statuses?: Map<string, EvidenceStatus>
@@ -131,6 +132,7 @@ function EvidenceList({
   onApprove: (evidenceId: string) => void
   onReject?: (evidenceId: string) => void
   onShowTranscript?: (item: Evidence, source?: Source) => void
+  readOnly?: boolean
 }) {
   if (evidence.length === 0) return null
   return (
@@ -183,7 +185,7 @@ function EvidenceList({
                 В интервью
               </Button>
             )}
-            {status !== "approved" && (
+            {status !== "approved" && !readOnly && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -195,7 +197,7 @@ function EvidenceList({
                 Подтвердить
               </Button>
             )}
-            {status !== "rejected" && onReject && (
+            {status !== "rejected" && onReject && !readOnly && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -233,6 +235,7 @@ interface RowProps {
   flags?: TreeFlag[]
   heat?: { score: number; matches: string[] }
   heatLevel?: number
+  readOnly?: boolean
 }
 
 /**
@@ -262,6 +265,7 @@ const Row = memo(function Row({
   flags,
   heat,
   heatLevel = 0,
+  readOnly = false,
 }: RowProps) {
   const evidenceCount = (node.evidence ?? []).length
   const zun = node.zun
@@ -375,6 +379,7 @@ const Row = memo(function Row({
         </Button>
       )}
 
+      {!readOnly && (
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
         <Button
           variant="ghost"
@@ -395,6 +400,7 @@ const Row = memo(function Row({
           <PencilIcon className="size-3.5" />
         </Button>
       </div>
+      )}
     </div>
   )
 })
@@ -423,6 +429,8 @@ export interface ActivityTreeProps {
   onShowTranscript?: (item: Evidence, source?: Source) => void
   /** Серверные инсайты: здоровье дерева, провенанс, флаги, рынок и объяснения узлов. */
   insights?: Insights | null
+  /** Просмотр без изменений (guest/student или режим ?view=guest). */
+  readOnly?: boolean
 }
 
 /**
@@ -447,6 +455,7 @@ export function ActivityTree({
   sourcesById,
   onShowTranscript,
   insights,
+  readOnly = false,
 }: ActivityTreeProps) {
   const [query, setQuery] = useState("")
   const [activeTypes, setActiveTypes] = useState<Set<NodeType>>(() => new Set(TYPE_ORDER))
@@ -868,6 +877,7 @@ export function ActivityTree({
               flags={flagsByNode.get(row.node.id)}
               heat={heat}
               heatLevel={heatLevel}
+              readOnly={readOnly}
             />
           )
         })}
@@ -914,6 +924,7 @@ export function ActivityTree({
                   onApprove={onApprove}
                   onReject={onReject}
                   onShowTranscript={onShowTranscript}
+                  readOnly={readOnly}
                 />
               )}
             </div>

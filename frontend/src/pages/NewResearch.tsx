@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { apiClient, type RunEstimate } from "@/lib/api/client"
+import { Textarea } from "@/components/ui/textarea"
 import { stripControlChars } from "@/lib/security"
 import {
   AlertCircleIcon,
@@ -49,6 +50,9 @@ export function NewResearch() {
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [estimate, setEstimate] = useState<RunEstimate | null>(null)
+  const [runType, setRunType] = useState<"chat" | "batch">("chat")
+  const [transcript, setTranscript] = useState("")
+  const [transcriptTouched, setTranscriptTouched] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
@@ -69,7 +73,11 @@ export function NewResearch() {
     return (role.levels ?? []).some((level) => level.toLowerCase().includes(query))
   })
 
-  const canSubmit = !professionError && !submitting
+  const transcriptError =
+    runType === "batch" && transcript.trim().length < 20
+      ? "Вставьте транскрипт интервью: минимум 20 символов"
+      : null
+  const canSubmit = !professionError && !transcriptError && !submitting
 
   useEffect(() => {
     const value = profession.trim()
@@ -83,7 +91,7 @@ export function NewResearch() {
       void (async () => {
         try {
           const { data, error } = await apiClient.GET("/runs/estimate", {
-            params: { query: { profession: value, type: "chat" } },
+            params: { query: { profession: value, type: runType } },
           })
           if (!cancelled) {
             setEstimate(
@@ -99,7 +107,7 @@ export function NewResearch() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [profession])
+  }, [profession, runType])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -110,7 +118,14 @@ export function NewResearch() {
     setSubmitting(true)
     try {
       const { data: run, error: runError } = await apiClient.POST("/runs", {
-        body: { profession: stripControlChars(profession).trim() },
+        body:
+          runType === "batch"
+            ? {
+                profession: stripControlChars(profession).trim(),
+                type: "batch",
+                transcript: stripControlChars(transcript).trim(),
+              }
+            : { profession: stripControlChars(profession).trim(), type: "chat" },
       })
       if (runError) {
         setApiError(runError.message)
@@ -227,6 +242,55 @@ export function NewResearch() {
               )}
             </div>
 
+            <div className="space-y-2">
+              <Label>Формат запуска</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={runType === "chat" ? "secondary" : "outline"}
+                  aria-pressed={runType === "chat"}
+                  onClick={() => setRunType("chat")}
+                >
+                  Интервью с агентом
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={runType === "batch" ? "secondary" : "outline"}
+                  aria-pressed={runType === "batch"}
+                  onClick={() => setRunType("batch")}
+                >
+                  Готовый транскрипт
+                </Button>
+              </div>
+              {runType === "batch" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="transcript">Транскрипт интервью</Label>
+                  <Textarea
+                    id="transcript"
+                    value={transcript}
+                    onChange={(event) => {
+                      setTranscript(event.target.value)
+                      setTranscriptTouched(true)
+                    }}
+                    onBlur={() => setTranscriptTouched(true)}
+                    rows={7}
+                    placeholder="Вставьте вопросы и ответы интервью: каждая реплика с новой строки..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Batch-прогон сразу передаёт транскрипт аналитику и синтезатору, без чата с
+                    интервьюером.
+                  </p>
+                  {(transcriptTouched || submitted) && transcriptError && (
+                    <p className="flex items-center gap-1.5 text-sm text-destructive">
+                      <AlertCircleIcon className="size-3.5 shrink-0" />
+                      {transcriptError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             {apiError && (
               <p className="flex items-center gap-1.5 text-sm text-destructive">

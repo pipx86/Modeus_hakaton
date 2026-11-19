@@ -27,9 +27,11 @@ interface ChatTabProps {
   stage?: Run["stage"]
   /** Цитата, к которой нужно прокрутить историю (переход из диалога обоснования). */
   focus?: { refId?: string; quote: string } | null
+  /** Только просмотр: композер и отправка скрыты. */
+  readOnly?: boolean
 }
 
-export function ChatTab({ runId, active, runStatus, stage, focus }: ChatTabProps) {
+export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = false }: ChatTabProps) {
   const {
     messages,
     loading,
@@ -230,6 +232,11 @@ export function ChatTab({ runId, active, runStatus, stage, focus }: ChatTabProps
         <div ref={bottomRef} />
       </div>
 
+      {readOnly ? (
+        <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Режим просмотра: отправка сообщений недоступна.
+        </p>
+      ) : (
       <div className="flex items-end gap-2">
         <Textarea
           value={draft}
@@ -252,6 +259,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus }: ChatTabProps
           Отправить
         </Button>
       </div>
+      )}
     </div>
   )
 }

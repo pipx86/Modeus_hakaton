@@ -419,6 +419,20 @@ describe("ActivityTree", () => {
     expect(screen.getByText("Полнота")).toBeInTheDocument()
   })
 
+  it("в режиме просмотра скрывает изменяющие действия", () => {
+    renderTree({ readOnly: true })
+
+    expect(screen.queryByRole("button", { name: /Редактировать узел/ })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: /Добавить обоснование к узлу/ }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
+    )
+    expect(screen.queryByRole("button", { name: "Подтвердить цитату" })).not.toBeInTheDocument()
+  })
+
   it("переходит к цитате в интервью", () => {    const onShowTranscript = vi.fn()
     const sources = new Map([
       ["src-1", { id: "src-1", type: "interview" as const, title: "Интервью" }],
