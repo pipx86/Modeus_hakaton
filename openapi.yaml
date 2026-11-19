@@ -2285,6 +2285,10 @@ paths:
                           type: string
                         score:
                           type: number
+                        node_id:
+                          type: string
+                          format: uuid
+                          description: Tree node matched by the quote when it can be resolved.
         "400":
           description: Invalid query, strategy, limit or a failed search request.
           content:

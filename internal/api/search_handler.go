@@ -66,7 +66,28 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "SEARCH_FAILED", "не удалось выполнить поиск; проверьте запрос и пакет поиска")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"mode": mode, "hits": hits})
+	nodeByQuote := map[string]string{}
+	if answers, answerErr := s.store.GetAnswers(r.PathValue("id")); answerErr == nil {
+		for _, answer := range answers {
+			if answer.NodeID != "" && answer.Quote != "" {
+				nodeByQuote[answer.Quote] = answer.NodeID
+			}
+		}
+	}
+	enriched := make([]map[string]any, 0, len(hits))
+	for _, hit := range hits {
+		item := map[string]any{
+			"ref_id":    hit.RefID,
+			"source_id": hit.SourceID,
+			"quote":     hit.Quote,
+			"score":     hit.Score,
+		}
+		if nodeID := nodeByQuote[hit.Quote]; nodeID != "" {
+			item["node_id"] = nodeID
+		}
+		enriched = append(enriched, item)
+	}
+	writeJSON(w, 200, map[string]any{"mode": mode, "hits": enriched})
 }
 func (s *Server) handleIndexSource(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin) {

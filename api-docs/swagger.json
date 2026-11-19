@@ -3293,6 +3293,11 @@
                           },
                           "score": {
                             "type": "number"
+                          },
+                          "node_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "Tree node matched by the quote when it can be resolved."
                           }
                         }
                       }

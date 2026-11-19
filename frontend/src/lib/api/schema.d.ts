@@ -4071,6 +4071,11 @@ export interface operations {
                             source_id?: string;
                             quote?: string;
                             score?: number;
+                            /**
+                             * Format: uuid
+                             * @description Tree node matched by the quote when it can be resolved.
+                             */
+                            node_id?: string;
                         }[];
                     };
                 };

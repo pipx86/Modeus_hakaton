@@ -1059,12 +1059,14 @@ function TreeTab({
   active,
   focusNodeId,
   onShowTranscript,
+  onFocusNode,
   readOnly = false,
 }: {
   id: string
   active: boolean
   focusNodeId?: string | null
   onShowTranscript?: (item: Evidence, source?: Source) => void
+  onFocusNode?: (nodeId: string) => void
   readOnly?: boolean
 }) {
   const [nodes, setNodes] = useState<ActivityNode[]>([])
@@ -1082,7 +1084,7 @@ function TreeTab({
   const [zunOpen, setZunOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
-    { ref_id?: string; source_id?: string; quote: string; score: number }[]
+    { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
   >([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -1120,6 +1122,7 @@ function TreeTab({
           source_id: hit.source_id,
           quote: hit.quote ?? "",
           score: hit.score ?? 0,
+          node_id: hit.node_id,
         })),
       )
       if ((data?.hits ?? []).length === 0) setSearchError("Ничего не найдено")
@@ -1444,6 +1447,17 @@ function TreeTab({
                     >
                       Копировать
                     </Button>
+                    {hit.node_id && onFocusNode && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-1.5 text-[11px]"
+                        onClick={() => onFocusNode(hit.node_id!)}
+                      >
+                        К узлу
+                      </Button>
+                    )}
                   </div>
                   <p className="line-clamp-3 whitespace-pre-wrap break-words">{hit.quote}</p>
                 </li>
@@ -1716,6 +1730,7 @@ export function Research() {
             active={isActive}
             focusNodeId={focusNodeId}
             onShowTranscript={showTranscript}
+            onFocusNode={focusNode}
             readOnly={treeReadOnly}
           />
         </TabsContent>
