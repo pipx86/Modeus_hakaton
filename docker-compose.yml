@@ -1,16 +1,22 @@
 name: activity-descriptor
 
-# Local development stack for the Go backend demo:
-#   docker compose up -d --build          -> api + web + postgres
+# Local development stack:
+#   docker compose up -d --build            -> demo api + web + postgres
+#   docker compose --profile server up -d --build server
+#                                           -> full backend (cmd/server) + migrations
 #   docker compose --profile monitoring up -d prometheus grafana jaeger
 #   docker compose --profile automation up -d n8n n8n-postgres
 #
-# The api service runs cmd/api: the in-memory store + deterministic chat
-# fallback, so the demo works without goose migrations or an LLM provider.
-# Рабочий сервер cmd/server использует PostgreSQL; перед запуском примените Goose-миграции из migrations.
+# The default `api` service runs cmd/api: the in-memory store + deterministic
+# chat fallback, so the demo works without goose migrations or an LLM provider.
+# The `server` profile runs the real cmd/server backend (PostgreSQL store, JWT
+# auth, goose-checked schema and optional LLM agents): the one-shot `migrate`
+# service applies pending migrations first and the backend only starts after
+# they succeed. Runbook: docs/DOCKER_SERVER.md.
 #
-# Credentials come from the environment / .env (see .env.example). The
-# fallbacks are local-development placeholders only; never use them in prod.
+# Credentials come from the environment / .env / .secrets/llm.env (see
+# .env.example). The fallbacks are local-development placeholders only; never
+# use them in prod.
 #
 # Monitoring security posture (see docs/GRAFANA.md):
 #   * Grafana anonymous access is DISABLED; the admin user/password come from
@@ -88,6 +94,95 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # --- full backend profile ("server"): cmd/server + PostgreSQL migrations ---
+  # One-shot goose runner: applies every pending migration from ./migrations
+  # (goose's own version table makes a re-run a no-op). Exits non-zero on
+  # failure; the `server` service waits for a successful exit, so the backend
+  # never starts on a stale schema.
+  migrate:
+    profiles: ["server"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    image: activity-descriptor-migrate:local
+    environment:
+      # goose reads DRIVER/DBSTRING/MIGRATION_DIR from the environment when no
+      # positional arguments are passed. The compose-network DSN is the default;
+      # SERVER_DATABASE_URL overrides it (external/host database, CI, tests).
+      GOOSE_DRIVER: "postgres"
+      GOOSE_DBSTRING: "${SERVER_DATABASE_URL:-postgres://activity:activity_dev_password@postgres:5432/activity_descriptor?sslmode=disable}"
+      GOOSE_MIGRATION_DIR: "/migrations"
+    # Same host-gateway mapping as the monitoring profile, so
+    # SERVER_DATABASE_URL=...@host.docker.internal:5432/... works on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Production-shaped backend: cmd/server against PostgreSQL. Enable it with
+  #   docker compose --profile server up -d --build server
+  # and stop it with
+  #   docker compose --profile server stop server
+  # It never runs in the default `docker compose up` stack (the demo api does).
+  server:
+    profiles: ["server"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    image: activity-descriptor-server:local
+    ports:
+      # Host port only: the demo api owns 8080 and the web placeholder 8081.
+      # Override with SERVER_PORT in .env or the shell.
+      - "${SERVER_PORT:-8082}:8080"
+    # Secrets and provider settings are supplied by git-ignored local files when
+    # they exist (both entries are optional, so `docker compose config` passes
+    # in CI where neither file is checked out):
+    #   .env               -> HH_* creds, JWT_SECRET/LLM_* when kept there
+    #   .secrets/llm.env   -> JWT_SECRET, LLM_* provider/agent settings
+    # Shell-exported variables are forwarded only where this file interpolates
+    # them (SERVER_PORT, SERVER_DATABASE_URL, APP_ENV, LOG_LEVEL, POSTGRES_*).
+    env_file:
+      - path: .env
+        required: false
+      - path: .secrets/llm.env
+        required: false
+    environment:
+      HTTP_ADDR: ":8080"
+      APP_ENV: "${APP_ENV:-local}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # Keep the container on the compose-network PostgreSQL by default. Set
+      # SERVER_DATABASE_URL to point at an external database (a host
+      # `localhost` DSN is not reachable from inside the container).
+      DATABASE_URL: "${SERVER_DATABASE_URL:-postgres://activity:activity_dev_password@postgres:5432/activity_descriptor?sslmode=disable}"
+      # Container-context tracing endpoint. The host values in
+      # .secrets/llm.env point at 127.0.0.1 (the Docker host), which is the
+      # container itself; export to the monitoring-profile collector with
+      # OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 instead. Empty keeps
+      # spans local (no export).
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_EXPORTER_OTLP_INSECURE: "${OTEL_EXPORTER_OTLP_INSECURE:-}"
+    # Resolves host.docker.internal on Linux Docker Engine too, so the full
+    # backend can point SERVER_DATABASE_URL at a PostgreSQL on the Docker host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # Distroless image + static probe: GET /api/v1/health, exit 0 on 2xx.
+      test: ["CMD", "/app/healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v2.54.1

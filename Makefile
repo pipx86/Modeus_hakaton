@@ -118,6 +118,11 @@ demo-smoke:
 docker-build:
 	$(COMPOSE) -f $(COMPOSE_FILE) build api
 
+## docker-build-server: build the full-backend and migration images
+docker-build-server:
+	docker build --target server -t activity-descriptor-server:local .
+	docker build --target migrate -t activity-descriptor-migrate:local .
+
 ## docker-size: print the API image size in bytes (< 104857600 required)
 docker-size:
 	docker image inspect $(IMAGE) --format '{{.Size}} bytes'
@@ -128,11 +133,23 @@ up:
 
 ## down: stop every profile (keeps volumes)
 down:
-	$(COMPOSE) -f $(COMPOSE_FILE) --profile monitoring --profile automation down
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile monitoring --profile automation --profile server down
 
 ## logs: follow stack logs
 logs:
 	$(COMPOSE) -f $(COMPOSE_FILE) logs -f --tail=100 api web postgres
+
+## up-server: build + start the full backend (cmd/server) with goose migrations
+up-server:
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server up -d --build server
+
+## down-server: stop the full-backend services (keeps volumes)
+down-server:
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server rm -f migrate server
+
+## logs-server: follow the full-backend logs
+logs-server:
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server logs -f --tail=100 migrate server
 
 ## up-monitoring: start prometheus + grafana
 up-monitoring:
@@ -146,6 +163,7 @@ up-automation:
 check-compose:
 	$(COMPOSE) -f $(COMPOSE_FILE) config --quiet
 	$(COMPOSE) -f $(COMPOSE_FILE) --profile monitoring --profile automation config --quiet
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server config --quiet
 
 ## check-deploy: validate compose/Grafana/Prometheus/n8n assets and docs
 check-deploy:
@@ -162,4 +180,4 @@ import-n8n:
 clean:
 	rm -rf bin coverage.out e2e-output.json
 
-.PHONY: help env deps build test test-race vet fmt fmt-check lint tidy ci run token e2e demo-smoke docker-build docker-size up down logs up-monitoring up-automation check-compose check-deploy import-n8n clean
+.PHONY: help env deps build test test-race vet fmt fmt-check lint tidy ci run token e2e demo-smoke docker-build docker-build-server docker-size up down logs up-server down-server logs-server up-monitoring up-automation check-compose check-deploy import-n8n clean

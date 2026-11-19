@@ -67,6 +67,7 @@ REQUIRED_FILES = [
     "deploy/n8n/workflows/nightly_ingestion.json",
     "deploy/n8n/workflows/notion_email_notifications.json",
     "docs/DOCKER.md",
+    "docs/DOCKER_SERVER.md",
     "docs/GRAFANA.md",
     "docs/METRICS.md",
     "docs/N8N.md",
@@ -77,6 +78,7 @@ REQUIRED_FILES = [
 # Docs owned by the DevOps package: their relative links are validated.
 OWNED_DOCS = [
     "docs/DOCKER.md",
+    "docs/DOCKER_SERVER.md",
     "docs/GRAFANA.md",
     "docs/METRICS.md",
     "docs/N8N.md",
@@ -104,6 +106,7 @@ SECRET_SCAN_GLOBS = [
     "deploy",
     "web",
     "docs/DOCKER.md",
+    "docs/DOCKER_SERVER.md",
     "docs/GRAFANA.md",
     "docs/METRICS.md",
     "docs/N8N.md",
@@ -181,7 +184,18 @@ def check_dockerfile() -> None:
         raise SystemExit("FAIL: Dockerfile should build a static binary (CGO_ENABLED=0)")
     if "COPY prompts" not in dockerfile and "prompts" not in dockerfile:
         raise SystemExit("FAIL: Dockerfile must copy the embedded prompts package")
-    print("dockerfile ok: multi-stage, pinned Go 1.26.10, distroless, non-root, healthcheck")
+    # Full backend targets and the default-image contract (CI builds without
+    # --target, so the last stage must stay the demo api image).
+    stages = re.findall(r"(?mi)^FROM\s+\S+\s+AS\s+(\S+)", dockerfile)
+    for stage in ("build", "server-build", "goose-build", "server", "migrate", "api"):
+        if stage not in stages:
+            raise SystemExit(f"FAIL: Dockerfile is missing the {stage!r} build stage")
+    if stages[-1] != "api":
+        raise SystemExit(f"FAIL: last Dockerfile stage must be 'api' (default build target), got {stages[-1]!r}")
+    for marker in ("./cmd/server", "goose@v3.29.0", "api-docs", "/app/healthcheck"):
+        if marker not in dockerfile:
+            raise SystemExit(f"FAIL: Dockerfile must include {marker!r}")
+    print("dockerfile ok: multi-stage, pinned Go 1.26.10, distroless, non-root, healthcheck, server/migrate targets")
 
 
 def check_compose() -> None:
@@ -205,15 +219,47 @@ def check_compose() -> None:
     profiles = set()
     for service in services.values():
         profiles.update(service.get("profiles") or [])
-    for wanted in ("monitoring", "automation"):
+    for wanted in ("monitoring", "automation", "server"):
         if wanted not in profiles:
             raise SystemExit(f"FAIL: compose profiles must include {wanted!r}")
+
+    # Full backend profile (cmd/server): the migrate service must gate the
+    # server on a successful goose run, and the host port must not collide with
+    # the demo api (8080) or the web placeholder (8081).
+    migrate = services.get("migrate")
+    if not migrate:
+        raise SystemExit("FAIL: docker-compose.yml must define the 'migrate' goose service")
+    if (migrate.get("build") or {}).get("target") != "migrate":
+        raise SystemExit("FAIL: compose migrate service must build Dockerfile target 'migrate'")
+    if "server" not in (migrate.get("profiles") or []):
+        raise SystemExit("FAIL: migrate service must be behind the 'server' profile")
+
+    server = services.get("server")
+    if not server:
+        raise SystemExit("FAIL: docker-compose.yml must define the 'server' full-backend service")
+    if (server.get("build") or {}).get("target") != "server":
+        raise SystemExit("FAIL: compose server service must build Dockerfile target 'server'")
+    if "server" not in (server.get("profiles") or []):
+        raise SystemExit("FAIL: server service must be behind the 'server' profile")
+    if not (server.get("healthcheck") or {}).get("test"):
+        raise SystemExit("FAIL: server service must define a healthcheck")
+    server_ports = " ".join(str(port) for port in server.get("ports") or [])
+    if "${SERVER_PORT" not in server_ports or ":8080" not in server_ports:
+        raise SystemExit("FAIL: server service must map configurable ${SERVER_PORT:-...}:8080")
+    server_deps = server.get("depends_on") or {}
+    if (server_deps.get("postgres") or {}).get("condition") != "service_healthy":
+        raise SystemExit("FAIL: server service must depend on a healthy postgres")
+    if (server_deps.get("migrate") or {}).get("condition") != "service_completed_successfully":
+        raise SystemExit("FAIL: server must wait for migrate (condition: service_completed_successfully)")
+    if "JWT_SECRET" in str(server.get("environment") or {}):
+        raise SystemExit("FAIL: server must not hard-code JWT_SECRET; use optional env_file/.env")
 
     docker = shutil.which("docker")
     if docker:
         for args in (
             ["compose", "-f", "docker-compose.yml", "config", "--quiet"],
             ["compose", "-f", "docker-compose.yml", "--profile", "monitoring", "--profile", "automation", "config", "--quiet"],
+            ["compose", "-f", "docker-compose.yml", "--profile", "server", "config", "--quiet"],
         ):
             result = subprocess.run([docker, *args], cwd=ROOT, capture_output=True, text=True, check=False)
             if result.returncode != 0:
