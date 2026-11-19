@@ -103,7 +103,7 @@ function confidenceClass(value: number) {
 }
 
 const TAB_TRIGGER_CLASS =
-  "h-full items-center justify-center py-0 leading-none transition-colors data-[state=active]:bg-primary data-[state=active]:font-medium data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+  "h-full items-center justify-center py-0 leading-none transition-colors data-[state=active]:bg-primary data-[state=active]:font-semibold data-[state=active]:!text-primary-foreground data-[state=active]:shadow-sm dark:data-[state=active]:!text-primary-foreground"
 const ROOT_PARENT = "__root__"
 /**
  * Форматирует дату ISO в русскую длинную форму («6 ноября 2026»). Возвращает подсказку при
