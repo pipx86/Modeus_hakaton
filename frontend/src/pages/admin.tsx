@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
-import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
+import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
 import {
   averageHistogramMs,
@@ -130,11 +130,6 @@ export function Admin() {
   const [sourceFileKey, setSourceFileKey] = useState(0)
   const [sourceSaving, setSourceSaving] = useState(false)
   const [indexingId, setIndexingId] = useState<string | null>(null)
-
-  const session = (() => {
-    const token = getValidToken()
-    return token ? decodeToken(token) : null
-  })()
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -506,9 +501,6 @@ export function Admin() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">Админка</h1>
-          <p className="text-sm text-muted-foreground">
-            {session?.sub ?? "admin"} - управление пользователями и исследованиями.
-          </p>
         </div>
         <Button variant="outline" onClick={() => void refresh()} disabled={refreshing}>
           <RefreshCwIcon className={refreshing ? "size-4 animate-spin" : "size-4"} />
