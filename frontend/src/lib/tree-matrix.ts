@@ -75,8 +75,8 @@ export function buildTreeMatrix(nodes: ActivityNode[], limit = 12): TreeMatrixDa
 }
 
 export const TREE_MATRIX_LEGEND = [
-  { value: RELATION_SELF, label: "узел", color: "#38bdf8" },
-  { value: RELATION_PARENT, label: "родитель ↔ ребёнок", color: "#fb923c" },
-  { value: RELATION_SIBLING, label: "соседи", color: "#f59e0b" },
-  { value: RELATION_SOURCE, label: "общий источник", color: "#0ea5e9" },
+  { value: RELATION_SELF, label: "узел", color: "hsl(var(--primary))" },
+  { value: RELATION_PARENT, label: "родитель ↔ ребёнок", color: "hsl(var(--success))" },
+  { value: RELATION_SIBLING, label: "соседи", color: "hsl(var(--warning))" },
+  { value: RELATION_SOURCE, label: "общий источник", color: "hsl(var(--primary) / 0.35)" },
 ] as const

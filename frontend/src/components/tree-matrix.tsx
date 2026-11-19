@@ -2,11 +2,11 @@ import { useState } from "react"
 import { TREE_MATRIX_LEGEND, type TreeMatrixData } from "@/lib/tree-matrix"
 
 const CELL_COLOR: Record<number, string> = {
-  0: "bg-slate-700/45",
-  1: "bg-sky-700/70",
-  2: "bg-amber-500/80",
-  3: "bg-orange-400/90",
-  4: "bg-sky-400",
+  0: "bg-muted/40",
+  1: "bg-primary/30",
+  2: "bg-warning/70",
+  3: "bg-success/80",
+  4: "bg-primary",
 }
 
 function short(label: string, max: number): string {
