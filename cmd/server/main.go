@@ -232,6 +232,9 @@ func run(ctx context.Context, c config) error {
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
+	if analystClient != nil {
+		app.SetLearningPlanner(newLearningPlanner(pgStore, vacancyReader, analystClient))
+	}
 	startHHVacancyImporter(context.Background(), pool)
 	// Семантическая индексация: источники, созданные через POST /sources и
 	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).

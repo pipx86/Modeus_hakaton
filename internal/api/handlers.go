@@ -39,6 +39,7 @@ type Server struct {
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 	batchPlan    steps.BatchPlan
+	learningPlan LearningPlanner
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
 	// или явно отключённая настройка SOURCE_AUTO_INDEX).
@@ -75,6 +76,9 @@ func NewServerWithChat(store Store, chatService chatStarter) *Server {
 // create-run handler and the resume processor both read the same plan, so the
 // AI agent pipeline cannot diverge between the two paths.
 func (s *Server) SetBatchPlan(plan steps.BatchPlan) { s.batchPlan = plan }
+
+// SetLearningPlanner wires the optional learning-plan generator.
+func (s *Server) SetLearningPlanner(planner LearningPlanner) { s.learningPlan = planner }
 
 // batchPipeline returns the configured batch plan, or the vacancy-only default
 // when the server was built without the cmd/server LLM wiring (tests, demo
@@ -118,6 +122,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/vacancies/stats/summary", s.handleVacancyStats)
 	mux.HandleFunc("GET /api/v1/vacancies/stats/analytics", s.handleVacancyAnalytics)
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
+	mux.HandleFunc("POST /api/v1/learning-plans", s.handleLearningPlan)
 	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
 	mux.HandleFunc("GET /api/v1/runs/estimate", s.handleRunEstimate)
 	mux.HandleFunc("GET /api/v1/runs/{id}/cost", s.handleRunCost)
