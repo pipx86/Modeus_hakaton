@@ -316,7 +316,7 @@ export function NewResearch() {
                 </div>
                 {learningMode && (
                   <p className="rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                    Подойдёт, если вы только выбираете профессию: не нужно ничего знать заранее.
+                    Подойдёт, если вы только выбираете профессию, не нужно ничего знать заранее.
                     План строится по актуальным вакансиям и требованиям рынка.
                   </p>
                 )}
