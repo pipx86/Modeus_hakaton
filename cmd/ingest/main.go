@@ -21,6 +21,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) >= 2 && os.Args[1] == "vacancy-trends" {
+		return runVacancyTrends(os.Args[2:], os.Stdout)
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "articles" {
 		return runArticles(os.Args[2:])
 	}

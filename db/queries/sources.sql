@@ -26,3 +26,41 @@ WHERE provider IS NOT NULL AND external_id IS NOT NULL
 DO UPDATE SET title=EXCLUDED.title, content=EXCLUDED.content, source_url=EXCLUDED.source_url,
     raw_payload=EXCLUDED.raw_payload, updated_at=now()
 RETURNING *;
+
+
+-- name: LockVacancyImport :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(import_key)::text, 0));
+
+-- name: GetVacancyForImport :one
+SELECT id, title, COALESCE(content, '')::text AS content,
+       COALESCE(source_url, '')::text AS source_url, vacancy_published_at
+FROM sources
+WHERE type = 'vacancy' AND provider = 'hh'
+  AND external_id = sqlc.arg(external_id)::text;
+
+-- name: CreateImportedVacancy :exec
+INSERT INTO sources (type, title, content, source_url, provider, external_id, vacancy_published_at)
+VALUES ('vacancy', sqlc.arg(title)::text, sqlc.arg(content)::text, sqlc.arg(source_url)::text,
+        'hh', sqlc.arg(external_id)::text, sqlc.narg(vacancy_published_at)::timestamptz);
+
+-- name: UpdateImportedVacancy :exec
+UPDATE sources
+SET title = sqlc.arg(title)::text,
+    content = sqlc.arg(content)::text,
+    source_url = sqlc.arg(source_url)::text,
+    vacancy_published_at = COALESCE(sqlc.narg(vacancy_published_at)::timestamptz, vacancy_published_at),
+    updated_at = now()
+WHERE id = sqlc.arg(id)::uuid;
+
+-- name: ListVacancyPublicationTrend :many
+SELECT COALESCE(to_char(vacancy_published_at AT TIME ZONE 'UTC', 'YYYY-MM'), '')::text AS month,
+       COALESCE(NULLIF(provider, ''), 'unknown')::text AS provider,
+       count(*) AS vacancy_count
+FROM sources
+WHERE type = 'vacancy'
+  AND strpos(lower(title), lower(sqlc.arg(title_query)::text)) > 0
+  AND (vacancy_published_at IS NULL OR
+       (vacancy_published_at >= sqlc.arg(from_date)::timestamptz AND
+        vacancy_published_at < sqlc.arg(until_date)::timestamptz))
+GROUP BY 1, 2
+ORDER BY 1, 2;

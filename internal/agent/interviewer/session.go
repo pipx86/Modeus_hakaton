@@ -125,7 +125,6 @@ func (s *Session) Answer(text string) error {
 	if len(s.state.Answers) >= len(s.state.Questions) {
 		return ErrNoOpenQuestion
 	}
-	text = strings.TrimSpace(text)
 	lastQuestion := s.state.Questions[len(s.state.Questions)-1]
 	s.state.Answers = append(s.state.Answers, domain.Answer{
 		QuestionID: lastQuestion.ID,

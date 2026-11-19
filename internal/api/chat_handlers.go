@@ -53,6 +53,8 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "chat session not found")
 	case errors.Is(err, chat.ErrEmptyMessage):
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "content is required")
+	case errors.Is(err, chat.ErrInvalidMessage):
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "ответ должен быть текстом без нулевого символа")
 	case err != nil:
 		writeErr(w, http.StatusConflict, "CHAT_CONFLICT", err.Error())
 	default:

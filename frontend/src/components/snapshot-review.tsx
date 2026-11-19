@@ -288,7 +288,7 @@ function EvidenceQuotes({
               aria-label={`Открыть цитату: ${item.quote}`}
               className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary/40 hover:bg-muted/50"
             >
-              <span className="min-w-0 flex-1 text-muted-foreground">{item.quote}</span>
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">{item.quote}</span>
               <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                 source_id: {item.source_id}
               </span>
@@ -1141,7 +1141,7 @@ function ReviewQueueSection({
                       </Button>
                     </span>
                   </div>
-                  <blockquote className="text-sm text-muted-foreground">«{item.quote}»</blockquote>
+                  <blockquote className="whitespace-pre-wrap break-words text-sm text-muted-foreground">«{item.quote}»</blockquote>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>Источник: {item.source_title || item.source_id}</span>
                     <span className="font-mono">source_id: {item.source_id}</span>

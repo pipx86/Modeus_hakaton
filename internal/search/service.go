@@ -27,10 +27,10 @@ func (s Service) IndexSource(ctx context.Context, id pgtype.UUID) error {
 	if err := s.Pool.QueryRow(ctx, "SELECT COALESCE(content,'') FROM sources WHERE id=$1", id).Scan(&text); err != nil {
 		return err
 	}
-	runes := []rune(strings.TrimSpace(text))
-	if len(runes) == 0 {
+	if strings.TrimSpace(text) == "" {
 		return errors.New("источник не содержит текста")
 	}
+	runes := []rune(text)
 	var quotes []string
 	var vectors []string
 	for start := 0; start < len(runes); {

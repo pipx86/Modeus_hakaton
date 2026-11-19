@@ -12,8 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"activity-descriptor/internal/agent/interviewer"
 	"activity-descriptor/internal/domain"
@@ -66,6 +68,8 @@ var ErrNotFound = errors.New("chat: session not found")
 
 // ErrEmptyMessage means the user tried to send an empty message.
 var ErrEmptyMessage = errors.New("chat: message is empty")
+
+var ErrInvalidMessage = errors.New("chat: message cannot be stored as PostgreSQL text")
 
 // UnavailableClient is used when no LLM provider is configured. The interviewer
 // session falls back to deterministic questions instead of failing the chat.
@@ -245,8 +249,11 @@ func (s *Service) persistedMessages(runID string) ([]Message, error) {
 
 // Post records the respondent answer and schedules the next question.
 func (s *Service) Post(runID, content string) (Message, error) {
-	if content == "" {
+	if strings.TrimSpace(content) == "" {
 		return Message{}, ErrEmptyMessage
+	}
+	if !utf8.ValidString(content) || strings.IndexByte(content, 0) >= 0 {
+		return Message{}, ErrInvalidMessage
 	}
 	sess, err := s.lookup(runID)
 	if err != nil {

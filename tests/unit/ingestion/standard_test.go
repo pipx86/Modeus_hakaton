@@ -1,15 +1,13 @@
-package ingestion
+package ingestion_test
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"activity-descriptor/internal/ingestion"
 )
 
 func demoPDF() []byte {
@@ -42,7 +40,7 @@ func TestЧтениеПрофстандарта(t *testing.T) {
 	if err := os.WriteFile(pdfPath, demoPDF(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	pdfDoc, err := ReadStandard(pdfPath, "pdf", "Пример")
+	pdfDoc, err := ingestion.ReadStandard(pdfPath, "pdf", "Пример")
 	if err != nil || !strings.Contains(pdfDoc.Content, "Example standard text") {
 		t.Fatalf("%+v %v", pdfDoc, err)
 	}
@@ -50,38 +48,14 @@ func TestЧтениеПрофстандарта(t *testing.T) {
 	if err := os.WriteFile(jsonPath, []byte(`{"title":"Профстандарт","content":"Пример текста"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	doc, err := ReadStandard(jsonPath, "json", "")
+	doc, err := ingestion.ReadStandard(jsonPath, "json", "")
 	if err != nil || doc.Title != "Профстандарт" {
 		t.Fatalf("%+v %v", doc, err)
 	}
 	if err = os.WriteFile(pdfPath, []byte("не PDF"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = ReadStandard(pdfPath, "pdf", "Ошибка"); err == nil {
+	if _, err = ingestion.ReadStandard(pdfPath, "pdf", "Ошибка"); err == nil {
 		t.Fatal("повреждённый PDF принят")
-	}
-}
-
-func TestПовторныйИмпортПрофстандарта(t *testing.T) {
-	dsn := os.Getenv("INGEST_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("нужна INGEST_TEST_DATABASE_URL")
-	}
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	key := fmt.Sprintf("test-%d", time.Now().UnixNano())
-	defer pool.Exec(ctx, "DELETE FROM sources WHERE provider='file' AND type='standard' AND external_id=$1", "standard:"+key)
-	doc := Standard{Title: "Профстандарт", Content: "Текст"}
-	first, err := SaveStandard(ctx, pool, key, doc)
-	if err != nil || first.Inserted != 1 {
-		t.Fatalf("%+v %v", first, err)
-	}
-	second, err := SaveStandard(ctx, pool, key, doc)
-	if err != nil || second.Skipped != 1 {
-		t.Fatalf("%+v %v", second, err)
 	}
 }

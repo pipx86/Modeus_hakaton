@@ -11,9 +11,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createImportedVacancy = `-- name: CreateImportedVacancy :exec
+INSERT INTO sources (type, title, content, source_url, provider, external_id, vacancy_published_at)
+VALUES ('vacancy', $1::text, $2::text, $3::text,
+        'hh', $4::text, $5::timestamptz)
+`
+
+type CreateImportedVacancyParams struct {
+	Title              string             `json:"title"`
+	Content            string             `json:"content"`
+	SourceUrl          string             `json:"source_url"`
+	ExternalID         string             `json:"external_id"`
+	VacancyPublishedAt pgtype.Timestamptz `json:"vacancy_published_at"`
+}
+
+func (q *Queries) CreateImportedVacancy(ctx context.Context, arg CreateImportedVacancyParams) error {
+	_, err := q.db.Exec(ctx, createImportedVacancy,
+		arg.Title,
+		arg.Content,
+		arg.SourceUrl,
+		arg.ExternalID,
+		arg.VacancyPublishedAt,
+	)
+	return err
+}
+
 const createSource = `-- name: CreateSource :one
 INSERT INTO sources (id, run_id, type, title, content, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider, vacancy_published_at
 `
 
 type CreateSourceParams struct {
@@ -62,6 +87,7 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Sou
 		&i.ProcessingError,
 		&i.ProcessedAt,
 		&i.Provider,
+		&i.VacancyPublishedAt,
 	)
 	return i, err
 }
@@ -79,7 +105,7 @@ func (q *Queries) DeleteSource(ctx context.Context, id pgtype.UUID) (int64, erro
 }
 
 const getSource = `-- name: GetSource :one
-SELECT id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider FROM sources WHERE id = $1
+SELECT id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider, vacancy_published_at FROM sources WHERE id = $1
 `
 
 func (q *Queries) GetSource(ctx context.Context, id pgtype.UUID) (Source, error) {
@@ -100,12 +126,42 @@ func (q *Queries) GetSource(ctx context.Context, id pgtype.UUID) (Source, error)
 		&i.ProcessingError,
 		&i.ProcessedAt,
 		&i.Provider,
+		&i.VacancyPublishedAt,
+	)
+	return i, err
+}
+
+const getVacancyForImport = `-- name: GetVacancyForImport :one
+SELECT id, title, COALESCE(content, '')::text AS content,
+       COALESCE(source_url, '')::text AS source_url, vacancy_published_at
+FROM sources
+WHERE type = 'vacancy' AND provider = 'hh'
+  AND external_id = $1::text
+`
+
+type GetVacancyForImportRow struct {
+	ID                 pgtype.UUID        `json:"id"`
+	Title              string             `json:"title"`
+	Content            string             `json:"content"`
+	SourceUrl          string             `json:"source_url"`
+	VacancyPublishedAt pgtype.Timestamptz `json:"vacancy_published_at"`
+}
+
+func (q *Queries) GetVacancyForImport(ctx context.Context, externalID string) (GetVacancyForImportRow, error) {
+	row := q.db.QueryRow(ctx, getVacancyForImport, externalID)
+	var i GetVacancyForImportRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Content,
+		&i.SourceUrl,
+		&i.VacancyPublishedAt,
 	)
 	return i, err
 }
 
 const listSourcesByRun = `-- name: ListSourcesByRun :many
-SELECT s.id, s.run_id, s.type, s.title, s.content, s.created_at, s.updated_at, s.source_url, s.external_id, s.raw_payload, s.processing_status, s.processing_error, s.processed_at, s.provider FROM sources s JOIN run_sources rs ON rs.source_id = s.id WHERE rs.run_id = $1 ORDER BY s.created_at, s.id
+SELECT s.id, s.run_id, s.type, s.title, s.content, s.created_at, s.updated_at, s.source_url, s.external_id, s.raw_payload, s.processing_status, s.processing_error, s.processed_at, s.provider, s.vacancy_published_at FROM sources s JOIN run_sources rs ON rs.source_id = s.id WHERE rs.run_id = $1 ORDER BY s.created_at, s.id
 `
 
 func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]Source, error) {
@@ -132,6 +188,7 @@ func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]So
 			&i.ProcessingError,
 			&i.ProcessedAt,
 			&i.Provider,
+			&i.VacancyPublishedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -143,10 +200,94 @@ func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]So
 	return items, nil
 }
 
+const listVacancyPublicationTrend = `-- name: ListVacancyPublicationTrend :many
+SELECT COALESCE(to_char(vacancy_published_at AT TIME ZONE 'UTC', 'YYYY-MM'), '')::text AS month,
+       COALESCE(NULLIF(provider, ''), 'unknown')::text AS provider,
+       count(*) AS vacancy_count
+FROM sources
+WHERE type = 'vacancy'
+  AND strpos(lower(title), lower($1::text)) > 0
+  AND (vacancy_published_at IS NULL OR
+       (vacancy_published_at >= $2::timestamptz AND
+        vacancy_published_at < $3::timestamptz))
+GROUP BY 1, 2
+ORDER BY 1, 2
+`
+
+type ListVacancyPublicationTrendParams struct {
+	TitleQuery string             `json:"title_query"`
+	FromDate   pgtype.Timestamptz `json:"from_date"`
+	UntilDate  pgtype.Timestamptz `json:"until_date"`
+}
+
+type ListVacancyPublicationTrendRow struct {
+	Month        string `json:"month"`
+	Provider     string `json:"provider"`
+	VacancyCount int64  `json:"vacancy_count"`
+}
+
+func (q *Queries) ListVacancyPublicationTrend(ctx context.Context, arg ListVacancyPublicationTrendParams) ([]ListVacancyPublicationTrendRow, error) {
+	rows, err := q.db.Query(ctx, listVacancyPublicationTrend, arg.TitleQuery, arg.FromDate, arg.UntilDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListVacancyPublicationTrendRow
+	for rows.Next() {
+		var i ListVacancyPublicationTrendRow
+		if err := rows.Scan(&i.Month, &i.Provider, &i.VacancyCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockVacancyImport = `-- name: LockVacancyImport :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+func (q *Queries) LockVacancyImport(ctx context.Context, importKey string) error {
+	_, err := q.db.Exec(ctx, lockVacancyImport, importKey)
+	return err
+}
+
+const updateImportedVacancy = `-- name: UpdateImportedVacancy :exec
+UPDATE sources
+SET title = $1::text,
+    content = $2::text,
+    source_url = $3::text,
+    vacancy_published_at = COALESCE($4::timestamptz, vacancy_published_at),
+    updated_at = now()
+WHERE id = $5::uuid
+`
+
+type UpdateImportedVacancyParams struct {
+	Title              string             `json:"title"`
+	Content            string             `json:"content"`
+	SourceUrl          string             `json:"source_url"`
+	VacancyPublishedAt pgtype.Timestamptz `json:"vacancy_published_at"`
+	ID                 pgtype.UUID        `json:"id"`
+}
+
+func (q *Queries) UpdateImportedVacancy(ctx context.Context, arg UpdateImportedVacancyParams) error {
+	_, err := q.db.Exec(ctx, updateImportedVacancy,
+		arg.Title,
+		arg.Content,
+		arg.SourceUrl,
+		arg.VacancyPublishedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateSource = `-- name: UpdateSource :one
 UPDATE sources SET run_id=$2, type=$3, title=$4, content=$5, source_url=$6, external_id=$7,
 raw_payload=$8, processing_status=$9, processing_error=$10, processed_at=$11, provider=$12, updated_at=now()
-WHERE id=$1 RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider
+WHERE id=$1 RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider, vacancy_published_at
 `
 
 type UpdateSourceParams struct {
@@ -195,6 +336,7 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.ProcessingError,
 		&i.ProcessedAt,
 		&i.Provider,
+		&i.VacancyPublishedAt,
 	)
 	return i, err
 }
@@ -208,7 +350,7 @@ ON CONFLICT (provider, type, external_id)
 WHERE provider IS NOT NULL AND external_id IS NOT NULL
 DO UPDATE SET title=EXCLUDED.title, content=EXCLUDED.content, source_url=EXCLUDED.source_url,
     raw_payload=EXCLUDED.raw_payload, updated_at=now()
-RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider
+RETURNING id, run_id, type, title, content, created_at, updated_at, source_url, external_id, raw_payload, processing_status, processing_error, processed_at, provider, vacancy_published_at
 `
 
 type UpsertExternalSourceParams struct {
@@ -247,6 +389,7 @@ func (q *Queries) UpsertExternalSource(ctx context.Context, arg UpsertExternalSo
 		&i.ProcessingError,
 		&i.ProcessedAt,
 		&i.Provider,
+		&i.VacancyPublishedAt,
 	)
 	return i, err
 }

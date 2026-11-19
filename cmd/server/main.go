@@ -19,6 +19,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/llm/agents"
 	agentmetrics "activity-descriptor/internal/llm/metrics"
@@ -172,6 +173,14 @@ func run(ctx context.Context, c config) error {
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
+	app.SetImportFiles(ingestion.ImportFiles{
+		Vacancies:      os.Getenv("INGEST_VACANCIES_FILE"),
+		VacancyFormat:  os.Getenv("INGEST_VACANCIES_FORMAT"),
+		Standard:       os.Getenv("INGEST_STANDARD_FILE"),
+		StandardFormat: os.Getenv("INGEST_STANDARD_FORMAT"),
+		StandardKey:    os.Getenv("INGEST_STANDARD_KEY"),
+		StandardTitle:  os.Getenv("INGEST_STANDARD_TITLE"),
+	})
 	rawHandler := app.Routes()
 	rootMux := http.NewServeMux()
 	rootMux.Handle("/api/v1/llm/", auth.Middleware(llmobs.NewHandler(llmobs.NewStore(pool))))

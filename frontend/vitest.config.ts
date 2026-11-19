@@ -13,15 +13,19 @@ const __dirname = path.dirname(__filename)
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    dedupe: ['react', 'react-dom', '@testing-library/react', 'vitest'],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  server: {
+    fs: { allow: [__dirname, path.resolve(__dirname, "../tests/frontend")] },
   },
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts', './tests/setup.ts'],
-    include: ['tests/**/*.test.{ts,tsx}'],
+    include: ['tests/**/*.test.{ts,tsx}', '../tests/frontend/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

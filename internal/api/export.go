@@ -21,7 +21,7 @@ import (
 //
 // Контракт:
 //
-//	GET /api/v1/runs/{id}/export?format=md|json
+//	GET /api/v1/runs/{id}/export?format=md|json|csv
 //
 // format=md отдаёт Markdown-отчёт для человека: профессию,
 // статус, идентификатор прогона, иерархию role → function → task → action,
@@ -31,8 +31,8 @@ import (
 // (schema=run-export/v1): run, дерево, плоский список узлов, evidence,
 // conflicts, final_message и метаданные источников.
 //
-// Права: admin, teacher, rop, guest - только чтение, как у остальных
-// read-only маршрутов прогона. student получает 403, отсутствие токена - 401.
+// Экспорт доступен ролям admin, teacher, rop, student и guest.
+// Без токена сервер возвращает 401.
 //
 // Коды: 400 - неизвестный format; 404 - прогон не найден; 409 - прогон ещё не
 // завершён (RUN_NOT_FINISHED) или завершён, но дерево не сохранено
@@ -56,6 +56,7 @@ const (
 	exportFormatLegacy   exportFormat = "legacy"
 	exportFormatMarkdown exportFormat = "md"
 	exportFormatJSON     exportFormat = "json"
+	exportFormatCSV      exportFormat = "csv"
 )
 
 // synthesisConflictsReader - узкий читающий интерфейс конфликтов синтезатора.
@@ -97,8 +98,9 @@ type runExportNode struct {
 // @Tags         runs
 // @Produce      text/markdown
 // @Produce      json
+// @Produce      text/csv
 // @Param        id      path   string  true   "Run ID"
-// @Param        format  query  string  false  "md (default) or json"
+// @Param        format  query  string  false  "md, json or csv"
 // @Success      200  {string}  string  "Markdown report or JSON export document"
 // @Failure      400  {object}  errorBody
 // @Failure      401  {object}  errorBody
@@ -169,6 +171,11 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if format == exportFormatCSV {
+		writeRunCSV(w, run.ID, nodes)
+		return
+	}
+
 	document := s.buildRunExport(r.Context(), run, nodes)
 
 	var (
@@ -192,8 +199,8 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/json; charset=utf-8"
 		extension = "json"
 	default:
-		// Недостижимо: parseExportFormat пропускает только md и json.
-		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "format must be one of: md, json")
+		// Недостижимо: parseExportFormat проверяет список форматов.
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "format must be one of: md, json, csv")
 		return
 	}
 
@@ -210,7 +217,7 @@ func parseExportFormat(values url.Values, accept string) (exportFormat, error) {
 	raw := strings.ToLower(strings.TrimSpace(values.Get("format")))
 	if raw == "" {
 		// Backward compatibility: the legacy /export endpoint returned a bare
-		// JSON array of nodes. New formats are explicit: ?format=md|json.
+		// JSON array of nodes. New formats are explicit: ?format=md|json|csv.
 		if strings.Contains(strings.ToLower(accept), "text/markdown") {
 			return exportFormatMarkdown, nil
 		}
@@ -221,8 +228,10 @@ func parseExportFormat(values url.Values, accept string) (exportFormat, error) {
 		return exportFormatMarkdown, nil
 	case string(exportFormatJSON):
 		return exportFormatJSON, nil
+	case string(exportFormatCSV):
+		return exportFormatCSV, nil
 	default:
-		return "", fmt.Errorf("format must be one of: md, json")
+		return "", fmt.Errorf("format must be one of: md, json, csv")
 	}
 }
 
@@ -478,7 +487,7 @@ func renderRunExportMarkdown(document *runExport) string {
 
 	if message := strings.TrimSpace(document.FinalMessage); message != "" {
 		builder.WriteString("## Final message (recommendations / courses)\n\n")
-		builder.WriteString(message)
+		builder.WriteString(markdownLiteral.Replace(message))
 		builder.WriteString("\n")
 	}
 
@@ -534,7 +543,7 @@ func writeMarkdownEvidenceSection(builder *strings.Builder, document *runExport)
 	builder.WriteString("| --- | --- | --- | --- | --- |\n")
 	for _, evidence := range document.Evidence {
 		nodeLabel := markdownCode(evidence.NodeID)
-		if title := markdownText(titles[evidence.NodeID]); title != "-" {
+		if title := titles[evidence.NodeID]; strings.TrimSpace(title) != "" {
 			nodeLabel = fmt.Sprintf("%s - %s", markdownCode(evidence.NodeID), markdownCell(title))
 		}
 		status := string(evidence.Status)
@@ -631,9 +640,16 @@ func markdownInline(value string) string {
 	return strings.TrimSpace(value)
 }
 
+// Символы в пользовательском тексте не должны добавлять разметку в отчёт.
+var markdownLiteral = strings.NewReplacer(
+	"&", "&amp;", "<", "&lt;", ">", "&gt;",
+	"\\", "\\\\", "`", "\\`", "*", "\\*", "_", "\\_",
+	"[", "\\[", "]", "\\]", "!", "\\!", "~", "\\~",
+)
+
 // markdownCell экранирует значение для ячейки таблицы Markdown.
 func markdownCell(value string) string {
-	return strings.ReplaceAll(markdownInline(value), "|", `\|`)
+	return strings.ReplaceAll(markdownLiteral.Replace(markdownInline(value)), "|", `\|`)
 }
 
 func markdownCellOrDash(value string) string {
@@ -649,7 +665,7 @@ func markdownText(value string) string {
 	if text == "" {
 		return "-"
 	}
-	return text
+	return markdownLiteral.Replace(text)
 }
 
 // markdownCode оформляет идентификатор как inline-код; пустое значение

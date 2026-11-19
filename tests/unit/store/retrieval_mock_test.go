@@ -165,6 +165,22 @@ func TestSearchFragmentsUnit(t *testing.T) {
 	})
 }
 
+func TestSearchPassesTranscriptPunctuationAsOneSQLArgument(t *testing.T) {
+	pool, s := testStore(t)
+	run := testUUID(501)
+	query := "О'Нил: <строка> \"цитата\" & 3 < 7;"
+	quote := "  " + query + "\n"
+	pool.ExpectQuery(`^SELECT ref_id, source_id, quote, score FROM find_fragments_bm25\(\$1,\$2,\$3\)$`).
+		WithArgs(run, query, 5).WillReturnRows(searchRows(searchHit(1, 11, quote, 0.7)))
+	hits, mode, err := s.SearchFragments(context.Background(), run, query, "", 5, nil)
+	if err != nil || mode != "bm25" || len(hits) != 1 || hits[0].Quote != quote {
+		t.Fatalf("поиск: %v %s %+v", err, mode, hits)
+	}
+	if err := pool.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSearchHybridUnit(t *testing.T) {
 	runID := testUUID(500)
 	t.Run("отклоняет пустой запрос и неверный limit", func(t *testing.T) {

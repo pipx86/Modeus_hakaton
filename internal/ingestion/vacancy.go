@@ -15,7 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"activity-descriptor/internal/store/db"
+
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,6 +27,7 @@ type Vacancy struct {
 	Name        string `json:"name"`
 	URL         string `json:"alternate_url"`
 	Description string `json:"description"`
+	PublishedAt string `json:"published_at,omitempty"`
 	Snippet     struct {
 		Requirement    string `json:"requirement"`
 		Responsibility string `json:"responsibility"`
@@ -41,6 +45,20 @@ func (v Vacancy) content() string {
 		return v.Description
 	}
 	return strings.TrimSpace(strings.Join([]string{v.Snippet.Requirement, v.Snippet.Responsibility}, "\n"))
+}
+
+func (v Vacancy) publicationTime() (pgtype.Timestamptz, error) {
+	raw := strings.TrimSpace(v.PublishedAt)
+	if raw == "" {
+		return pgtype.Timestamptz{}, nil
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05-0700"} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			stored := parsed.UTC().Truncate(time.Microsecond)
+			return pgtype.Timestamptz{Time: stored, Valid: true}, nil
+		}
+	}
+	return pgtype.Timestamptz{}, errors.New("недопустимый published_at; нужна дата и время с часовым поясом")
 }
 
 func (v Vacancy) validate() error {
@@ -115,7 +133,7 @@ func ReadVacancies(r io.Reader, format string) ([]Vacancy, error) {
 				}
 				return ""
 			}
-			v := Vacancy{ID: get("id"), Name: get("name"), URL: get("alternate_url"), Description: get("description")}
+			v := Vacancy{ID: get("id"), Name: get("name"), URL: get("alternate_url"), Description: get("description"), PublishedAt: get("published_at")}
 			if err := v.validate(); err != nil {
 				return nil, fmt.Errorf("строка %d: %w", n, err)
 			}
@@ -198,28 +216,39 @@ func SaveVacancies(ctx context.Context, pool *pgxpool.Pool, vacancies []Vacancy)
 		return counts, err
 	}
 	defer tx.Rollback(context.Background())
+	queries := db.New(tx)
 	for _, v := range vacancies {
 		if err := v.validate(); err != nil {
 			return Counts{}, err
 		}
 		v.ID = strings.TrimSpace(v.ID)
 		v.Name = strings.TrimSpace(v.Name)
-		// Блокировка не даёт двум загрузчикам одновременно классифицировать одну запись.
-		if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "hh:vacancy:"+v.ID); err != nil {
+		published, parseErr := v.publicationTime()
+		if parseErr != nil {
+			return Counts{}, fmt.Errorf("вакансия %s: %w", v.ID, parseErr)
+		}
+		// Блокировка защищает счётчики вставок и обновлений при параллельном импорте.
+		if err := queries.LockVacancyImport(ctx, "hh:vacancy:"+v.ID); err != nil {
 			return Counts{}, err
 		}
-		var id, name, content, link string
-		err = tx.QueryRow(ctx, "SELECT id::text,title,COALESCE(content,''),COALESCE(source_url,'') FROM sources WHERE provider='hh' AND type='vacancy' AND external_id=$1", v.ID).Scan(&id, &name, &content, &link)
+		content := v.content()
+		current, err := queries.GetVacancyForImport(ctx, v.ID)
+		dateUnchanged := !published.Valid || (current.VacancyPublishedAt.Valid && current.VacancyPublishedAt.Time.Equal(published.Time))
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
-			_, err = tx.Exec(ctx, "INSERT INTO sources(type,title,content,source_url,provider,external_id) VALUES('vacancy',$1,$2,$3,'hh',$4)", v.Name, v.content(), v.URL, v.ID)
+			err = queries.CreateImportedVacancy(ctx, db.CreateImportedVacancyParams{
+				Title: v.Name, Content: content, SourceUrl: v.URL,
+				ExternalID: v.ID, VacancyPublishedAt: published,
+			})
 			counts.Inserted++
 		case err != nil:
 			return Counts{}, err
-		case name == v.Name && content == v.content() && link == v.URL:
+		case current.Title == v.Name && current.Content == content && current.SourceUrl == v.URL && dateUnchanged:
 			counts.Skipped++
 		default:
-			_, err = tx.Exec(ctx, "UPDATE sources SET title=$2,content=$3,source_url=$4,updated_at=now() WHERE id=$1", id, v.Name, v.content(), v.URL)
+			err = queries.UpdateImportedVacancy(ctx, db.UpdateImportedVacancyParams{
+				ID: current.ID, Title: v.Name, Content: content, SourceUrl: v.URL, VacancyPublishedAt: published,
+			})
 			counts.Updated++
 		}
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/idempotency"
+	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
 	"activity-descriptor/internal/sse"
 	"activity-descriptor/internal/steps"
@@ -29,6 +30,7 @@ type chatStarter interface {
 }
 
 type Server struct {
+	importFiles  ingestion.ImportFiles
 	store        Store
 	autoStart    bool
 	chat         chatStarter
@@ -86,6 +88,7 @@ func (s *Server) Routes() http.Handler {
 	// Статическая страница и спецификация API.
 	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./api-docs"))))
 
+	mux.HandleFunc("POST /api/v1/ingest", s.handleFileImport)
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
 	mux.HandleFunc("GET /api/v1/runs/estimate", s.handleRunEstimate)

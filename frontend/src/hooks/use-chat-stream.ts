@@ -138,8 +138,8 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   }, [runId, active, appendMessages, loadHistory, interviewFinished])
 
   const send = async () => {
-    const content = draft.trim()
-    if (!content || sending) return
+    const content = draft
+    if (!content.trim() || sending) return
     setSending(true)
     try {
       const { data, error } = await apiClient.POST("/runs/{id}/messages", {

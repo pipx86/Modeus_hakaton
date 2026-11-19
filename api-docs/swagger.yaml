@@ -36,6 +36,68 @@ tags:
 security:
 - bearerAuth: []
 paths:
+  /ingest:
+    post:
+      tags:
+      - sources
+      summary: Запустить импорт настроенных файлов
+      description: Требуется роль admin. Имена файлов задаются на сервере.
+      operationId: ingestConfiguredFiles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - sources
+              properties:
+                sources:
+                  type: array
+                  uniqueItems: true
+                  minItems: 1
+                  maxItems: 2
+                  items:
+                    type: string
+                    enum:
+                    - vacancies
+                    - standards
+      responses:
+        '200':
+          description: Число вставленных и обновлённых записей.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - status
+                - ingested
+                - vacancies
+                - standards
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - ok
+                  ingested:
+                    type: integer
+                    minimum: 0
+                  vacancies:
+                    type: integer
+                    minimum: 0
+                  standards:
+                    type: integer
+                    minimum: 0
+        '400':
+          description: Некорректный список источников
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '500':
+          description: Сбой загрузки настроенных файлов
+        '503':
+          description: Файлы или PostgreSQL не настроены
   /health:
     get:
       tags:
@@ -1856,7 +1918,7 @@ paths:
     get:
       tags:
       - runs
-      summary: Export a completed run as Markdown or JSON
+      summary: Export a completed run as Markdown, JSON or CSV
       description: 'Exports the finalized activity tree of a run whose status is `done`.
         Without `format` the endpoint returns the legacy bare JSON array of tree nodes.
         Explicit `format=json` returns a structured run export document; `format=md`
@@ -1865,33 +1927,35 @@ paths:
         resolved conflicts, the final recommendations/courses chat message when available
         and the generation timestamp. `format=json` returns the same data as a structured
         document (`schema=run-export/v1`). Roles: admin, teacher, rop, student and
-        guest; conflicts and source metadata are auxiliary and are read best-effort:
-        if they cannot be loaded the export still succeeds without them. The response
-        is served with `Content-Disposition: attachment` and a filename built from
-        a sanitized run id.'
+        guest. CSV returns one row per evidence quote or per node without evidence.
+        Conflicts and source metadata are auxiliary and are read best-effort: if they
+        cannot be loaded the export still succeeds without them. The response is served
+        with `Content-Disposition: attachment` and a filename built from a sanitized
+        run id.'
       operationId: exportRun
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: format
         in: query
         required: false
-        description: 'Export format: `md`, `json`, or omitted for the legacy bare
-          node array. Any other value returns 400 BAD_REQUEST. Case and surrounding
+        description: 'Export format: `md`, `json`, `csv`, or omitted for the legacy
+          bare node array. Any other value returns 400 BAD_REQUEST. Case and surrounding
           whitespace are normalized.'
         schema:
           type: string
           enum:
           - md
           - json
+          - csv
           default: json
       responses:
         '200':
-          description: Legacy bare node array by default; structured JSON or Markdown
-            when requested.
+          description: Legacy bare node array by default; CSV, structured JSON or
+            Markdown when requested.
           headers:
             Content-Disposition:
-              description: '`attachment; filename="run-<sanitized-id>.md"` or `.json`;
-                the id is reduced to ASCII letters, digits, `-` and `_`.'
+              description: '`attachment; filename="run-<sanitized-id>.md"`, `.json`
+                or `.csv`; the id is reduced to ASCII letters, digits, `-` and `_`.'
               schema:
                 type: string
           content:
@@ -1909,6 +1973,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExportRun'
+            text/csv:
+              schema:
+                type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

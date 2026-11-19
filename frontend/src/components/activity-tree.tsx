@@ -161,7 +161,7 @@ function EvidenceList({
                 <span>· {SOURCE_PRIORITY[source.type]}</span>
               </span>
             )}
-            <span className="min-w-0 flex-1 text-muted-foreground">{item.quote}</span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">{item.quote}</span>
             {typeof confidence === "number" && (
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceTone(confidence)}`}

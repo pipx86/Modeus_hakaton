@@ -59,6 +59,12 @@ type Evidence struct {
 	Status    string             `json:"status"`
 }
 
+type EvidenceQuoteCheck struct {
+	EvidenceID pgtype.UUID        `json:"evidence_id"`
+	Result     string             `json:"result"`
+	CheckedAt  pgtype.Timestamptz `json:"checked_at"`
+}
+
 type IdempotencyKey struct {
 	ID           pgtype.UUID        `json:"id"`
 	Key          string             `json:"key"`
@@ -245,20 +251,29 @@ type Snapshot struct {
 }
 
 type Source struct {
-	ID               pgtype.UUID        `json:"id"`
-	RunID            pgtype.UUID        `json:"run_id"`
-	Type             string             `json:"type"`
-	Title            string             `json:"title"`
-	Content          pgtype.Text        `json:"content"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-	SourceUrl        pgtype.Text        `json:"source_url"`
-	ExternalID       pgtype.Text        `json:"external_id"`
-	RawPayload       []byte             `json:"raw_payload"`
-	ProcessingStatus string             `json:"processing_status"`
-	ProcessingError  pgtype.Text        `json:"processing_error"`
-	ProcessedAt      pgtype.Timestamptz `json:"processed_at"`
-	Provider         pgtype.Text        `json:"provider"`
+	ID                 pgtype.UUID        `json:"id"`
+	RunID              pgtype.UUID        `json:"run_id"`
+	Type               string             `json:"type"`
+	Title              string             `json:"title"`
+	Content            pgtype.Text        `json:"content"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	SourceUrl          pgtype.Text        `json:"source_url"`
+	ExternalID         pgtype.Text        `json:"external_id"`
+	RawPayload         []byte             `json:"raw_payload"`
+	ProcessingStatus   string             `json:"processing_status"`
+	ProcessingError    pgtype.Text        `json:"processing_error"`
+	ProcessedAt        pgtype.Timestamptz `json:"processed_at"`
+	Provider           pgtype.Text        `json:"provider"`
+	VacancyPublishedAt pgtype.Timestamptz `json:"vacancy_published_at"`
+}
+
+type SourceCheck struct {
+	SourceID       pgtype.UUID        `json:"source_id"`
+	ContentPresent bool               `json:"content_present"`
+	OriginPresent  bool               `json:"origin_present"`
+	UrlFormat      string             `json:"url_format"`
+	CheckedAt      pgtype.Timestamptz `json:"checked_at"`
 }
 
 type Taxonomy struct {

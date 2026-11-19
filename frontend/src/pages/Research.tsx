@@ -504,7 +504,7 @@ function SourcesTab({
                           key={quote.id}
                           className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-sm"
                         >
-                          <span className="min-w-0 flex-1 text-muted-foreground">{quote.quote}</span>
+                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">{quote.quote}</span>
                           {typeof confidence === "number" && (
                             <span
                               className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceClass(confidence)}`}
