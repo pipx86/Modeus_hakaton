@@ -271,34 +271,36 @@ export function Dashboard() {
 
       {!loading && !error && runs.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Card size="sm">
-              <CardContent className="space-y-1">
+          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+            <Card size="sm" className="h-[88px]">
+              <CardContent className="flex h-full flex-col justify-between gap-1">
                 <p className="text-xs text-muted-foreground">Всего исследований</p>
-                <p className="text-2xl font-semibold">{runs.length}</p>
+                <p className="text-xl font-semibold">{runs.length}</p>
               </CardContent>
             </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1">
+            <Card size="sm" className="h-[88px]">
+              <CardContent className="flex h-full flex-col justify-between gap-1">
                 <p className="text-xs text-muted-foreground">Активных</p>
-                <p className="text-2xl font-semibold">{active}</p>
+                <p className="text-xl font-semibold">{active}</p>
               </CardContent>
             </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1">
-                <p className="text-xs text-muted-foreground">Успешных</p>
-                <p className="text-2xl font-semibold">
+            <Card size="sm" className="h-[88px]">
+              <CardContent className="flex h-full flex-col justify-between gap-1">
+                <p className="text-xs text-muted-foreground">
+                  Успешных{" "}
+                  <span className="text-[10px]">
+                    · {stats.done} из {stats.done + stats.failed}
+                  </span>
+                </p>
+                <p className="text-xl font-semibold">
                   {stats.successRate === null ? "-" : `${Math.round(stats.successRate)}%`}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {stats.done} из {stats.done + stats.failed} завершённых
-                </p>
               </CardContent>
             </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1">
+            <Card size="sm" className="h-[88px]">
+              <CardContent className="flex h-full flex-col justify-between gap-1">
                 <p className="text-xs text-muted-foreground">Средняя длительность</p>
-                <p className="text-2xl font-semibold">{formatDuration(stats.average)}</p>
+                <p className="text-xl font-semibold">{formatDuration(stats.average)}</p>
               </CardContent>
             </Card>
           </div>
@@ -312,7 +314,7 @@ export function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <StackedBars data={daily} />
+                <StackedBars data={daily} heightClass="h-60" />
                 <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-success" /> успешные
@@ -332,9 +334,11 @@ export function Dashboard() {
                 <CardTitle className="text-base">Статусы</CardTitle>
                 <CardDescription>Распределение всех прогонов.</CardDescription>
               </CardHeader>
-              <CardContent className="flex justify-center">
+              <CardContent className="flex min-h-[280px] items-center justify-center">
                 <Donut
                   segments={statusSegments}
+                  size={210}
+                  thickness={20}
                   centerLabel="прогонов"
                   centerValue={String(runs.length)}
                 />
