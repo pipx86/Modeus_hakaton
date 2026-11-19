@@ -71,8 +71,8 @@ func run(ctx context.Context, c config) error {
 		return errors.New("cannot connect to PostgreSQL")
 	}
 	var schemaReady bool
-	if err = pool.QueryRow(connectCtx, "SELECT (SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped) AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('evidence') AND attname='ref_id' AND NOT attisdropped) AND to_regclass('run_sse_events') IS NOT NULL AND to_regclass('run_chat_messages') IS NOT NULL").Scan(&schemaReady); err != nil || !schemaReady {
-		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000002_sse_events.sql и 20261118030000_run_chat_messages.sql")
+	if err = pool.QueryRow(connectCtx, "SELECT (SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped) AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('evidence') AND attname='ref_id' AND NOT attisdropped) AND to_regclass('run_sse_events') IS NOT NULL AND to_regclass('run_chat_messages') IS NOT NULL AND to_regclass('run_chat_sessions') IS NOT NULL").Scan(&schemaReady); err != nil || !schemaReady {
+		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000002_sse_events.sql, 20261118030000_run_chat_messages.sql и 20261119010000_run_chat_sessions.sql")
 	}
 
 	listener, err := net.Listen("tcp", c.address)
@@ -165,9 +165,10 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
-	// Persist the dialog so chat history survives restarts; the in-memory
-	// session still serves live SSE events for the active interview.
-	chatService.SetMessageStore(store.NewChatMessageStore(pool))
+	// Persist the dialog and the interviewer session cursor, so chat history
+	// survives restarts and an active interview resumes instead of hanging.
+	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
+	chatService.SetSessionStore(store.NewChatSessionStore(pool))
 	if analystClient != nil {
 		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
 	}
@@ -203,6 +204,10 @@ func run(ctx context.Context, c config) error {
 	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
 	resumer.SetBatchPlan(batchPlan)
 	app.BindResumeProcessor(resumer)
+	// A restart may have interrupted a chat run between two durable steps:
+	// resume finalizing sessions, reconcile run statuses and mark legacy chat
+	// runs that cannot be restored as failed (SESSION_INTERRUPTED).
+	go chatService.RecoverSessions(context.Background())
 	go func() {
 		bgCtx := context.Background()
 		if err := resumer.ProcessIncompleteRuns(bgCtx); err != nil {

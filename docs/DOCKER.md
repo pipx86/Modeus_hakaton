@@ -3,10 +3,12 @@
 > Status: verified locally in this worktree. The default `api` image builds
 > (27.0 MB, well below the 100 MB CI budget), the demo container smoke passes
 > (`/health`, `/metrics`, `/api/v1/health`, self-healthcheck, JWT chat flow) and
-> the full `server` profile was built, migrated and smoke-tested against an
-> isolated PostgreSQL (see [DOCKER_SERVER.md](DOCKER_SERVER.md) and
-> "Acceptance evidence" below). CI `docker` job remains the authoritative gate;
-> it builds the default image without `--target`.
+> the full `server` profile was built, migrated (main **and** optional vector
+> goose groups) and smoke-tested end-to-end against an isolated PostgreSQL,
+> including the built React frontend served by nginx on a single entry point
+> (see [DOCKER_SERVER.md](DOCKER_SERVER.md) and "Acceptance evidence" below). CI
+> `docker` job remains the authoritative gate; it builds the default image
+> without `--target`.
 
 ## Services
 
@@ -16,7 +18,9 @@
 | `web` | built from `frontend/Dockerfile` (Vite + nginx) | default | 8081 | `GET /healthz` |
 | `postgres` | `pgvector/pgvector:0.8.0-pg16` | default | 5432 | `pg_isready` |
 | `migrate` | built from `Dockerfile` (`migrate` target) | `server` | — | exit code (`service_completed_successfully`) |
+| `migrate-vector` | built from `Dockerfile` (`migrate` target) | `server` | — | exit code (`service_completed_successfully`) |
 | `server` | built from `Dockerfile` (`server` target) | `server` | 8082 (`SERVER_PORT`) | `/app/healthcheck` -> `GET /api/v1/health` |
+| `web-server` | built from `Dockerfile` (`web` target: React build + nginx) | `server` | 8083 (`SERVER_WEB_PORT`) | `GET /healthz` |
 | `prometheus` | `prom/prometheus:v2.54.1` | `monitoring` | 9090 | — |
 | `grafana` | `grafana/grafana:11.2.0` | `monitoring` | 3000 | — |
 | `n8n` | `n8nio/n8n:1.63.4` | `automation` | 5678 | `GET /healthz` |
@@ -25,18 +29,27 @@
 `postgres` uses the pgvector image because the backend migrations add the
 `vector` extension; the demo API does not use it.
 
-## API image
+## Images and build targets
 
-`Dockerfile` is a two-stage build:
+`Dockerfile` is multi-stage; the **last stage stays the demo `api` image**, so
+`docker build .` (the CI job) is unchanged:
 
-1. `golang:1.26.10-bookworm` compiles `cmd/api` and `cmd/local-token` with
-   `CGO_ENABLED=0`, `-trimpath -ldflags="-s -w"`, copying `cmd/`, `internal/`
-   and the embedded `prompts/`.
-2. `gcr.io/distroless/static-debian12:nonroot` runs as `nonroot:nonroot`.
+| Target | Contents |
+| ------ | -------- |
+| `api` (default) | `cmd/api` + `cmd/local-token`, distroless, no shell |
+| `server` | `cmd/server`, `/app/healthcheck`, `api-docs/` (Swagger), `migrations*/`, distroless |
+| `migrate` | pinned goose v3.29.0 + both migration directories (used by `migrate` and `migrate-vector`) |
+| `web` | production `frontend/dist` built with `npm ci && npm run build` + nginx + `deploy/nginx/server.conf` |
 
-The runtime layer is the ~2.5 MB distroless base plus two stripped Go binaries;
-the expected image is **well below the 100 MB budget** (~20 MB). There is no
-shell, package manager or libc. The container healthcheck is `/api
+The `frontend-build` stage (`node:22.20-bookworm-slim`) builds the React SPA
+inside Docker; the final `web` image is nginx:1.27-alpine plus static files and
+the reverse-proxy config (no Node runtime). `web-server` serves the SPA and
+proxies `/api/`, `/swagger/` and `/metrics` to `server` on one origin/port, so
+the full stack has a single public URL and no CORS setup.
+
+The demo runtime layer is the ~2.5 MB distroless base plus two stripped Go
+binaries; the expected image is **well below the 100 MB budget** (~20 MB). There
+is no shell, package manager or libc. The container healthcheck is `/api
 -healthcheck`: distroless has no shell/curl, so the binary probes itself.
 
 `/local-token` is included in the image so a local demo can issue a JWT for the
@@ -57,27 +70,34 @@ no provider keys are needed.
 
 ## Full backend profile (`cmd/server`)
 
-The demo image above stays the default. To run the real PostgreSQL backend
-instead, use the `server` compose profile:
+The demo image above stays the default. To run the real PostgreSQL backend and
+the built frontend through a single nginx entry point, use the `server` compose
+profile:
 
 ```bash
 cp .env.example .env        # set JWT_SECRET (>= 32 bytes); never commit .env
-docker compose --profile server up -d --build server
-curl -fsS http://localhost:8082/api/v1/health
+docker compose --profile server up -d --build server web-server
+curl -fsS http://localhost:8083/api/v1/health     # API through nginx
+open http://localhost:8083                        # built React SPA (same origin)
+curl -fsS http://localhost:8082/api/v1/health     # direct backend (optional)
 ```
 
-The profile builds the `server` and `migrate` Dockerfile targets, applies every
-pending goose migration from `./migrations` in a one-shot `migrate` service and
-starts the backend only after that service exits successfully. Secrets come
-from the git-ignored `.env` / `.secrets/llm.env`; nothing is baked into the
-image. The full runbook (env precedence, migrating an existing database,
-JWT requests, switching between demo and full backend) is
-[DOCKER_SERVER.md](DOCKER_SERVER.md).
+The profile builds the `server`, `migrate` and `web` Dockerfile targets. Two
+one-shot goose services run first: `migrate` applies `./migrations` (main
+history) and `migrate-vector` applies `./migrations_optional/vector` with its own
+`goose_vector_versions` table; the backend only starts after both exit 0. Then
+`web-server` serves `frontend/dist` (built with `npm ci && npm run build` inside
+the image) and proxies `/api/`, `/swagger/` and `/metrics` to `server`, so the
+full stack has one public port and no CORS. Secrets come from the git-ignored
+`.env` / `.secrets/llm.env`; nothing is baked into the image. The full runbook
+(env precedence, migrations incl. the vector group, monitoring with the
+`server` scrape config, JWT requests, switching between demo and full backend)
+is [DOCKER_SERVER.md](DOCKER_SERVER.md).
 
 ## First run
 
 ```bash
-cd .worktrees/devops
+cd <repository root>                     # in this worktree: .worktrees/roman-ai
 cp .env.example .env                     # set JWT_SECRET etc.; .env is git-ignored
 docker compose up -d --build api web postgres
 
@@ -132,7 +152,7 @@ when down.
 ```bash
 docker build -t activity-descriptor-api:local .                       # default target
 docker image inspect activity-descriptor-api:local --format '{{.Size}} bytes'
-# -> 27002583 bytes (< 104857600, the CI budget)
+# -> 27091401 bytes (< 104857600, the CI budget)
 
 docker run -d --name api-smoke -p 127.0.0.1:18093:8080 \
   -e JWT_SECRET=ci-demo-jwt-secret-at-least-32-bytes-long activity-descriptor-api:local
@@ -144,14 +164,22 @@ docker exec api-smoke /local-token -role admin   # JWT
 # JWT POST /api/v1/runs -> 201 run-1; GET .../messages -> fallback agent messages
 ```
 
-The full `cmd/server` backend (server + migrate targets, PostgreSQL, goose
-migrations, Swagger, JWT) has its own verified runbook:
+The default demo stack was also re-verified in an isolated compose project
+after the profile changes (`api`, `web`, `postgres` on spare ports): api
+`/health` 200, `/metrics` 200, web placeholder `/` 200, web `/api/v1/health`
+proxy 200, `/healthz` 200.
+
+The full `cmd/server` backend (server + migrate targets, PostgreSQL, both goose
+groups, Swagger, JWT) plus the built frontend (`web` target) and the monitoring
+scrape config has its own verified runbook with per-check evidence:
 [DOCKER_SERVER.md](DOCKER_SERVER.md).
 
 ## Secrets
 
 * Only environment variables are used; nothing is baked into the image.
-* `.env.example` documents every variable; `.env` is git-ignored.
+* `.env.example` documents the shared variables; `.env` is git-ignored. The
+  profile's `SERVER_WEB_PORT` (single public web port, default 8083) has a
+  compose default, so it only needs to be set when 8083 is taken.
 * `JWT_SECRET` must be a real secret (>= 32 bytes) outside local dev; compose
   falls back to a documented local placeholder.
 * The full `server` profile has **no** JWT placeholder: it reads
@@ -173,7 +201,7 @@ migrations, Swagger, JWT) has its own verified runbook:
 * **API unhealthy** — `docker compose logs api`; run
   `docker compose exec api /api -healthcheck` manually.
 * **Port already allocated** — override `API_PORT`, `WEB_PORT`, `SERVER_PORT`,
-  `POSTGRES_PORT`, `GRAFANA_PORT`, `N8N_PORT` in `.env`.
+  `SERVER_WEB_PORT`, `POSTGRES_PORT`, `GRAFANA_PORT`, `N8N_PORT` in `.env`.
 * **Full backend (`server` profile) issues** — see
   [DOCKER_SERVER.md](DOCKER_SERVER.md): missing `JWT_SECRET`, migration failures
   and unreachable database DSNs all fail fast with a documented message.

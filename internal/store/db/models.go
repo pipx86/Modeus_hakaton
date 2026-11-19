@@ -227,6 +227,18 @@ type RunChatMessage struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type RunChatSession struct {
+	RunID         pgtype.UUID        `json:"run_id"`
+	SchemaVersion int32              `json:"schema_version"`
+	Profession    string             `json:"profession"`
+	PromptVersion string             `json:"prompt_version"`
+	Status        string             `json:"status"`
+	State         []byte             `json:"state"`
+	Version       int64              `json:"version"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RunSource struct {
 	RunID     pgtype.UUID        `json:"run_id"`
 	SourceID  pgtype.UUID        `json:"source_id"`

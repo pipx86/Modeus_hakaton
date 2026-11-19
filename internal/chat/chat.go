@@ -2,9 +2,11 @@
 // storage when configured, and exposes messages and events to the HTTP API.
 //
 // The active dialog (SSE events, in-flight interviewer questions) stays in
-// memory, but every message is also written through MessageStore so that
-// GET /api/v1/runs/{id}/messages keeps returning the history after a backend
-// restart, when the in-memory session is gone.
+// memory, but the dialog messages and a snapshot of the interviewer session are
+// written through SessionStore in the same transaction. A restarted backend
+// therefore reloads the session lazily from PostgreSQL and continues the
+// interview at the exact question/answer cursor instead of leaving an active
+// run hanging.
 package chat
 
 import (
@@ -86,9 +88,15 @@ type Finalizer func(ctx context.Context, runID, profession string, session domai
 
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
-// persistTimeout bounds one durable write/read of the chat history. The
-// dialog itself must not hang on a slow database.
-const persistTimeout = 5 * time.Second
+// resumeMode records what the dialog still owes when a session was restored
+// from the database: either the next question or the post-interview pipeline.
+type resumeMode int
+
+const (
+	resumeNone resumeMode = iota
+	resumeAsk
+	resumeComplete
+)
 
 // Service owns one interviewer session per run.
 type Service struct {
@@ -97,17 +105,32 @@ type Service struct {
 	onFinish      func(runID string, status domain.RunStatus)
 	promptVersion string
 
-	mu       sync.Mutex
-	sessions map[string]*session
-	store    MessageStore
+	mu           sync.Mutex
+	sessions     map[string]*session
+	store        MessageStore
+	sessionStore SessionStore
+	// startedAt is the instant this service was created. Startup recovery only
+	// considers runs and sessions that predate it.
+	startedAt time.Time
+	// restoreMu serializes lazy restores so two requests for the same run never
+	// build two in-memory sessions; the map check under mu is repeated inside.
+	restoreMu sync.Mutex
 }
 
 type session struct {
+	runID         string
+	profession    string
+	promptVersion string
+
 	mu          sync.Mutex
 	session     *interviewer.Session
 	messages    []Message
 	seq         int
+	version     int64
 	asking      bool
+	finalizing  bool
+	finished    bool
+	resume      resumeMode
 	subscribers map[chan Event]struct{}
 }
 
@@ -118,19 +141,35 @@ func NewService(client llm.ChatClient, onFinish func(string, domain.RunStatus)) 
 		client = UnavailableClient{}
 	}
 	return &Service{
-		client:   client,
-		onFinish: onFinish,
-		sessions: make(map[string]*session),
+		client:    client,
+		onFinish:  onFinish,
+		sessions:  make(map[string]*session),
+		startedAt: time.Now().UTC(),
 	}
 }
 
 // SetMessageStore installs the durable history store. It must be called before
 // the first run is started. Nil (the default) keeps the dialog in memory only,
 // which is the demo/test setup.
+//
+// SetSessionStore is preferred in production: it persists the interviewer
+// session snapshot as well, which is what makes a restart resumable.
 func (s *Service) SetMessageStore(store MessageStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.store = store
+}
+
+// SetSessionStore installs the durable session store. It also serves as the
+// message store, so the history survives a restart and active interviews can be
+// resumed. It must be called before the first run is started.
+func (s *Service) SetSessionStore(store SessionStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessionStore = store
+	if store != nil {
+		s.store = store
+	}
 }
 
 // messageStore returns the configured persistence layer. It is read on every
@@ -141,12 +180,26 @@ func (s *Service) messageStore() MessageStore {
 	return s.store
 }
 
+// sessionStoreOf returns the configured durable session store, if any.
+func (s *Service) sessionStoreOf() SessionStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sessionStore
+}
+
 // SetFinalizer installs the post-interview pipeline. It must be called before
 // the first run is started.
 func (s *Service) SetFinalizer(finalizer Finalizer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.finalizer = finalizer
+}
+
+// finalizerFn returns the configured finalizer safely.
+func (s *Service) finalizerFn() Finalizer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.finalizer
 }
 
 // SetPromptVersion pins the interviewer prompt version for new sessions.
@@ -156,18 +209,30 @@ func (s *Service) SetPromptVersion(version string) {
 	s.promptVersion = version
 }
 
+// newAgent builds the interviewer agent for one session.
+func (s *Service) newAgent(version string) (*interviewer.Agent, error) {
+	opts := []interviewer.Option{}
+	if version != "" {
+		opts = append(opts, interviewer.WithPromptVersion(version))
+	}
+	agent, err := interviewer.New(s.client, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("chat: interviewer: %w", err)
+	}
+	return agent, nil
+}
+
 // Start creates the interview session and asks the first question.
 func (s *Service) Start(runID, profession string) error {
 	if runID == "" {
 		return fmt.Errorf("chat: run id is required")
 	}
-	opts := []interviewer.Option{}
-	if s.promptVersion != "" {
-		opts = append(opts, interviewer.WithPromptVersion(s.promptVersion))
-	}
-	agent, err := interviewer.New(s.client, opts...)
+	s.mu.Lock()
+	promptVersion := s.promptVersion
+	s.mu.Unlock()
+	agent, err := s.newAgent(promptVersion)
 	if err != nil {
-		return fmt.Errorf("chat: interviewer: %w", err)
+		return err
 	}
 	interview, err := interviewer.NewSession(agent, "run-"+runID, domain.Respondent{
 		ID:         "respondent-" + runID,
@@ -184,26 +249,33 @@ func (s *Service) Start(runID, profession string) error {
 		return nil
 	}
 	sess := &session{
-		session:     interview,
-		subscribers: make(map[chan Event]struct{}),
+		runID:         runID,
+		profession:    profession,
+		promptVersion: promptVersion,
+		session:       interview,
+		subscribers:   make(map[chan Event]struct{}),
 	}
 	s.sessions[runID] = sess
 	s.mu.Unlock()
 
+	// The greeting is persisted together with the initial snapshot: after a
+	// restart the dialog history and the session cursor are never out of sync.
 	sess.mu.Lock()
-	welcome, err := s.appendMessageLocked(runID, sess, "agent", welcomeMessage, true)
-	if err != nil {
+	message := newMessage(runID, 1, "agent", welcomeMessage)
+	if err := s.persistStep(sess, s.snapshotLocked(sess, SessionActive, ""), []Message{message}); err != nil {
 		sess.mu.Unlock()
 		s.mu.Lock()
 		delete(s.sessions, runID)
 		s.mu.Unlock()
 		return fmt.Errorf("chat: persist greeting: %w", err)
 	}
+	sess.messages = append(sess.messages, message)
+	sess.seq = message.Sequence
 	sess.asking = true
 	sess.mu.Unlock()
-	s.publish(runID, Event{Type: "agent_message", Message: &welcome})
+	s.publish(runID, Event{Type: "agent_message", Message: &message})
 	s.publish(runID, Event{Type: "agent_thinking"})
-	go s.askNext(runID, sess)
+	go s.askNext(sess)
 	return nil
 }
 
@@ -216,17 +288,19 @@ func (s *Service) Messages(runID string) ([]Message, error) {
 		return nil, ErrNotFound
 	}
 	sess, err := s.lookup(runID)
-	if errors.Is(err, ErrNotFound) {
+	if err == nil {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		out := make([]Message, len(sess.messages))
+		copy(out, sess.messages)
+		return out, nil
+	}
+	// Finished and interrupted runs are read-only: their persisted history is
+	// still served instead of returning an error to the UI.
+	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrSessionFinished) || errors.Is(err, ErrSessionInterrupted) {
 		return s.persistedMessages(runID)
 	}
-	if err != nil {
-		return nil, err
-	}
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
-	out := make([]Message, len(sess.messages))
-	copy(out, sess.messages)
-	return out, nil
+	return nil, err
 }
 
 // persistedMessages reads the history of a run that has no in-memory session.
@@ -261,36 +335,81 @@ func (s *Service) Post(runID, content string) (Message, error) {
 	}
 
 	sess.mu.Lock()
-	message, err := s.appendMessageLocked(runID, sess, "user", content, true)
-	if err != nil {
+	if sess.finished {
 		sess.mu.Unlock()
-		return Message{}, fmt.Errorf("chat: persist answer: %w", err)
+		return Message{}, ErrSessionFinished
 	}
+	if sess.finalizing {
+		// Every answer is already collected; the pipeline is running.
+		sess.mu.Unlock()
+		return Message{}, ErrSessionFinished
+	}
+	if sess.asking {
+		// The interviewer is generating the question. The interviewer state is
+		// only mutated while asking is true, so answering now would race with it.
+		sess.mu.Unlock()
+		return Message{}, ErrQuestionPending
+	}
+	if !sess.session.PendingAnswer() {
+		// There is no open question: the interviewer may still be preparing it,
+		// or a restored session still owes the next question. Resume exactly once
+		// and tell the client to retry instead of accepting a second answer.
+		pending := sess.resume
+		sess.mu.Unlock()
+		switch pending {
+		case resumeAsk:
+			s.resume(sess)
+			return Message{}, ErrQuestionPending
+		case resumeComplete:
+			s.resume(sess)
+			return Message{}, ErrSessionFinished
+		}
+		return Message{}, ErrQuestionPending
+	}
+
+	// Capture the previous state so a failed durable write does not acknowledge
+	// an answer the client cannot later rely on.
+	snapshotBefore := sess.session.Snapshot()
+	message := newMessage(runID, sess.seq+1, "user", content)
 	if err := sess.session.Answer(content); err != nil {
 		sess.mu.Unlock()
 		return Message{}, fmt.Errorf("chat: answer: %w", err)
 	}
 	done := sess.session.Done()
-	sess.mu.Unlock()
+	status := SessionActive
+	if done {
+		// Close before the snapshot so the persisted session has the final
+		// interviewer status; the pipeline itself runs asynchronously.
+		sess.session.Close()
+		status = SessionFinalizing
+	}
+	if err := s.persistStep(sess, s.snapshotLocked(sess, status, ""), []Message{message}); err != nil {
+		if restoreErr := sess.session.Restore(snapshotBefore); restoreErr != nil {
+			log.Printf("chat: rollback session state for run %s: %v", runID, restoreErr)
+		}
+		if errors.Is(err, ErrVersionConflict) {
+			// Another process advanced the durable session; reload it on the next
+			// request instead of serving a permanently stale in-memory cursor.
+			s.forgetSession(runID)
+		}
+		sess.mu.Unlock()
+		return Message{}, fmt.Errorf("chat: persist answer: %w", err)
+	}
+	sess.messages = append(sess.messages, message)
+	sess.seq = message.Sequence
 
 	if done {
-		sess.mu.Lock()
-		state := sess.session.Close()
+		sess.finalizing = true
 		sess.mu.Unlock()
 		s.publish(runID, Event{Type: "agent_thinking"})
-		go s.complete(runID, state.Profession, state)
+		go s.complete(sess)
 		return message, nil
 	}
 
-	sess.mu.Lock()
-	if sess.asking {
-		sess.mu.Unlock()
-		return message, nil
-	}
 	sess.asking = true
 	sess.mu.Unlock()
 	s.publish(runID, Event{Type: "agent_thinking"})
-	go s.askNext(runID, sess)
+	go s.askNext(sess)
 	return message, nil
 }
 
@@ -312,133 +431,529 @@ func (s *Service) Subscribe(runID string) (<-chan Event, func(), error) {
 		}
 		sess.mu.Unlock()
 	}
+	// A restored session may still owe the respondent the next question or the
+	// completed run. Resume only after the subscriber is registered, so the
+	// generated event is delivered instead of being published into the void.
+	s.resume(sess)
 	return ch, cancel, nil
 }
 
 func (s *Service) lookup(runID string) (*session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sess, ok := s.sessions[runID]
-	if !ok {
+	if runID == "" {
 		return nil, ErrNotFound
 	}
+	s.mu.Lock()
+	sess, ok := s.sessions[runID]
+	s.mu.Unlock()
+	if ok {
+		return sess, nil
+	}
+	store := s.sessionStoreOf()
+	if store == nil {
+		// No durable sessions: behaviour is unchanged from the memory-only setup.
+		return nil, ErrNotFound
+	}
+	return s.restore(runID, store)
+}
+
+// restore rebuilds an in-memory session from the durable snapshot. The caller
+// holds no locks; restoreMu serializes concurrent restores of the same run.
+func (s *Service) restore(runID string, store SessionStore) (*session, error) {
+	s.restoreMu.Lock()
+	defer s.restoreMu.Unlock()
+
+	s.mu.Lock()
+	if sess, ok := s.sessions[runID]; ok {
+		s.mu.Unlock()
+		return sess, nil
+	}
+	s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	snapshot, err := store.LoadSession(ctx, runID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, s.restoreLegacyRun(ctx, store, runID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("chat: load session: %w", err)
+	}
+	switch snapshot.Status {
+	case SessionCompleted, SessionFailed:
+		s.reconcileFinishedRun(store, runID, snapshot)
+		return nil, ErrSessionFinished
+	case SessionActive, SessionFinalizing:
+		// Active sessions are restorable; handled below.
+	default:
+		log.Printf("chat: run %s has unknown chat session status %q; SESSION_INTERRUPTED", runID, snapshot.Status)
+		s.markSessionFailed(runID, snapshot)
+		s.notifyFinish(runID, domain.RunFailed)
+		return nil, ErrSessionInterrupted
+	}
+	if snapshot.SchemaVersion != SessionSchemaVersion {
+		log.Printf("chat: run %s has unsupported chat session schema %d (want %d); SESSION_INTERRUPTED",
+			runID, snapshot.SchemaVersion, SessionSchemaVersion)
+		s.markSessionFailed(runID, snapshot)
+		s.notifyFinish(runID, domain.RunFailed)
+		return nil, ErrSessionInterrupted
+	}
+	runStatus, err := store.RunStatus(ctx, runID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("chat: load run status: %w", err)
+	}
+	if isTerminalRunStatus(runStatus) {
+		// The run is over; the history stays readable but there is nothing to
+		// resume.
+		s.reconcileFinishedRun(store, runID, snapshot)
+		return nil, ErrSessionFinished
+	}
+
+	agent, err := s.newAgent(snapshot.PromptVersion)
+	if err != nil {
+		log.Printf("chat: restore interviewer for run %s: %v; SESSION_INTERRUPTED", runID, err)
+		s.markSessionFailed(runID, snapshot)
+		s.notifyFinish(runID, domain.RunFailed)
+		return nil, ErrSessionInterrupted
+	}
+	interview, err := interviewer.RestoreSession(agent, snapshot.Interviewer)
+	if err != nil {
+		log.Printf("chat: restore session for run %s: %v; SESSION_INTERRUPTED", runID, err)
+		s.markSessionFailed(runID, snapshot)
+		s.notifyFinish(runID, domain.RunFailed)
+		return nil, ErrSessionInterrupted
+	}
+	messages, err := store.ListMessages(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("chat: load messages: %w", err)
+	}
+	sess := &session{
+		runID:         runID,
+		profession:    snapshot.Profession,
+		promptVersion: snapshot.PromptVersion,
+		session:       interview,
+		messages:      messages,
+		seq:           lastSequence(messages),
+		version:       snapshot.Version,
+		subscribers:   make(map[chan Event]struct{}),
+	}
+	switch {
+	case snapshot.Status == SessionFinalizing:
+		// The pipeline was interrupted after the last answer: finish it.
+		interview.Close()
+		sess.resume = resumeComplete
+	case interview.Done():
+		// Compatibility with snapshots written before the finalizing status.
+		interview.Close()
+		sess.resume = resumeComplete
+	case interview.PendingAnswer():
+		sess.resume = resumeNone
+	default:
+		// The answer is already stored but the next question was never written
+		// (the process died mid-LLM call): ask it once.
+		sess.resume = resumeAsk
+	}
+
+	s.mu.Lock()
+	s.sessions[runID] = sess
+	s.mu.Unlock()
 	return sess, nil
 }
 
-func (s *Service) askNext(runID string, sess *session) {
-	defer func() {
-		sess.mu.Lock()
-		sess.asking = false
+// restoreLegacyRun handles a chat run that has history but no durable session
+// snapshot (created by a backend version before this feature). Its dialog
+// cannot be continued: the run is reported as interrupted and the startup sweep
+// marks it failed.
+func (s *Service) restoreLegacyRun(ctx context.Context, store SessionStore, runID string) error {
+	status, err := store.RunStatus(ctx, runID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("chat: load run status: %w", err)
+	}
+	if isTerminalRunStatus(status) {
+		return ErrSessionFinished
+	}
+	log.Printf("chat: run %s has chat history but no durable session snapshot; SESSION_INTERRUPTED", runID)
+	// Honest failure marking: the dialog can never continue, so the run must not
+	// stay "running" while the UI waits for a question.
+	s.notifyFinish(runID, domain.RunFailed)
+	return ErrSessionInterrupted
+}
+
+// reconcileFinishedRun finishes the run status transition when the process died
+// between writing the terminal session snapshot and calling onFinish.
+func (s *Service) reconcileFinishedRun(store SessionStore, runID string, snapshot SessionSnapshot) {
+	status := snapshot.FinalStatus
+	if !status.Valid() {
+		if snapshot.Status == SessionFailed {
+			status = domain.RunFailed
+		} else {
+			status = domain.RunDone
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	runStatus, err := store.RunStatus(ctx, runID)
+	if err != nil || isTerminalRunStatus(runStatus) {
+		return
+	}
+	log.Printf("chat: run %s has a finalized chat session; completing status transition to %s", runID, status)
+	s.notifyFinish(runID, status)
+}
+
+// markSessionFailed durably records that a session cannot be restored, so the
+// next request reports SESSION_INTERRUPTED instead of retrying forever.
+func (s *Service) markSessionFailed(runID string, snapshot SessionSnapshot) {
+	store := s.sessionStoreOf()
+	if store == nil {
+		return
+	}
+	snapshot.Status = SessionFailed
+	snapshot.FinalStatus = domain.RunFailed
+	if snapshot.SchemaVersion == 0 {
+		snapshot.SchemaVersion = SessionSchemaVersion
+	}
+	if strings.TrimSpace(snapshot.Profession) == "" {
+		// The row cannot satisfy the profession NOT NULL/CHECK constraint; the
+		// run is failed in memory and will be retried on the next request.
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	if err := store.SaveStep(ctx, runID, snapshot, nil); err != nil {
+		log.Printf("chat: mark session failed for run %s: %v", runID, err)
+	}
+}
+
+// resume continues whatever the restored dialog still owes. It is safe to call
+// more than once: only the first call sees a non-empty resume mode.
+func (s *Service) resume(sess *session) {
+	sess.mu.Lock()
+	mode := sess.resume
+	sess.resume = resumeNone
+	if mode == resumeNone || sess.finished || sess.finalizing {
 		sess.mu.Unlock()
-	}()
+		return
+	}
+	switch mode {
+	case resumeAsk:
+		if sess.asking || sess.session.PendingAnswer() || sess.session.Done() {
+			sess.mu.Unlock()
+			return
+		}
+		sess.asking = true
+		sess.mu.Unlock()
+		s.publish(sess.runID, Event{Type: "agent_thinking"})
+		go s.askNext(sess)
+	case resumeComplete:
+		sess.finalizing = true
+		sess.mu.Unlock()
+		s.publish(sess.runID, Event{Type: "agent_thinking"})
+		go s.complete(sess)
+	default:
+		sess.mu.Unlock()
+	}
+}
+
+func (s *Service) askNext(sess *session) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	// Name the run in the audit context, so the LLM request rows written by
 	// llmobs.Recorder carry llm_requests.run_id and the run cost endpoint can
 	// attribute the interviewer calls exactly.
-	ctx = llmobs.WithRunID(ctx, runID)
+	ctx = llmobs.WithRunID(ctx, sess.runID)
 
+	// The model call runs without holding sess.mu: while asking is true Post
+	// rejects answers instead of blocking on a mutex for the whole LLM round
+	// trip. asking is cleared under sess.mu in the same critical section that
+	// publishes the question, so a client never sees the question while Post
+	// still reports it as pending.
 	sess.mu.Lock()
-	question, err := sess.session.Next(ctx)
+	if sess.finished || sess.finalizing || sess.session.PendingAnswer() {
+		sess.asking = false
+		sess.mu.Unlock()
+		return
+	}
 	sess.mu.Unlock()
+
+	question, err := sess.session.Next(ctx)
 	if err != nil {
+		sess.mu.Lock()
+		sess.asking = false
+		sess.mu.Unlock()
 		if errors.Is(err, interviewer.ErrSessionDone) {
 			return
 		}
-		s.publish(runID, Event{Type: "run_status", Status: string(domain.RunFailed)})
-		if s.onFinish != nil {
-			s.onFinish(runID, domain.RunFailed)
-		}
+		s.failSession(sess)
 		return
 	}
 
 	sess.mu.Lock()
-	message, err := s.appendMessageLocked(runID, sess, "agent", question.Text, false)
+	message := newMessage(sess.runID, sess.seq+1, "agent", question.Text)
+	persistErr := s.persistStep(sess, s.snapshotLocked(sess, SessionActive, ""), []Message{message})
+	sess.messages = append(sess.messages, message)
+	sess.seq = message.Sequence
+	sess.asking = false
 	sess.mu.Unlock()
-	if err != nil {
-		log.Printf("chat: persist question for run %s: %v", runID, err)
-		return
+	if persistErr != nil {
+		// The dialog continues in memory; after a restart the question is asked
+		// again because the durable snapshot still points at the previous step.
+		log.Printf("chat: persist question for run %s: %v", sess.runID, persistErr)
+		if errors.Is(persistErr, ErrVersionConflict) {
+			s.forgetSession(sess.runID)
+			return
+		}
 	}
-
-	s.publish(runID, Event{Type: "agent_message", Message: &message})
+	s.publish(sess.runID, Event{Type: "agent_message", Message: &message})
 }
 
-func (s *Service) complete(runID, profession string, state domain.InterviewSession) {
+// forgetSession drops the in-memory session so the next request reloads the
+// newer durable state. It is used after an optimistic version conflict.
+func (s *Service) forgetSession(runID string) {
+	s.mu.Lock()
+	delete(s.sessions, runID)
+	s.mu.Unlock()
+}
+
+// failSession marks an active session as failed after an unrecoverable
+// interviewer error, so the run cannot silently hang.
+func (s *Service) failSession(sess *session) {
+	sess.mu.Lock()
+	if err := s.persistStep(sess, s.snapshotLocked(sess, SessionFailed, domain.RunFailed), nil); err != nil {
+		log.Printf("chat: persist failed state for run %s: %v", sess.runID, err)
+	}
+	sess.finished = true
+	sess.mu.Unlock()
+	s.publish(sess.runID, Event{Type: "run_status", Status: string(domain.RunFailed)})
+	s.notifyFinish(sess.runID, domain.RunFailed)
+}
+
+func (s *Service) complete(sess *session) {
 	status := domain.RunDone
-	if s.finalizer != nil {
+	if finalizer := s.finalizerFn(); finalizer != nil {
+		sess.mu.Lock()
+		state := sess.session.State()
+		sess.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 		// The finalizer makes the analyst (and optional ZUN) LLM calls; the run
 		// id in the context attributes them to this run.
-		ctx = llmobs.WithRunID(ctx, runID)
-		finalStatus, err := s.finalizer(ctx, runID, profession, state)
+		ctx = llmobs.WithRunID(ctx, sess.runID)
+		finalStatus, err := finalizer(ctx, sess.runID, sess.profession, state)
 		cancel()
 		if err != nil {
-			log.Printf("chat: finalizer failed for run %s: %v", runID, err)
+			log.Printf("chat: finalizer failed for run %s: %v", sess.runID, err)
 			status = domain.RunFailed
+			// A restart may interrupt the pipeline after the tree transaction was
+			// committed but before this snapshot was written. Re-running the
+			// finalizer then fails with TREE_ALREADY_EXISTS; the saved tree is the
+			// authoritative success signal.
+			if s.runHasTree(sess.runID) {
+				log.Printf("chat: run %s already has a saved tree; keeping done status", sess.runID)
+				status = domain.RunDone
+			}
 		} else if finalStatus != "" {
 			status = finalStatus
 		}
 	}
+
+	finalText := ""
 	if status == domain.RunDone || status == domain.RunDegraded {
-		if message := interviewer.FinalCoursesMessage(profession); message != "" {
-			s.appendAgentMessage(runID, message)
+		finalText = interviewer.FinalCoursesMessage(sess.profession)
+	}
+
+	sess.mu.Lock()
+	snapshotStatus := SessionCompleted
+	if status == domain.RunFailed {
+		snapshotStatus = SessionFailed
+	}
+	var messages []Message
+	if finalText != "" {
+		messages = append(messages, newMessage(sess.runID, sess.seq+1, "agent", finalText))
+	}
+	if err := s.persistStep(sess, s.snapshotLocked(sess, snapshotStatus, status), messages); err != nil {
+		// The terminal snapshot will be retried after a restart (the session stays
+		// finalizing in the database), so the run is not lost.
+		log.Printf("chat: persist final state for run %s: %v", sess.runID, err)
+	} else {
+		sess.messages = append(sess.messages, messages...)
+		if len(messages) > 0 {
+			sess.seq = messages[len(messages)-1].Sequence
 		}
 	}
-	s.publish(runID, Event{Type: "run_status", Status: string(status)})
+	sess.finalizing = false
+	sess.finished = true
+	sess.mu.Unlock()
+
+	if len(messages) > 0 {
+		message := messages[len(messages)-1]
+		s.publish(sess.runID, Event{Type: "agent_message", Message: &message})
+	}
+	s.publish(sess.runID, Event{Type: "run_status", Status: string(status)})
+	s.notifyFinish(sess.runID, status)
+}
+
+// runHasTree reports whether the run already has a persisted activity tree.
+// It is used to treat a re-run finalizer that hits TREE_ALREADY_EXISTS as a
+// success instead of failing an already completed research.
+func (s *Service) runHasTree(runID string) bool {
+	checker, ok := s.sessionStoreOf().(runTreeStore)
+	if !ok {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	hasTree, err := checker.RunHasTree(ctx, runID)
+	return err == nil && hasTree
+}
+
+func (s *Service) notifyFinish(runID string, status domain.RunStatus) {
 	if s.onFinish != nil {
 		s.onFinish(runID, status)
 	}
 }
 
-func (s *Service) appendAgentMessage(runID, content string) {
-	sess, err := s.lookup(runID)
-	if err != nil {
-		return
+// newMessage builds one durable chat message. Microsecond precision matches
+// PostgreSQL TIMESTAMPTZ, so a message reloaded after a restart has exactly the
+// timestamp it had in memory.
+func newMessage(runID string, seq int, role, content string) Message {
+	return Message{
+		ID:        fmt.Sprintf("msg-%s-%d", runID, seq),
+		Role:      role,
+		Content:   content,
+		CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		Sequence:  seq,
 	}
-	sess.mu.Lock()
-	message, err := s.appendMessageLocked(runID, sess, "agent", content, false)
-	sess.mu.Unlock()
-	if err != nil {
-		log.Printf("chat: persist agent message for run %s: %v", runID, err)
-		return
-	}
-	s.publish(runID, Event{Type: "agent_message", Message: &message})
 }
 
-// appendMessageLocked appends one message to the in-memory session and mirrors
-// it into the durable store. It must be called with sess.mu held.
-//
-// required decides what a store failure means. For messages the respondent is
-// waiting on (the greeting and user answers) the failure is returned and the
-// sequence counter is rolled back, so memory never answers 201 for a message
-// that was not persisted; the caller can retry with the same ID. Background
-// agent messages are best effort: the error is logged and the message still
-// reaches the active subscriber, so a database hiccup cannot stall the dialog.
-func (s *Service) appendMessageLocked(runID string, sess *session, role, content string, required bool) (Message, error) {
-	sess.seq++
-	message := Message{
-		ID:   fmt.Sprintf("msg-%s-%d", runID, sess.seq),
-		Role: role,
-		// Microsecond precision matches PostgreSQL TIMESTAMPTZ, so a message
-		// reloaded after a restart has exactly the timestamp it had in memory.
-		CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
-		Content:   content,
-		Sequence:  sess.seq,
+// snapshotLocked captures the restorable session state. It must be called with
+// sess.mu held.
+func (s *Service) snapshotLocked(sess *session, status SessionStatus, finalStatus domain.RunStatus) SessionSnapshot {
+	return SessionSnapshot{
+		SchemaVersion: SessionSchemaVersion,
+		Profession:    sess.profession,
+		PromptVersion: sess.promptVersion,
+		Status:        status,
+		FinalStatus:   finalStatus,
+		Interviewer:   sess.session.Snapshot(),
+		Version:       sess.version,
 	}
-	if store := s.messageStore(); store != nil {
+}
+
+// persistStep writes the session snapshot and the dialog messages atomically.
+// With no store configured it keeps the in-memory-only demo behaviour; with only
+// a MessageStore it writes just the messages (the pre-restoration behaviour).
+// It must be called with sess.mu held.
+func (s *Service) persistStep(sess *session, snapshot SessionSnapshot, messages []Message) error {
+	store := s.sessionStoreOf()
+	if store != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
-		err := store.AppendMessage(ctx, runID, message)
-		cancel()
-		if err != nil {
-			if required {
-				sess.seq--
-				return Message{}, err
-			}
-			log.Printf("chat: persist message for run %s: %v", runID, err)
+		defer cancel()
+		if err := store.SaveStep(ctx, sess.runID, snapshot, messages); err != nil {
+			return err
+		}
+		sess.version = snapshot.Version + 1
+		return nil
+	}
+	messageStore := s.messageStore()
+	if messageStore == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	defer cancel()
+	for _, message := range messages {
+		if err := messageStore.AppendMessage(ctx, sess.runID, message); err != nil {
+			return err
 		}
 	}
-	sess.messages = append(sess.messages, message)
-	return message, nil
+	return nil
+}
+
+// RecoverSessions inspects durable chat state once after a backend start:
+// finalizing sessions are completed in the background, terminal sessions whose
+// run row was not updated are reconciled, and chat runs that predate durable
+// sessions are marked failed with SESSION_INTERRUPTED instead of hanging.
+// It is safe to call when no session store is configured.
+func (s *Service) RecoverSessions(ctx context.Context) {
+	store := s.sessionStoreOf()
+	if store == nil {
+		return
+	}
+	recovery, ok := store.(sessionRecoveryStore)
+	if !ok {
+		return
+	}
+
+	// The last answer was stored but the post-interview pipeline never finished:
+	// resume it so the run cannot stay in "running" forever.
+	if ids, err := recovery.ListSessionsByStatus(ctx, SessionFinalizing, s.startedAt); err != nil {
+		log.Printf("chat: recovery: list finalizing sessions: %v", err)
+	} else {
+		for _, runID := range ids {
+			go s.resumeRun(runID)
+		}
+	}
+
+	// A terminal snapshot may be newer than the run row if the process died
+	// between the two writes.
+	if rows, err := recovery.ListFinalizedSessionsWithActiveRuns(ctx, s.startedAt); err != nil {
+		log.Printf("chat: recovery: list finalized sessions: %v", err)
+	} else {
+		for _, row := range rows {
+			status := row.FinalStatus
+			if !status.Valid() {
+				status = domain.RunDone
+			}
+			log.Printf("chat: recovery: run %s has a finalized chat session; setting status %s", row.RunID, status)
+			s.notifyFinish(row.RunID, status)
+		}
+	}
+
+	// Chat runs from a backend version without durable session snapshots cannot
+	// be resumed; mark them failed explicitly.
+	if ids, err := recovery.ListInterruptedChatRuns(ctx, s.startedAt); err != nil {
+		log.Printf("chat: recovery: list interrupted chat runs: %v", err)
+	} else {
+		for _, runID := range ids {
+			log.Printf("chat: recovery: run %s cannot be resumed (SESSION_INTERRUPTED); marking failed", runID)
+			s.notifyFinish(runID, domain.RunFailed)
+		}
+	}
+}
+
+// resumeRun lazily restores one run and continues its pending step.
+func (s *Service) resumeRun(runID string) {
+	sess, err := s.lookup(runID)
+	if err != nil {
+		log.Printf("chat: recovery: resume run %s: %v", runID, err)
+		return
+	}
+	s.resume(sess)
+}
+
+func isTerminalRunStatus(status domain.RunStatus) bool {
+	switch status {
+	case domain.RunDone, domain.RunDegraded, domain.RunFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// lastSequence returns the last durable dialog position, or 0 for an empty
+// history. Message ids embed the sequence, so the restored session keeps
+// generating unique ids.
+func lastSequence(messages []Message) int {
+	last := 0
+	for _, message := range messages {
+		if message.Sequence > last {
+			last = message.Sequence
+		}
+	}
+	return last
 }
 
 func (s *Service) publish(runID string, event Event) {
