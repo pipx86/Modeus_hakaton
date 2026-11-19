@@ -1654,7 +1654,6 @@ export function Research() {
           <div className="mt-3">
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {run.started_at && <span>Старт: {formatDate(run.started_at)}</span>}
               {run.finished_at && <span>Финиш: {formatDate(run.finished_at)}</span>}
               {run.started_at && run.finished_at && (
                 <span>
