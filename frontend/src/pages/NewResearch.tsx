@@ -337,8 +337,8 @@ export function NewResearch() {
                     {learningMode ? "Оценка до запуска: интервью и план" : "Оценка до запуска"}
                   </p>
                   <p className="text-muted-foreground">
-                    ~{estimate.estimated_tokens.toLocaleString("ru-RU")} токенов · ~
-                    {Math.max(1, Math.round(estimate.estimated_duration_seconds / 60))} мин ·{" "}
+                    ~{estimate.estimated_tokens.toLocaleString("ru-RU")} токенов, ~
+                    {Math.max(1, Math.round(estimate.estimated_duration_seconds / 60))} мин,{" "}
                     {estimate.estimated_cost_usd === null
                       ? "стоимость неизвестна"
                       : `$${estimate.estimated_cost_usd.toLocaleString("ru-RU", {
@@ -351,8 +351,8 @@ export function NewResearch() {
                       ? "высокая"
                       : estimate.confidence === "medium"
                         ? "средняя"
-                        : "низкая"}{" "}
-                    · по {estimate.sample_size} завершённым исследованиям
+                        : "низкая"}
+                    , по {estimate.sample_size} завершённым исследованиям
                   </p>
                 </div>
               )}
