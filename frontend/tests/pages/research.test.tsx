@@ -652,7 +652,7 @@ describe("Research", () => {
   it("в режиме просмотра показывает баннер и не даёт менять данные", async () => {
     stubRun()
 
-    renderPage("7", "?view=guest")
+    renderPage("7", "?view=readonly")
 
     expect(
       await screen.findByText("Режим просмотра: дерево и цитаты доступны без изменений."),
@@ -672,7 +672,7 @@ describe("Research", () => {
     fireEvent.click(screen.getByRole("button", { name: "Поделиться ссылкой" }))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
-    expect(writeText.mock.calls[0][0]).toContain("/research/7?view=guest")
+    expect(writeText.mock.calls[0][0]).toContain("/research/7?view=readonly")
   })
 
   it("вызывает печать страницы", async () => {

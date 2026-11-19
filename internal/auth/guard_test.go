@@ -25,7 +25,7 @@ func wrapWithRole(h http.Handler, role Role) http.Handler {
 func TestGuardAllowsMatchingRole(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
-	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin, RoleTeacher}), RoleTeacher)
+	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin, RoleAdmin}), RoleAdmin)
 	handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK || rr.Body.String() != "ok" {
 		t.Fatalf("ожидали 200 ok, получили %d %q", rr.Code, rr.Body.String())
@@ -35,7 +35,7 @@ func TestGuardAllowsMatchingRole(t *testing.T) {
 func TestGuardRejectsNonMatchingRole(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
-	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin}), RoleStudent)
+	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin}), RoleUser)
 	handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("ожидали 403, получили %d", rr.Code)
@@ -52,7 +52,7 @@ func TestGuardRejectsNoRoleInContext(t *testing.T) {
 }
 
 func TestGuardMultipleAllowedRoles(t *testing.T) {
-	allowed := []Role{RoleAdmin, RoleTeacher, RoleROP}
+	allowed := []Role{RoleAdmin, RoleAdmin, RoleAdmin}
 	for _, r := range allowed {
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
@@ -64,7 +64,7 @@ func TestGuardMultipleAllowedRoles(t *testing.T) {
 	// student не в списке
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
-	wrapWithRole(guardedHandler(allowed), RoleStudent).ServeHTTP(rr, req)
+	wrapWithRole(guardedHandler(allowed), RoleUser).ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("student должен был получить 403, получил %d", rr.Code)
 	}

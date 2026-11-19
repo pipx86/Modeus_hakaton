@@ -20,7 +20,7 @@ import (
 //
 // Поддерживаются PDF, DOCX и текстовые форматы; содержимое не нужно вставлять вручную.
 func (s *Server) handleUploadSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, ingestion.MaxDocumentSize+(1<<20))

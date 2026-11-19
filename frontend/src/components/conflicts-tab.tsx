@@ -23,7 +23,7 @@ interface ConflictsTabProps {
 }
 
 /**
- * Показывает разрешённые конфликты синтезатора. Раздел доступен admin/teacher/rop,
+ * Показывает разрешённые конфликты синтезатора. Раздел доступен администратору,
  * поэтому для остальных ролей выводится понятное объяснение вместо пустого экрана.
  */
 export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
@@ -41,7 +41,7 @@ export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
         setItems([])
         setError(
           apiError.code === "FORBIDDEN"
-            ? "Раздел доступен администратору, преподавателю и РОП."
+            ? "Раздел доступен администратору."
             : (apiError.message ?? "Не удалось загрузить конфликты."),
         )
         return

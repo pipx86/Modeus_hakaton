@@ -17,7 +17,7 @@ type TreeWriter interface {
 }
 
 func (s *Server) handleSaveTree(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	var nodes []domain.Node

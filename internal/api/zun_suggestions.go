@@ -293,7 +293,7 @@ func (m *memStore) rejectedZunNodeIDs(_ context.Context, runID string) (map[stri
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/zun/suggestions [get]
 func (s *Server) handleZunSuggestions(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	runID := strings.TrimSpace(r.PathValue("id"))
@@ -356,7 +356,7 @@ func (s *Server) handleZunSuggestions(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/zun/suggestions/apply [post]
 func (s *Server) handleApplyZunSuggestion(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	runID := strings.TrimSpace(r.PathValue("id"))
@@ -428,7 +428,7 @@ func (s *Server) handleApplyZunSuggestion(w http.ResponseWriter, r *http.Request
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/zun/suggestions/reject [post]
 func (s *Server) handleRejectZunSuggestion(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	runID := strings.TrimSpace(r.PathValue("id"))

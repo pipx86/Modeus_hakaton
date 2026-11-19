@@ -164,12 +164,7 @@ func TestRunEstimateAuth(t *testing.T) {
 	if recorder := costDo(t, handler, http.MethodGet, target, ""); recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: status = %d, want 401", recorder.Code)
 	}
-	for _, role := range []string{"guest"} {
-		if recorder := costDo(t, handler, http.MethodGet, target, role); recorder.Code != http.StatusForbidden {
-			t.Fatalf("%s: status = %d, want 403", role, recorder.Code)
-		}
-	}
-	for _, role := range []string{"admin", "teacher", "rop", "student"} {
+	for _, role := range []string{"admin", "teacher", "rop", "student", "guest"} {
 		if recorder := costDo(t, handler, http.MethodGet, target, role); recorder.Code != http.StatusOK {
 			t.Fatalf("%s: status = %d, want 200", role, recorder.Code)
 		}

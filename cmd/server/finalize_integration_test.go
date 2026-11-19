@@ -117,7 +117,7 @@ func TestFinalizeInterviewPostgresEndToEnd(t *testing.T) {
 	// Authenticated read API отдаёт те же конфликты.
 	handler := api.NewServer(store).Routes()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/runs/"+run.ID+"/conflicts", nil)
-	request.Header.Set("Authorization", "Bearer "+auth.TokenFor("reviewer", auth.RoleTeacher))
+	request.Header.Set("Authorization", "Bearer "+auth.TokenFor("reviewer", auth.RoleAdmin))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {

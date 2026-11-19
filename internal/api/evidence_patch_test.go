@@ -33,7 +33,7 @@ func patchEvidenceQuote(t *testing.T, baseURL, token, id, quote string) *http.Re
 func TestUpdateEvidenceQuote(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	token, err := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	token, err := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestUpdateEvidenceQuoteRejectsEmpty(t *testing.T) {
 func TestUpdateEvidenceQuoteForbiddenForGuest(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	token, _ := auth.Issue("guest-user", auth.RoleGuest, time.Hour)
+	token, _ := auth.Issue("guest-user", auth.RoleUser, time.Hour)
 
 	resp := patchEvidenceQuote(t, ts.URL, token, "ev1", "нельзя")
 	defer resp.Body.Close()

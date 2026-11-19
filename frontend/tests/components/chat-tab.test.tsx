@@ -454,4 +454,31 @@ describe("ChatTab", () => {
       Element.prototype.scrollIntoView = original
     }
   })
+
+  it("делает ссылки на курсы кликабельными", async () => {
+    setFetchHandler(async (url) => {
+      if (url.endsWith("/runs/7/messages")) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "m1",
+              role: "agent",
+              content:
+                "Курсы Stepik: https://stepik.org/course/187490/promo и https://stepik.org/course/293404/promo",
+              created_at: "2026-11-10T10:00:00Z",
+            },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderTab()
+
+    const link = await screen.findByRole("link", {
+      name: "https://stepik.org/course/187490/promo",
+    })
+    expect(link).toHaveAttribute("href", "https://stepik.org/course/187490/promo")
+    expect(link).toHaveAttribute("target", "_blank")
+  })
 })

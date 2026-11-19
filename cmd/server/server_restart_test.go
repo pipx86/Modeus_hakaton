@@ -23,7 +23,7 @@ func TestСерверСохраняетИсследованиеПослеПер�
 		t.Skip("нужна отдельная тестовая PostgreSQL")
 	}
 	auth.SetSecretForTests("server-restart-test-secret")
-	token, err := auth.Issue("local-server-test", auth.RoleTeacher, 5*time.Minute)
+	token, err := auth.Issue("local-server-test", auth.RoleAdmin, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}

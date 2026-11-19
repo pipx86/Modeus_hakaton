@@ -1,4 +1,4 @@
-// Команда test-users выпускает JWT демонстрационных пользователей admin и guest.
+// Команда test-users выпускает JWT демонстрационных пользователей admin и user.
 // Это токены нашего API для локальной демонстрации, а не пользователи hh.ru.
 package main
 
@@ -38,7 +38,7 @@ var demoRoles = []struct {
 	readOnly bool
 }{
 	{subject: "demo-admin", role: auth.RoleAdmin},
-	{subject: "demo-guest", role: auth.RoleGuest, readOnly: true},
+	{subject: "demo-user", role: auth.RoleUser},
 }
 
 func main() {
@@ -113,6 +113,6 @@ func writeHuman(w io.Writer, r report) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintln(w, "guest — только чтение: исследования, дерево, сообщения, снимки, источники и экспорт.")
+	_, err := fmt.Fprintln(w, "user — обычный пользователь: создаёт исследования, проходит интервью и читает результаты.")
 	return err
 }

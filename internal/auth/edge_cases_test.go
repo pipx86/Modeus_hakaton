@@ -16,7 +16,7 @@ func TestGuardRejectsUnknownRoleWithMessage(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
 
-	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin}), RoleTeacher)
+	handler := wrapWithRole(guardedHandler([]Role{RoleAdmin}), RoleUser)
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {

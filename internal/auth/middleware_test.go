@@ -21,7 +21,7 @@ func echoHandler() http.Handler {
 
 func TestMiddlewareAllowsValidToken(t *testing.T) {
 	SetSecretForTests("test-secret-for-ci")
-	tok, _ := Issue("u-1", RoleTeacher, time.Hour)
+	tok, _ := Issue("u-1", RoleAdmin, time.Hour)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -32,14 +32,14 @@ func TestMiddlewareAllowsValidToken(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("ожидали 200, получили %d", rr.Code)
 	}
-	if rr.Body.String() != "teacher" {
+	if rr.Body.String() != "admin" {
 		t.Fatalf("роль не долетела до handler: %q", rr.Body.String())
 	}
 }
 
 func TestMiddlewareAllowsGuestToken(t *testing.T) {
 	SetSecretForTests("test-secret-for-ci")
-	tok, _ := Issue("demo-guest", RoleGuest, time.Hour)
+	tok, _ := Issue("demo-user", RoleUser, time.Hour)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -50,7 +50,7 @@ func TestMiddlewareAllowsGuestToken(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("ожидали 200 для guest-токена, получили %d", rr.Code)
 	}
-	if rr.Body.String() != string(RoleGuest) {
+	if rr.Body.String() != string(RoleUser) {
 		t.Fatalf("ожидали роль guest, получили %q", rr.Body.String())
 	}
 }
@@ -98,7 +98,7 @@ func TestMiddlewareRejectsExpiredToken(t *testing.T) {
 }
 func TestMiddlewareQueryTokenSuccess(t *testing.T) {
 	EnsureTestSecret()
-	tok, _ := Issue("user-1", RoleTeacher, time.Hour)
+	tok, _ := Issue("user-1", RoleAdmin, time.Hour)
 
 	handler := Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

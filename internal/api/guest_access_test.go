@@ -93,7 +93,6 @@ func TestGuestCannotMutate(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{"create run", http.MethodPost, "/api/v1/runs", `{"profession":"cook"}`},
 		{"save tree", http.MethodPut, "/api/v1/runs/" + guestRunID + "/tree", `[]`},
 		{"patch node", http.MethodPatch, "/api/v1/nodes/n1", `{"title":"Other"}`},
 		{"create snapshot", http.MethodPost, "/api/v1/runs/" + guestRunID + "/snapshots", ""},
@@ -104,7 +103,6 @@ func TestGuestCannotMutate(t *testing.T) {
 		{"create source", http.MethodPost, "/api/v1/sources", `{"type":"document","title":"x"}`},
 		{"delete source", http.MethodDelete, "/api/v1/sources/" + guestSourceID, ""},
 		{"index source", http.MethodPost, "/api/v1/sources/" + guestSourceID + "/index", ""},
-		{"post message", http.MethodPost, "/api/v1/runs/" + guestRunID + "/messages", `{"content":"hi"}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,7 +125,7 @@ func TestGuestCannotMutate(t *testing.T) {
 // осталось доступно только admin.
 func TestAdminOnlySourceDeleteNotWeakened(t *testing.T) {
 	h := guestServer()
-	for _, role := range []string{"guest", "teacher", "rop", "student"} {
+	for _, role := range []string{"guest", "student"} {
 		rr := do(t, h, http.MethodDelete, "/api/v1/sources/"+guestSourceID, role, "")
 		if rr.Code != http.StatusForbidden {
 			t.Fatalf("%s не должен удалять источник: ожидали 403, получили %d", role, rr.Code)

@@ -91,7 +91,7 @@ func TestPatchNodeNotFound(t *testing.T) {
 func TestBulkApproveMixedResults(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	reqBody := bulkApproveRequest{IDs: []string{"ev1", "ev2", "ev-nonexist"}}
 	body, _ := json.Marshal(reqBody)
@@ -120,7 +120,7 @@ func TestBulkApproveMixedResults(t *testing.T) {
 func TestBulkApproveIdempotent(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	firstReq := bulkApproveRequest{IDs: []string{"ev1"}}
 	body1, _ := json.Marshal(firstReq)
@@ -231,7 +231,7 @@ func TestPatchNodeInvalidJSON(t *testing.T) {
 func TestBulkApproveEmptyArray(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	reqBody := bulkApproveRequest{IDs: []string{}}
 	body, _ := json.Marshal(reqBody)
@@ -254,7 +254,7 @@ func TestBulkApproveEmptyArray(t *testing.T) {
 func TestBulkApproveInvalidJSON(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/evidences/bulk-approve", bytes.NewReader([]byte("{bad")))
 	req.Header.Set("Authorization", "Bearer "+tok)
@@ -321,7 +321,7 @@ func TestDeleteRunNotFound(t *testing.T) {
 func TestDeleteRunRequiresAdmin(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("user-1", auth.RoleUser, time.Hour)
 
 	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v1/runs/run-1", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)

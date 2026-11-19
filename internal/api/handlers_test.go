@@ -280,7 +280,7 @@ func TestIdempotentCreateRunRace(t *testing.T) {
 			<-start
 
 			req := httptest.NewRequest("POST", "/api/v1/runs", strings.NewReader(`{"profession":"cook"}`))
-			req.Header.Set("Authorization", "Bearer "+auth.TokenFor("u-race", auth.RoleTeacher))
+			req.Header.Set("Authorization", "Bearer "+auth.TokenFor("u-race", auth.RoleAdmin))
 			req.Header.Set("Idempotency-Key", "race-key-123")
 
 			rr := httptest.NewRecorder()

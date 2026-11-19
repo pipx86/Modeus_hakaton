@@ -34,10 +34,11 @@ import {
   type MetricSample,
 } from "@/lib/metrics"
 
-interface DemoUser {
-  subject: string
+interface AppUser {
+  id: string
+  email: string
+  display_name: string
   role: string
-  read_only?: boolean
 }
 
 interface LlmRequest {
@@ -76,10 +77,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Администратор",
-  guest: "Гость",
-  teacher: "Преподаватель",
-  rop: "РОП",
-  student: "Студент",
+  user: "Пользователь",
 }
 
 function formatPercent(value: number): string {
@@ -108,7 +106,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 export function Admin() {
   const role = getCurrentRole()
   const isAdmin = role === "admin"
-  const [users, setUsers] = useState<DemoUser[]>([])
+  const [users, setUsers] = useState<AppUser[]>([])
   const [runs, setRuns] = useState<Run[]>([])
   const [health, setHealth] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<MetricSample[]>([])
@@ -805,7 +803,7 @@ export function Admin() {
             <UsersIcon className="size-4 shrink-0" />
             Пользователи
           </CardTitle>
-          <CardDescription>Демонстрационные учётные записи и их права.</CardDescription>
+          <CardDescription>Зарегистрированные учётные записи и их роли.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -816,14 +814,12 @@ export function Admin() {
           ) : (
             <ul className="divide-y">
               {users.map((user) => (
-                <li key={user.subject} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="font-medium">{user.subject}</span>
+                <li key={user.id} className="flex flex-wrap items-center gap-3 py-3">
+                  <span className="font-medium">{user.display_name}</span>
+                  <span className="text-xs text-muted-foreground">{user.email}</span>
                   <Badge variant={user.role === "admin" ? "default" : "secondary"}>
                     {ROLE_LABEL[user.role] ?? user.role}
                   </Badge>
-                  {user.read_only && (
-                    <span className="text-xs text-muted-foreground">только чтение</span>
-                  )}
                 </li>
               ))}
             </ul>

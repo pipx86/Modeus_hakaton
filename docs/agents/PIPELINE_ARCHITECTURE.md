@@ -24,7 +24,7 @@ e2e/batch-каркас. Финализатор подключается толь
 
 ## Поток HTTP-чата
 
-1. `POST /api/v1/runs {profession}` (admin/teacher/rop) создаёт run, ставит
+1. `POST /api/v1/runs {profession}` (admin/user) создаёт run, ставит
    `type=chat`, `stage=interview` и вызывает `chat.Start` → приветствие,
    событие `agent_thinking`, фоновая генерация первого вопроса.
 2. `GET /runs/{id}/messages` и `GET /runs/{id}/events` (SSE) отдают историю и

@@ -1,10 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Issues demo JWTs for the admin and guest users via cmd/test-users.
+    Issues demo JWTs for the admin and user accounts via cmd/test-users.
 .DESCRIPTION
     Requires JWT_SECRET (the same signing secret as the API). Prints ready-to-use
-    VITE_API_TOKEN lines for PowerShell and bash/zsh. The guest role is read-only.
+    VITE_API_TOKEN lines for PowerShell and bash/zsh. The user role can create
+    research and chat; admin additionally manages sources and review.
     The script is ASCII-only so Windows PowerShell 5.1 reads it without a BOM.
 .EXAMPLE
     .\scripts\Test-Users.ps1
@@ -14,8 +15,8 @@
     .\scripts\Test-Users.ps1 -Json
 #>
 param(
-    [ValidateSet('admin', 'guest')]
-    [string]$Role = 'guest',
+    [ValidateSet('admin', 'user')]
+    [string]$Role = 'user',
     [switch]$Json
 )
 

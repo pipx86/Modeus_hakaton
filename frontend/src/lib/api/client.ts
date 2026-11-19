@@ -224,7 +224,7 @@ export async function compareRunSnapshots(
 }
 
 /**
- * Очередь спорных подтверждений. Доступна только ролям admin/teacher/rop;
+ * Очередь спорных подтверждений. Доступна только роли admin;
  * остальным сервер отвечает 403, и экран показывает это сообщением.
  */
 export async function listReviewEvidence(

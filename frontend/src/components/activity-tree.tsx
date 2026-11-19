@@ -429,7 +429,7 @@ export interface ActivityTreeProps {
   onShowTranscript?: (item: Evidence, source?: Source) => void
   /** Серверные инсайты: здоровье дерева, провенанс, флаги, рынок и объяснения узлов. */
   insights?: Insights | null
-  /** Просмотр без изменений (guest/student или режим ?view=guest). */
+  /** Просмотр без изменений (режим ?view=readonly). */
   readOnly?: boolean
 }
 

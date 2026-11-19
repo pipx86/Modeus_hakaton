@@ -155,6 +155,15 @@ func (n Node) Validate() error {
 	return nil
 }
 
+// User — учётная запись с паролем; role всегда admin или user.
+type User struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	DisplayName  string `json:"display_name"`
+	Role         string `json:"role"`
+	PasswordHash string `json:"-"`
+}
+
 type Source struct {
 	ID        string     `json:"id"`
 	Type      SourceType `json:"type"`

@@ -27,7 +27,7 @@ func (s *Server) searchService() (search.Service, bool) {
 	return search.Service{Pool: pg.Pool, Model: embeddings.Ollama{BaseURL: address, Model: model}}, true
 }
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	if _, err := s.store.GetRun(r.PathValue("id")); err != nil {
@@ -69,7 +69,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"mode": mode, "hits": hits})
 }
 func (s *Server) handleIndexSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	var id pgtype.UUID

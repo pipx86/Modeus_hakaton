@@ -136,7 +136,7 @@ func sourceEvidenceError(w http.ResponseWriter, err error) {
 	}
 }
 func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	p, ok := requirePG(w, s)
@@ -151,7 +151,7 @@ func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, items)
 }
 func (s *Server) handleGetSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	p, ok := requirePG(w, s)
@@ -166,7 +166,7 @@ func (s *Server) handleGetSource(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, item)
 }
 func (s *Server) handleListEvidences(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	p, ok := requirePG(w, s)
@@ -181,7 +181,7 @@ func (s *Server) handleListEvidences(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, items)
 }
 func (s *Server) handleGetEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	p, ok := requirePG(w, s)
@@ -196,7 +196,7 @@ func (s *Server) handleGetEvidence(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, item)
 }
 func (s *Server) handleCreateEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	p, ok := requirePG(w, s)
@@ -225,7 +225,7 @@ func (s *Server) handleCreateEvidence(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateEvidence правит текст цитаты, сохраняя её статус и привязку к узлу.
 func (s *Server) handleUpdateEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	var req struct {

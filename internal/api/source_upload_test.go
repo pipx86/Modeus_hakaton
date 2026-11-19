@@ -48,7 +48,7 @@ func uploadSource(t *testing.T, baseURL, token, filename string, content []byte,
 func TestUploadSourceFromTextFile(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	token, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	token, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	resp := uploadSource(t, ts.URL, token, "role.md", []byte("# Роль\nОписание роли"), map[string]string{
 		"type": "standard",
@@ -106,7 +106,7 @@ func TestUploadSourceRejectsUnsupportedFile(t *testing.T) {
 func TestUploadSourceForbiddenForGuest(t *testing.T) {
 	_, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
-	token, _ := auth.Issue("guest-user", auth.RoleGuest, time.Hour)
+	token, _ := auth.Issue("guest-user", auth.RoleUser, time.Hour)
 
 	resp := uploadSource(t, ts.URL, token, "role.txt", []byte("текст"), nil)
 	defer resp.Body.Close()

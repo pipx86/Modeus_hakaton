@@ -60,7 +60,7 @@ describe("ConflictsTab", () => {
     render(<ConflictsTab runId="7" />)
 
     expect(
-      await screen.findByText("Раздел доступен администратору, преподавателю и РОП."),
+      await screen.findByText("Раздел доступен администратору."),
     ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Повторить" }))

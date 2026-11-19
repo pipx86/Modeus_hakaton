@@ -172,7 +172,7 @@ func validateAttachableSource(src domain.Source) error {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/sources [post]
 func (s *Server) handleAttachRunSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	p, ok := requirePG(w, s)

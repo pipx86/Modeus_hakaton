@@ -14,7 +14,7 @@ func TestListUsersRequiresAdmin(t *testing.T) {
 	auth.EnsureTestSecret()
 
 	adminTok, _ := auth.Issue("demo-admin", auth.RoleAdmin, time.Hour)
-	guestTok, _ := auth.Issue("demo-guest", auth.RoleGuest, time.Hour)
+	guestTok, _ := auth.Issue("demo-user", auth.RoleUser, time.Hour)
 
 	t.Run("admin", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/users", nil)
@@ -27,12 +27,12 @@ func TestListUsersRequiresAdmin(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("ожидали 200, получили %d", resp.StatusCode)
 		}
-		var users []demoUserInfo
+		var users []authUserDTO
 		if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		if len(users) != 2 {
-			t.Fatalf("ожидали 2 пользователя, получили %d", len(users))
+		if len(users) != 0 {
+			t.Fatalf("ожидали пустой список пользователей, получили %d", len(users))
 		}
 	})
 

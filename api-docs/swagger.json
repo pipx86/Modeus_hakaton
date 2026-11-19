@@ -903,7 +903,7 @@
           "reviews"
         ],
         "summary": "Expert review queue for disputed evidence",
-        "description": "Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url, ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`, never `null`. Only the expert roles admin, teacher and rop may call this operation; student and guest receive 403.",
+        "description": "Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url, ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`, never `null`. Only the expert roles admin and admin may call this operation; user and user receive 403.",
         "operationId": "listReviewQueue",
         "parameters": [
           {
@@ -1461,7 +1461,7 @@
           "runs"
         ],
         "summary": "Save a new activity tree in one transaction",
-        "description": "Requires the admin, teacher or rop role. Validates the flat node list and saves it atomically. An existing tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.",
+        "description": "Requires the admin or admin role. Validates the flat node list and saves it atomically. An existing tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.",
         "operationId": "saveRunTree",
         "parameters": [
           {
@@ -1577,7 +1577,7 @@
           "runs"
         ],
         "summary": "Attach a standard or vacancy source to a run",
-        "description": "Creates a standard/vacancy source and links it to the run through\n`run_sources`, so the analyst can quote it and the synthesizer can\ndetect cross-source conflicts. The source is available to finalization\nimmediately. Admin and teacher only.\n",
+        "description": "Creates a standard/vacancy source and links it to the run through\n`run_sources`, so the analyst can quote it and the synthesizer can\ndetect cross-source conflicts. The source is available to finalization\nimmediately. Admin and admin only.\n",
         "operationId": "attachRunSource",
         "parameters": [
           {
@@ -1638,7 +1638,7 @@
             "description": "Missing or invalid token"
           },
           "403": {
-            "description": "Admin/teacher role required"
+            "description": "Admin/admin role required"
           },
           "404": {
             "description": "Run not found"
@@ -2037,7 +2037,7 @@
           "runs"
         ],
         "summary": "Compare two research runs",
-        "description": "Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. Guest may read.",
+        "description": "Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. user may read.",
         "operationId": "compareRuns",
         "parameters": [
           {
@@ -2671,7 +2671,7 @@
           "runs"
         ],
         "summary": "Export a completed run as Markdown, JSON or CSV",
-        "description": "Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, teacher, rop, student and guest. CSV returns one row per evidence quote or per node without evidence. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.",
+        "description": "Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, user. CSV returns one row per evidence quote or per node without evidence. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.",
         "operationId": "exportRun",
         "parameters": [
           {
@@ -2886,7 +2886,7 @@
           "chat"
         ],
         "summary": "Send a user message to the interviewer",
-        "description": "Records the respondent answer and schedules the next question. Guest role cannot post messages.",
+        "description": "Records the respondent answer and schedules the next question. user role cannot post messages.",
         "operationId": "sendMessage",
         "parameters": [
           {
@@ -3691,34 +3691,120 @@
         }
       }
     },
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register a user",
+        "description": "Creates an account with email and password. The first registered user becomes admin, all following users get the user role. Returns a 24-hour JWT.",
+        "operationId": "registerUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created and token issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "description": "Email is already registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Log in with email and password",
+        "description": "Returns a 24-hour JWT for an existing account.",
+        "operationId": "loginUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated; token and user profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/users": {
       "get": {
         "tags": [
           "users"
         ],
-        "summary": "List demo users",
-        "description": "List of demo accounts and their roles; available to the admin role only.",
+        "summary": "List registered users",
+        "description": "Registered accounts with email, display name and role; available to the admin role only.",
         "operationId": "listUsers",
         "responses": {
           "200": {
-            "description": "Demo users.",
+            "description": "Registered users.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/DemoUser"
+                    "$ref": "#/components/schemas/AuthUser"
                   }
                 },
                 "example": [
                   {
-                    "subject": "demo-admin",
+                    "id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                    "email": "admin@example.com",
+                    "display_name": "Администратор",
                     "role": "admin"
-                  },
-                  {
-                    "subject": "demo-guest",
-                    "role": "guest",
-                    "read_only": true
                   }
                 ]
               }
@@ -3740,7 +3826,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "JWT with `sub` and `role` claims; roles are admin, teacher, rop, student and guest."
+        "description": "JWT with `sub` and `role` claims; roles are admin and user."
       }
     },
     "parameters": {
@@ -4865,29 +4951,91 @@
           }
         }
       },
-      "DemoUser": {
+      "RegisterRequest": {
         "type": "object",
         "required": [
-          "subject",
+          "email",
+          "display_name",
+          "password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 200
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "AuthUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name",
           "role"
         ],
         "additionalProperties": false,
         "properties": {
-          "subject": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "display_name": {
             "type": "string"
           },
           "role": {
             "type": "string",
             "enum": [
               "admin",
-              "teacher",
-              "rop",
-              "student",
-              "guest"
+              "user"
             ]
+          }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "required": [
+          "token",
+          "user"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "type": "string"
           },
-          "read_only": {
-            "type": "boolean"
+          "user": {
+            "$ref": "#/components/schemas/AuthUser"
           }
         }
       },

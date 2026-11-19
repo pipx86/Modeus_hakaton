@@ -12,7 +12,7 @@
  * 2. Очередь проверки - `GET /reviews/evidence?status=...`; строку можно подтвердить
  *    или отклонить существующими `POST /evidences/{id}/approve|reject` (204). После
  *    успешной мутации строка уходит из текущего фильтра, при ошибке остаётся и
- *    показывается тост. Очередь доступна только ролям admin/teacher/rop, поэтому 403
+ *    показывается тост. Очередь доступна только администратору, поэтому 403
  *    выводится спокойной подсказкой, а не падением вкладки.
  *
  * Эндпоинты снимков и очереди пока отсутствуют в сгенерированной OpenAPI-схеме,
@@ -181,7 +181,7 @@ function shorten(value: string, limit: number) {
 function describeRequestError(error: unknown): string {
   if (error instanceof ApiRequestError) {
     if (error.status === 403) {
-      return "Недостаточно прав: раздел доступен ролям admin, teacher и rop."
+      return "Недостаточно прав: раздел доступен только администратору."
     }
     if (error.status === 501) {
       return "Раздел недоступен: бэкенд работает без PostgreSQL."

@@ -275,7 +275,7 @@ func synthesisReviewError(w http.ResponseWriter, err error) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/conflicts [get]
 func (s *Server) handleRunConflicts(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	reader, ok := s.store.(synthesisReviewReader)
@@ -309,7 +309,7 @@ func (s *Server) handleRunConflicts(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/agent-messages [get]
 func (s *Server) handleRunAgentMessages(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	reader, ok := s.store.(synthesisReviewReader)

@@ -10,7 +10,7 @@ type roleKey struct{}
 type subjectKey struct{}
 
 func WithRole(ctx context.Context, role Role) context.Context {
-	return context.WithValue(ctx, roleKey{}, role)
+	return context.WithValue(ctx, roleKey{}, NormalizeRole(role))
 }
 
 func FromContext(ctx context.Context) (Role, bool) {

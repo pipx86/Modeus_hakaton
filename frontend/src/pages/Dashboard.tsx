@@ -78,12 +78,9 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const canCreate = getCurrentRole() !== "guest"
+  const canCreate = true
   const canDelete =
-    getCurrentRole() === null ||
-    getCurrentRole() === "admin" ||
-    getCurrentRole() === "teacher" ||
-    getCurrentRole() === "rop"
+    getCurrentRole() === null || getCurrentRole() === "admin"
 
   const load = useCallback(async () => {
     setLoading(true)

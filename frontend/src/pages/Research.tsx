@@ -1410,15 +1410,14 @@ export function Research() {
   const { id = "" } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const focusNodeId = searchParams.get("node")
-  const guestView = searchParams.get("view") === "guest"
+  const guestView = searchParams.get("view") === "readonly"
   const role = getCurrentRole()
-  const treeReadOnly = guestView || role === "guest" || role === "student"
-  const chatReadOnly = guestView || role === "guest"
-  const canAttach =
-    !treeReadOnly && (role === null || role === "admin" || role === "teacher")
+  const treeReadOnly = guestView || role === "user"
+  const chatReadOnly = guestView
+  const canAttach = !treeReadOnly && (role === null || role === "admin")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
-    const link = `${window.location.origin}/research/${id}?view=guest`
+    const link = `${window.location.origin}/research/${id}?view=readonly`
     try {
       await navigator.clipboard.writeText(link)
       toast.success("Ссылка для просмотра скопирована", {

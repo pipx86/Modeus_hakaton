@@ -20,6 +20,39 @@ import {
   WifiOffIcon,
 } from "lucide-react"
 
+const URL_PATTERN = /https?:\/\/[^\s<>"']+/g
+
+/** Превращает URL в кликабельные ссылки, не затрагивая остальной текст. */
+function linkify(text: string) {
+  const parts: Array<string | { url: string }> = []
+  let lastIndex = 0
+  for (const match of text.matchAll(URL_PATTERN)) {
+    const index = match.index ?? 0
+    if (index > lastIndex) parts.push(text.slice(lastIndex, index))
+    let url = match[0]
+    const trailing = url.match(/[.,;:!?)]+$/)
+    if (trailing) url = url.slice(0, -trailing[0].length)
+    parts.push({ url })
+    lastIndex = index + url.length
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts.map((part, index) =>
+    typeof part === "string" ? (
+      <span key={index}>{part}</span>
+    ) : (
+      <a
+        key={index}
+        href={part.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-2 hover:opacity-80"
+      >
+        {part.url}
+      </a>
+    ),
+  )
+}
+
 interface ChatTabProps {
   runId: string
   active: boolean
@@ -51,16 +84,16 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
   const appliedFocus = useRef<string | null>(null)
 
   const renderContent = (message: (typeof messages)[number]) => {
-    if (highlightedId !== message.id || !focus?.quote) return message.content
+    if (highlightedId !== message.id || !focus?.quote) return linkify(message.content)
     const index = message.content.toLowerCase().indexOf(focus.quote.toLowerCase())
-    if (index < 0) return message.content
+    if (index < 0) return linkify(message.content)
     return (
       <>
-        {message.content.slice(0, index)}
+        {linkify(message.content.slice(0, index))}
         <mark className="rounded bg-warning/30 px-0.5 text-inherit">
           {message.content.slice(index, index + focus.quote.length)}
         </mark>
-        {message.content.slice(index + focus.quote.length)}
+        {linkify(message.content.slice(index + focus.quote.length))}
       </>
     )
   }
