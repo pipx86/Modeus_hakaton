@@ -307,7 +307,7 @@ export function Dashboard() {
               <CardHeader>
                 <CardTitle className="text-base">Активность за 14 дней</CardTitle>
                 <CardDescription>
-                  Столбики по дням: успешные, активные, с ошибкой.
+                  Столбики по дням: успешные, интервью, с ошибкой.
                 </CardDescription>
               </CardHeader>
               <CardContent>
