@@ -9,14 +9,22 @@ coverage.out
 *.exe
 *.test
 *.log
+logs
 .env
 .env.*
 !.env.example
+# Local credentials/key material must never enter the build context.
+.secrets
 secrets/
 data/
 e2e-output.json
 node_modules
-deploy
+# Docker build assets are under deploy/docker (healthcheck probe); the rest of
+# deploy is runtime configuration mounted by compose, not image content.
+deploy/grafana
+deploy/n8n
+deploy/nginx
+deploy/prometheus
 docs
 web
 docker-compose*.yml

@@ -58,10 +58,17 @@ make lint
 ## Docker in CI vs this session
 
 The CI `docker` job is the authoritative Docker evidence: image size assertion,
-container healthcheck and the JWT chat smoke test. In the authoring session the
-Docker daemon named-pipe is not accessible from the sandbox, so the image build
-and `docker compose up` could not run there; `docker compose config` (client
-side) and the native demo smoke test were used instead.
+container healthcheck and the JWT chat smoke test. It builds the **default**
+image target without `--target`, which stays the demo `api` image.
+
+Locally (2026-11-19, Docker Desktop reachable) the default image was built and
+smoke-tested (27.0 MB, `/health`, `/metrics`, `/api/v1/health`, self-healthcheck,
+JWT chat flow), and the full `cmd/server` backend was verified through the new
+`server` compose profile: goose migrations on an empty PostgreSQL, healthcheck,
+Swagger UI, JWT-protected run and a migration-failure gate (the backend is not
+started when migrations fail). Details:
+[DOCKER_SERVER.md](DOCKER_SERVER.md). `scripts/check_deploy.py` also validates
+`docker compose --profile server config`.
 
 ## Limitations
 
