@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { to: "/compare", label: "Сравнение прогонов", icon: GitCompareIcon, end: false },
 ]
 
-const ADMIN_ITEM = { to: "/admin", label: "Админка", icon: ShieldIcon, end: false }
+const ADMIN_ITEM = { to: "/admin", label: "Администрирование", icon: ShieldIcon, end: false }
 
 function useBreadcrumbs() {
   const { pathname } = useLocation()

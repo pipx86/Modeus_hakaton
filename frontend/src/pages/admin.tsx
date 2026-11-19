@@ -1,6 +1,6 @@
 /**
  * @file admin.tsx
- * @description Админка: исследования, LLM-метрики, расход токенов и материалы для агентов.
+ * @description Администрирование: исследования, LLM-метрики, расход токенов и материалы для агентов.
  */
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
@@ -105,7 +105,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   )
 }
 
-/** Админка: KPI, исследования, LLM-журнал, метрики агентов. */
+/** Администрирование: KPI, исследования, LLM-журнал, метрики агентов. */
 export function Admin() {
   const role = getCurrentRole()
   const isAdmin = role === "admin"
@@ -500,7 +500,7 @@ export function Admin() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Админка</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Администрирование</h1>
         </div>
         <Button variant="outline" onClick={() => void refresh()} disabled={refreshing}>
           <RefreshCwIcon className={refreshing ? "size-4 animate-spin" : "size-4"} />
