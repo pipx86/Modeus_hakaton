@@ -17,9 +17,9 @@ They must not be committed, printed in logs, or put into the database.
 
 ## How token selection works
 
-`cmd/ingest` chooses credentials in this order:
+`cmd/ingest` uses `ingestion.HHTokenSource`, which chooses credentials in this order:
 
-1. `HH_ACCESS_TOKEN`, if set;
+1. `HH_ACCESS_TOKEN`, if set (static, never refreshed);
 2. otherwise, if `HH_CLIENT_ID` and `HH_CLIENT_SECRET` are set, it exchanges
    them server-to-server for an application token:
 
@@ -34,6 +34,13 @@ client_secret=...
 
 The exchange result is held only in memory and is passed as a Bearer token to
 the hh.ru API. It is never logged or persisted.
+
+### Auto-refresh
+
+`HHTokenSource` caches the token and automatically renews it when less than
+~60 seconds remain until `expires_in`. If hh.ru answers with
+`403 app token refresh too early`, the still-valid cached token is kept and
+used; the error is not propagated while the cache is alive.
 
 ## Usage
 
