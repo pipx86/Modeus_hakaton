@@ -55,9 +55,9 @@ REQUIRED_FILES = [
     ".golangci.yml",
     "Makefile",
     "cmd/api/main.go",
-    "docs/api-docs/index.html",
-    "docs/api-docs/swagger.json",
-    "docs/api-docs/swagger.yaml",
+    "docs/index.html",
+    "docs/swagger.json",
+    "docs/swagger.yaml",
     "internal/metrics/metrics.go",
     "internal/metrics/metrics_test.go",
     "internal/llm/metrics/metrics.go",
@@ -103,7 +103,7 @@ SECRET_SCAN_GLOBS = [
     "deploy",
     "scripts/check_deploy.py",
     "README.md",
-    "docs/api-docs",
+    "docs",
     "migrations",
     ".github/workflows/ci.yml",
 ]
@@ -163,7 +163,7 @@ def check_dockerfile() -> None:
             raise SystemExit(f"FAIL: Dockerfile is missing the {stage!r} build stage")
     if stages[-1] != "api":
         raise SystemExit(f"FAIL: last Dockerfile stage must be 'api' (default build target), got {stages[-1]!r}")
-    for marker in ("./cmd/server", "goose@v3.29.0", "docs/api-docs", "/app/healthcheck"):
+    for marker in ("./cmd/server", "goose@v3.29.0", "docs", "/app/healthcheck"):
         if marker not in dockerfile:
             raise SystemExit(f"FAIL: Dockerfile must include {marker!r}")
     # Full-stack web target: the SPA is built inside the image and served by

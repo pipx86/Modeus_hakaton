@@ -72,7 +72,7 @@ curl http://127.0.0.1:8080/api/v1/health
 ```
 
 Swagger UI: `http://127.0.0.1:8080/swagger/`. Исходная спецификация —
-[openapi.yaml](openapi.yaml), статические файлы — [docs/api-docs](docs/api-docs/).
+[openapi.yaml](openapi.yaml), статические файлы — [docs](docs/).
 
 ### 4. Frontend
 

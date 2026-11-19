@@ -1,0 +1,1 @@
+Prefer a small number of well-supported nodes over speculative ones.

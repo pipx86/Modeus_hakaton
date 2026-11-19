@@ -17,7 +17,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY prompts ./prompts
-COPY docs/api-docs ./docs/api-docs
+COPY docs ./docs
 
 # Static, stripped binaries: no libc, no shell, reproducible paths.
 # /api is the demo entrypoint (in-memory store + chat fallback, /health and
@@ -78,8 +78,8 @@ RUN go install -trimpath -ldflags="-s -w" \
 
 # ---- server: cmd/server + Swagger UI + migrations (distroless) ------------
 # Full backend: PostgreSQL store, JWT auth, LLM agents (optional), goose-checked
-# schema. docs/api-docs/ is required at runtime (cmd/server serves GET /swagger/
-# from ./docs/api-docs); agent prompts are embedded into the binary at build time.
+# schema. docs/ is required at runtime (cmd/server serves GET /swagger/
+# from ./docs); agent prompts are embedded into the binary at build time.
 FROM gcr.io/distroless/static-debian12:nonroot AS server
 
 WORKDIR /app
@@ -89,8 +89,8 @@ COPY --from=server-build /out/healthcheck /app/healthcheck
 # cmd/server writes rotating logs to ./logs (LOG_FILE overrides the path);
 # keep the directory writable for the non-root user.
 COPY --from=server-build --chown=nonroot:nonroot /out/logs /app/logs
-# Swagger UI + OpenAPI spec: GET /swagger/ is served from ./docs/api-docs.
-COPY --from=server-build /src/docs/api-docs /app/docs/api-docs
+# Swagger UI + OpenAPI spec: GET /swagger/ is served from ./docs.
+COPY --from=server-build /src/docs /app/docs
 # SQL migrations are shipped for parity with the deployment assets; applying
 # them is the job of the dedicated `migrate` image below (goose lives there).
 COPY migrations /app/migrations
@@ -149,8 +149,8 @@ FROM gcr.io/distroless/static-debian12:nonroot AS api
 WORKDIR /
 COPY --from=build /out/api /api
 COPY --from=build /out/local-token /local-token
-# Swagger UI is served from ./docs/api-docs by the demo API.
-COPY --from=build /src/docs/api-docs /docs/api-docs
+# Swagger UI is served from ./docs by the demo API.
+COPY --from=build /src/docs /docs
 
 USER nonroot:nonroot
 EXPOSE 8080

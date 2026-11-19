@@ -90,7 +90,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Статическая страница и спецификация API.
-	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs/api-docs"))))
+	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs"))))
 
 	mux.HandleFunc("GET /api/v1/subscriptions", s.handlePublicationSubscriptions)
 	mux.HandleFunc("POST /api/v1/subscriptions", s.handleCreatePublicationSubscription)
