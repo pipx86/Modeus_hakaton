@@ -289,3 +289,9 @@ type User struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
+
+type ZunSuggestionRejection struct {
+	RunID     pgtype.UUID        `json:"run_id"`
+	NodeID    pgtype.UUID        `json:"node_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
