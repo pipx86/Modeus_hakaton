@@ -426,17 +426,39 @@ export function Admin() {
   const routeStats = useMemo(() => {
     const map = new Map<
       string,
-      { route: string; requests: number; errors4xx: number; errors5xx: number; sum: number; count: number }
+      {
+        route: string
+        requests: number
+        errors4xx: number
+        errors5xx: number
+        errors: Record<string, number>
+        sum: number
+        count: number
+      }
     >()
     for (const sample of metrics) {
       const route = sample.labels.route
       if (!route) continue
       const entry =
-        map.get(route) ?? { route, requests: 0, errors4xx: 0, errors5xx: 0, sum: 0, count: 0 }
+        map.get(route) ?? {
+          route,
+          requests: 0,
+          errors4xx: 0,
+          errors5xx: 0,
+          errors: {},
+          sum: 0,
+          count: 0,
+        }
       if (sample.name === "activity_descriptor_http_requests_total") {
         entry.requests += sample.value
-        if ((sample.labels.status ?? "").startsWith("5")) entry.errors5xx += sample.value
-        if ((sample.labels.status ?? "").startsWith("4")) entry.errors4xx += sample.value
+        const status = sample.labels.status ?? ""
+        if (status.startsWith("4") || status.startsWith("5")) {
+          const method = sample.labels.method ?? "?"
+          const key = `${method} ${status}`
+          entry.errors[key] = (entry.errors[key] ?? 0) + sample.value
+          if (status.startsWith("5")) entry.errors5xx += sample.value
+          if (status.startsWith("4")) entry.errors4xx += sample.value
+        }
       } else if (sample.name === "activity_descriptor_http_request_duration_seconds_sum") {
         entry.sum += sample.value
       } else if (sample.name === "activity_descriptor_http_request_duration_seconds_count") {
@@ -897,7 +919,9 @@ export function Admin() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">HTTP по маршрутам</CardTitle>
-          <CardDescription>Запросы, ошибки 4xx/5xx и средняя латентность.</CardDescription>
+          <CardDescription>
+            Запросы, конкретные коды ошибок 4xx/5xx и средняя латентность.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {routeStats.length === 0 ? (
@@ -919,8 +943,44 @@ export function Admin() {
                     <tr key={entry.route} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 font-mono text-xs">{entry.route}</td>
                       <td className="py-2 pr-3">{entry.requests}</td>
-                      <td className="py-2 pr-3">{entry.errors4xx}</td>
-                      <td className="py-2 pr-3">{entry.errors5xx}</td>
+                      <td className="py-2 pr-3">
+                        {entry.errors4xx === 0 ? (
+                          "0"
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(entry.errors)
+                              .filter(([key]) => key.split(" ").at(-1)?.startsWith("4"))
+                              .map(([key, count]) => (
+                                <Badge
+                                  key={key}
+                                  variant="outline"
+                                  className="px-1.5 py-0 font-mono text-[10px] text-warning"
+                                >
+                                  {key} ×{count}
+                                </Badge>
+                              ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {entry.errors5xx === 0 ? (
+                          "0"
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(entry.errors)
+                              .filter(([key]) => key.split(" ").at(-1)?.startsWith("5"))
+                              .map(([key, count]) => (
+                                <Badge
+                                  key={key}
+                                  variant="outline"
+                                  className="px-1.5 py-0 font-mono text-[10px] text-destructive"
+                                >
+                                  {key} ×{count}
+                                </Badge>
+                              ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2">{formatMs(entry.avgMs)}</td>
                     </tr>
                   ))}
