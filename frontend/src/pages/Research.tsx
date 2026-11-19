@@ -932,7 +932,6 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
-
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -945,21 +944,13 @@ function TreeTab({
   }, [id])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadInsights()
-    if (!active) return
-    const timer = window.setInterval(() => void loadInsights(), 5000)
-    return () => window.clearInterval(timer)
-  }, [loadInsights, active])
-
-  useEffect(() => {
     let cancelled = false
     const loadCost = async () => {
       try {
         const { data } = await apiClient.GET("/runs/{id}/cost", { params: { path: { id } } })
         if (!cancelled && data) setCost(data)
       } catch {
-        // Стоимость может быть недоступна - это не ошибка страницы.
+        // Стоимость необязательна для работы дерева.
       }
     }
     void loadCost()
@@ -996,7 +987,14 @@ function TreeTab({
         params: { path: { id } },
       })
       if (data) {
-        setNodes((prev) => (JSON.stringify(prev) === JSON.stringify(data) ? prev : data))
+        const nextNodes = Array.isArray(data) ? data : (data.nodes ?? [])
+        setNodes((prev) => (JSON.stringify(prev) === JSON.stringify(nextNodes) ? prev : nextNodes))
+        if (!Array.isArray(data) && data.insights) {
+          setInsights(data.insights)
+        } else {
+          // Совместимость со старым бэкендом, где /tree возвращал только массив.
+          void loadInsights()
+        }
       }
       setError(null)
     } catch {
@@ -1004,7 +1002,7 @@ function TreeTab({
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, loadInsights])
 
   useEffect(() => {
     // Загрузка дерева меняет состояние после ответа API и нужна при открытии вкладки.
@@ -1232,7 +1230,6 @@ function TreeTab({
         }}
         onSaved={() => {
           void load()
-          void loadInsights()
         }}
       />
       <EvidenceAttachDialog
@@ -1243,7 +1240,6 @@ function TreeTab({
         }}
         onAttached={() => {
           void load()
-          void loadInsights()
         }}
       />
       <ZunSuggestionsDialog
@@ -1252,7 +1248,6 @@ function TreeTab({
         onOpenChange={setZunOpen}
         onApplied={() => {
           void load()
-          void loadInsights()
         }}
       />
     </>

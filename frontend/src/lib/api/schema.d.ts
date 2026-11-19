@@ -319,7 +319,7 @@ export interface paths {
         };
         /**
          * Get the activity tree of a run
-         * @description Flat array of nodes; clients rebuild the hierarchy via `parent_id`.
+         * @description Flat list of nodes plus deterministic insights: provenance per node, tree health score with breakdown, five red-flag rules, market heat, coverage matrix, run sources and template-only node explanations. Clients rebuild the hierarchy via `parent_id`.
          */
         get: operations["getRunTree"];
         /**
@@ -491,6 +491,26 @@ export interface paths {
          * @description Persists knowledge/skills/abilities to one node of the run tree, but only when the node has no ZUN yet. An existing manual or auto-generated ZUN is never overwritten: the request fails with 409 `ZUN_ALREADY_SET` (the caller should re-read suggestions). Items are normalized: trimmed, inner spaces collapsed, empty items dropped, case-insensitive dedupe, at most 200 characters per item and 50 items per list. At least one non-empty item across the three lists is required and `node_id` is mandatory. The node must belong to the run (404 otherwise). Expert roles only.
          */
         post: operations["applyZunSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/zun/suggestions/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Persistently reject one rule-based ZUN suggestion
+         * @description Remembers that the expert rejected the suggestion for one node of the run tree. Later GET requests omit that node until the rejection is removed from the database; the tree and any existing ZUN are untouched. Repeated rejection is idempotent. Expert roles only.
+         */
+        post: operations["rejectZunSuggestion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1253,6 +1273,11 @@ export interface components {
             summary: string;
             evidence: components["schemas"]["ExplanationEvidence"][];
         };
+        /** @description JSON body of GET /runs/{id}/tree; nodes plus the same deterministic insights as GET /runs/{id}/insights. */
+        TreeResponse: {
+            nodes: components["schemas"]["Node"][];
+            insights: components["schemas"]["Insights"];
+        };
         /** @description JSON body of GET /runs/{id}/insights; all collections are non-null. */
         Insights: {
             run_id: string;
@@ -1330,6 +1355,16 @@ export interface components {
             current_zun: components["schemas"]["Zun"];
             /** @description True only when the node has no ZUN and the suggestion is non-empty. */
             can_apply: boolean;
+        };
+        /** @description Body of POST /runs/{id}/zun/suggestions/reject. */
+        ZunRejectRequest: {
+            node_id: string;
+        };
+        /** @description Result of persisting a rejected ZUN suggestion. */
+        ZunRejectResponse: {
+            run_id: string;
+            node_id: string;
+            rejected: boolean;
         };
         /** @description Body of POST /runs/{id}/zun/suggestions/apply. */
         ZunApplyRequest: {
@@ -2389,13 +2424,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Array of nodes. */
+            /** @description Tree nodes and their deterministic insights. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Node"][];
+                    "application/json": components["schemas"]["TreeResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3224,6 +3259,67 @@ export interface operations {
                      *       "message": "node already has ZUN; automatic suggestion does not overwrite it"
                      *     }
                      */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    rejectZunSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ZunRejectRequest"];
+            };
+        };
+        responses: {
+            /** @description Rejection saved; the suggestion will no longer be listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *       "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
+                     *       "rejected": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ZunRejectResponse"];
+                };
+            };
+            /** @description Malformed JSON, unknown fields, trailing data or a missing node_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The run does not exist or the node does not belong to it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["Error"];
                 };
             };

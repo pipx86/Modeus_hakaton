@@ -54,6 +54,7 @@ type memStore struct {
 	runEvidenceIDs map[string][]string
 	approved       map[string]bool
 	status         map[string]domain.EvidenceStatus
+	zunRejected    map[string]map[string]bool
 	seq            int
 }
 
@@ -70,6 +71,7 @@ func newMemStore() *memStore {
 		runEvidenceIDs: map[string][]string{},
 		approved:       map[string]bool{},
 		status:         map[string]domain.EvidenceStatus{},
+		zunRejected:    map[string]map[string]bool{},
 	}
 }
 

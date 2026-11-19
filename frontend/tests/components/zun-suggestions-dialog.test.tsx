@@ -60,6 +60,35 @@ describe("ZunSuggestionsDialog", () => {
     expect(onApplied).toHaveBeenCalled()
   })
 
+  it("сохраняет отказ от предложения", async () => {
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/api/v1/runs/7/zun/suggestions")) {
+        return { status: 200, body: [suggestion] }
+      }
+      if (url.endsWith("/api/v1/runs/7/zun/suggestions/reject") && init?.method === "POST") {
+        return { status: 200, body: { run_id: "7", node_id: "n1", rejected: true } }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    const user = userEvent.setup()
+    render(<ZunSuggestionsDialog runId="7" open onOpenChange={() => {}} />)
+
+    await user.click(await screen.findByRole("button", { name: "Скрыть предложение Анализ метрик" }))
+
+    await waitFor(() =>
+      expect(
+        fetchCalls().some(
+          (call) =>
+            call.url.endsWith("/api/v1/runs/7/zun/suggestions/reject") &&
+            call.init.method === "POST",
+        ),
+      ).toBe(true),
+    )
+    await waitFor(() =>
+      expect(screen.queryByText("Анализ метрик")).not.toBeInTheDocument(),
+    )
+  })
+
   it("не даёт применить ЗУН, если он уже заполнен", async () => {
     setFetchHandler(async () => ({
       status: 200,

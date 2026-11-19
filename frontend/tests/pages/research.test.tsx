@@ -18,6 +18,7 @@ function renderPage(runId = "7", search = "") {
 function stubRun(
   overrides: {
     tree?: unknown[]
+    treeResponse?: unknown
     sources?: unknown[]
     evidences?: unknown[]
     snapshots?: unknown[]
@@ -86,7 +87,7 @@ function stubRun(
       return { status: 200, body: overrides.snapshots ?? [] }
     }
     if (url.includes("/api/v1/runs/7/tree")) {
-      return { status: 200, body: overrides.tree ?? [] }
+      return { status: 200, body: overrides.treeResponse ?? overrides.tree ?? [] }
     }
     if (url.includes("/api/v1/runs/7/messages")) {
       return { status: 200, body: [] }
@@ -182,6 +183,41 @@ describe("Research", () => {
     })
 
     expect(await screen.findByText("Дерево ещё не построено")).toBeInTheDocument()
+  })
+
+  it("берёт health из ответа /tree без отдельного /insights", async () => {
+    stubRun({
+      treeResponse: {
+        nodes: [{ id: "r1", type: "role", title: "Data Scientist", evidence: [] }],
+        insights: {
+          run_id: "7",
+          provenance: { nodes: {} },
+          health: {
+            score: 97,
+            breakdown: { groundedness: 100, completeness: 90, duplicates: 100, orphans: 100 },
+            weights: { groundedness: 0.4, completeness: 0.3, duplicates: 0.2, orphans: 0.1 },
+            counts: {
+              node_count: 1,
+              grounded_nodes: 1,
+              duplicate_nodes: 0,
+              orphan_nodes: 0,
+              childless_nodes: 0,
+            },
+            formula: "0.4*groundedness + ...",
+          },
+          flags: [],
+          market_heat: { source: "none", top: [], nodes: {} },
+          coverage: { columns: ["interview", "standard", "vacancy", "document"], rows: [] },
+          sources: [],
+          node_explanations: {},
+        },
+      },
+    })
+
+    renderPage("7", "?node=r1")
+
+    expect(await screen.findByText("Здоровье: 97")).toBeInTheDocument()
+    expect(fetchCalls().some((call) => call.url.includes("/runs/7/insights"))).toBe(false)
   })
 
   it("на вкладке «Дерево» рисует узлы из API", async () => {

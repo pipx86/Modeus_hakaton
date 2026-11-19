@@ -1,6 +1,7 @@
 package api
 
 import (
+	"activity-descriptor/internal/analysis"
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
@@ -94,6 +95,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/compare", s.handleCompareRuns)
 	mux.HandleFunc("GET /api/v1/runs/{id}/zun/suggestions", s.handleZunSuggestions)
 	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/apply", s.handleApplyZunSuggestion)
+	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/reject", s.handleRejectZunSuggestion)
 	mux.HandleFunc("GET /api/v1/runs/{id}/evidence/{evidence_id}/context", s.handleEvidenceContext)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
 	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handlePutTree)
@@ -435,14 +437,22 @@ func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// TreeResponse — ответ GET /runs/{id}/tree: узлы и детерминированные инсайты
+// (провенанс, health, red flags, market heat, coverage, объяснения). Инсайты
+// встроены в ответ дерева, чтобы клиенту не нужен был отдельный запрос.
+type TreeResponse struct {
+	Nodes    []domain.Node     `json:"nodes"`
+	Insights analysis.Insights `json:"insights"`
+}
+
 // handleGetTree godoc
 // @Summary      Get competency tree for a run
-// @Description  Returns the flat list of nodes associated with the run's tree.
+// @Description  Returns the flat list of nodes associated with the run's tree plus deterministic insights: provenance per node, tree health score with breakdown, five red-flag rules, market heat, coverage matrix, run sources and template-only node explanations. Insights are computed from the same nodes and are best-effort for stores without source access.
 // @Tags         trees
 // @Produce      json
 // @Param        id   path      string  true  "Run ID"
-// @Success      200   {array}   domain.Node
-// @Failure      404   {object}  errorBody
+// @Success      200  {object}  api.TreeResponse
+// @Failure      404  {object}  errorBody
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/tree [get]
 func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
@@ -464,7 +474,25 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 	if nodes == nil {
 		nodes = []domain.Node{}
 	}
-	writeJSON(w, http.StatusOK, nodes)
+
+	insights := analysis.Insights{}
+	if reader, ok := s.store.(insightsReader); ok {
+		if loaded, loadErr := s.loadRunInsights(r.Context(), reader, id); loadErr == nil {
+			insights = loaded
+		} else {
+			logging.Logger.Warn("get_tree_insights_failed", "run_id", id, "error", loadErr)
+		}
+	}
+	if insights.RunID == "" {
+		var skillFreq map[string]int
+		if run, runErr := s.store.GetRun(id); runErr == nil && run != nil {
+			skillFreq = run.SkillFreq
+		}
+		insights = analysis.BuildInsights(nodes, nil, skillFreq)
+		insights.RunID = id
+	}
+
+	writeJSON(w, http.StatusOK, TreeResponse{Nodes: nodes, Insights: insights})
 }
 
 // handleGetAnswers godoc

@@ -51,11 +51,11 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 ## Что актуализировано в этом обновлении
 
 Каноническая спецификация теперь покрывает все маршруты, зарегистрированные в
-[`internal/api/handlers.go`](../internal/api/handlers.go): 36 путей и 45 операций.
+[`internal/api/handlers.go`](../internal/api/handlers.go): 37 путей и 46 операций.
 
 | Метод и путь | Назначение | Роли | Основные ответы |
 | --- | --- | --- | --- |
-| `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
+| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, teacher, rop, guest | 200, 404, 500 || `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
 | `GET /reviews/evidence?status=&limit=&offset=` | Очередь спорных подтверждений для эксперта: `status=pending\|rejected`, `limit` 1..200 (50), `offset` >= 0; пустая страница — `[]` | admin, teacher, rop | 200, 400, 501 |
 | `POST /evidences/{id}/reject` | Отклонить подтверждение (только pending) | admin, teacher | 204, 404, 409 `ALREADY_REJECTED`/`ALREADY_APPROVED` |
 | `GET /evidences/{id}` | Подтверждение + legacy-флаг `approved` | admin, teacher, rop, guest | 200, 404, 501 |
@@ -75,6 +75,7 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 | `GET /runs/{id}/compare?against=` | Сравнение деревьев двух исследований: `added`/`removed`/`changed`/`summary`, `match` (`by_id`/`by_title`/`unmatched`), `same_profession`, `story` | admin, teacher, rop, guest | 200, 400, 401, 403, 404, 409 `RUN_PROFESSION_MISMATCH`/`RUN_TREE_MISSING`, 500, 501, 503, 504 |
 | `GET /runs/{id}/zun/suggestions` | Rule-based предложения ЗУН для каждого узла дерева (`source=rule`, без LLM); у узлов с непустым ЗУН списки пусты и `can_apply=false` | admin, teacher, rop | 200, 401, 403, 404, 500 |
 | `POST /runs/{id}/zun/suggestions/apply` | Сохранить предложенный ЗУН одному узлу, только если ЗУН ещё пуст; нормализация пунктов и лимиты | admin, teacher, rop | 200, 400, 401, 403, 404, 409 `ZUN_ALREADY_SET`, 500, 501 |
+| `POST /runs/{id}/zun/suggestions/reject` | Постоянно отклонить предложение ЗУН для узла; повторный GET больше его не возвращает, идемпотентно | admin, teacher, rop | 200, 400, 401, 403, 404, 500, 501 |
 | `GET /runs/{id}/evidence/{evidence_id}/context` | Контекст подтверждения: цитата с контекстом узла/источника, сохранённый транскрипт интервью и лучшая совпавшая реплика (`match`, `note`) | все роли | 200, 400, 401, 404, 500, 501 |
 | `GET /reviews/evidence/progress?run_id=` | Счётчики проверки подтверждений: `pending`/`approved`/`rejected`/`total`, глобально или по прогону (`scope`/`run_id`) | admin, teacher, rop | 200, 400, 401, 403, 404, 500, 501 |
 

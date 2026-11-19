@@ -82,6 +82,25 @@ type zunSuggestionWriter interface {
 	applyZunSuggestions(ctx context.Context, runID, nodeID string, zun domain.Zun) (zunAppliedNode, error)
 }
 
+// zunSuggestionRejecter — optional-возможность хранилища: запомнить отклонённое
+// предложение, чтобы оно не возвращалось в GET и не мешало повторной проверке.
+type zunSuggestionRejecter interface {
+	rejectZunSuggestion(ctx context.Context, runID, nodeID string) error
+	rejectedZunNodeIDs(ctx context.Context, runID string) (map[string]bool, error)
+}
+
+// zunRejectRequest — тело POST /runs/{id}/zun/suggestions/reject.
+type zunRejectRequest struct {
+	NodeID string `json:"node_id"`
+}
+
+// zunRejectResponse — результат сохранения отказа от предложения.
+type zunRejectResponse struct {
+	RunID    string `json:"run_id"`
+	NodeID   string `json:"node_id"`
+	Rejected bool   `json:"rejected"`
+}
+
 // zunApplyResponse — публичный DTO успешного применения предложения. Это
 // обновлённое предложение: can_apply=false, current_zun — сохранённое значение.
 type zunApplyResponse struct {
@@ -224,6 +243,41 @@ func (m *memStore) applyZunSuggestions(_ context.Context, runID, nodeID string, 
 	return applied, ErrNotFound
 }
 
+// rejectZunSuggestion — in-memory реализация постоянного отклонения.
+func (m *memStore) rejectZunSuggestion(_ context.Context, runID, nodeID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.runs[runID]; !ok {
+		return ErrNotFound
+	}
+	found := false
+	for _, node := range m.nodes[runID] {
+		if node.ID == nodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrNotFound
+	}
+	if m.zunRejected[runID] == nil {
+		m.zunRejected[runID] = map[string]bool{}
+	}
+	m.zunRejected[runID][nodeID] = true
+	return nil
+}
+
+// rejectedZunNodeIDs — in-memory чтение отклонённых узлов прогона.
+func (m *memStore) rejectedZunNodeIDs(_ context.Context, runID string) (map[string]bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := map[string]bool{}
+	for id := range m.zunRejected[runID] {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // handleZunSuggestions godoc
 // @Summary      Rule-based ZUN suggestions for a run tree
 // @Description  Returns deterministic, rule-based knowledge/skills/abilities suggestions for every node of the run tree. Nodes with a non-empty ZUN keep it untouched: their suggestion lists are empty and can_apply=false. source is always "rule" (no LLM). Expert roles only (admin/teacher/rop).
@@ -265,8 +319,19 @@ func (s *Server) handleZunSuggestions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось загрузить дерево исследования")
 		return
 	}
+	rejected := map[string]bool{}
+	if rejecter, ok := s.store.(zunSuggestionRejecter); ok {
+		rejected, err = rejecter.rejectedZunNodeIDs(r.Context(), runID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось загрузить отклонённые предложения")
+			return
+		}
+	}
 	suggestions := make([]zunSuggestion, 0, len(nodes))
 	for _, node := range nodes {
+		if rejected[node.ID] {
+			continue
+		}
 		suggestions = append(suggestions, buildZunSuggestion(run.Profession, node))
 	}
 	writeJSON(w, http.StatusOK, suggestions)
@@ -343,4 +408,79 @@ func (s *Server) handleApplyZunSuggestion(w http.ResponseWriter, r *http.Request
 		CanApply:   false,
 		CurrentZun: &applied.Zun,
 	})
+}
+
+// handleRejectZunSuggestion godoc
+// @Summary      Persistently reject one rule-based ZUN suggestion
+// @Description  Remembers that the expert rejected the suggestion for one node of the run tree, so GET /runs/{id}/zun/suggestions no longer returns that node. The tree and any existing ZUN are untouched; a later apply is still possible only through a new explicit request. Expert roles only (admin/teacher/rop).
+// @Tags         runs
+// @Accept       json
+// @Produce      json
+// @Param        id    path      string            true  "Run ID"
+// @Param        body  body      zunRejectRequest  true  "Node id"
+// @Success      200   {object}  zunRejectResponse
+// @Failure      400   {object}  errorBody
+// @Failure      401   {object}  errorBody
+// @Failure      403   {object}  errorBody
+// @Failure      404   {object}  errorBody
+// @Failure      500   {object}  errorBody
+// @Failure      501   {object}  errorBody
+// @Security     BearerAuth
+// @Router       /api/v1/runs/{id}/zun/suggestions/reject [post]
+func (s *Server) handleRejectZunSuggestion(w http.ResponseWriter, r *http.Request) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+		return
+	}
+	runID := strings.TrimSpace(r.PathValue("id"))
+	if runID == "" {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "не указан идентификатор исследования")
+		return
+	}
+	var req zunRejectRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "некорректный JSON")
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "после тела запроса есть лишние данные")
+		return
+	}
+	nodeID := strings.TrimSpace(req.NodeID)
+	if nodeID == "" {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "node_id обязателен")
+		return
+	}
+	nodes, err := s.store.GetTree(runID)
+	if errors.Is(err, ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "NOT_FOUND", "исследование не найдено")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось загрузить дерево исследования")
+		return
+	}
+	found := false
+	for _, node := range nodes {
+		if node.ID == nodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "NOT_FOUND", "узел не найден")
+		return
+	}
+	rejecter, ok := s.store.(zunSuggestionRejecter)
+	if !ok {
+		writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "для отклонения ЗУН требуется PostgreSQL")
+		return
+	}
+	if err := rejecter.rejectZunSuggestion(r.Context(), runID, nodeID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить отклонение")
+		return
+	}
+	writeJSON(w, http.StatusOK, zunRejectResponse{RunID: runID, NodeID: nodeID, Rejected: true})
 }

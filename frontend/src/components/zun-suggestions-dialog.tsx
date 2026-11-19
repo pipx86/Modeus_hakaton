@@ -32,6 +32,7 @@ export function ZunSuggestionsDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [applyingId, setApplyingId] = useState<string | null>(null)
+  const [rejectingId, setRejectingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -96,6 +97,32 @@ export function ZunSuggestionsDialog({
     }
   }
 
+  const reject = async (suggestion: ZunSuggestion) => {
+    setRejectingId(suggestion.node_id)
+    try {
+      const { error: requestError } = await apiClient.POST(
+        "/runs/{id}/zun/suggestions/reject",
+        {
+          params: { path: { id: runId } },
+          body: { node_id: suggestion.node_id },
+        },
+      )
+      if (requestError) {
+        toast.error("Не удалось отклонить предложение", { description: requestError.message })
+        return
+      }
+      setSuggestions((previous) =>
+        previous.filter((item) => item.node_id !== suggestion.node_id),
+      )
+      toast.success(`Предложение скрыто: ${suggestion.node_title}`)
+      onApplied?.()
+    } catch {
+      toast.error("Сервер недоступен", { description: "Отклонение не сохранено." })
+    } finally {
+      setRejectingId(null)
+    }
+  }
+
   const applicable = suggestions.filter((item) => item.can_apply)
 
   return (
@@ -154,11 +181,8 @@ export function ZunSuggestionsDialog({
                     variant="ghost"
                     className="h-7 px-2.5 text-xs text-muted-foreground"
                     aria-label={`Скрыть предложение ${item.node_title}`}
-                    onClick={() =>
-                      setSuggestions((previous) =>
-                        previous.filter((row) => row.node_id !== item.node_id),
-                      )
-                    }
+                    disabled={rejectingId === item.node_id}
+                    onClick={() => void reject(item)}
                   >
                     Скрыть
                   </Button>
