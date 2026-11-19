@@ -947,22 +947,33 @@ function TreeTab({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadInsights()
-  }, [loadInsights])
+    if (!active) return
+    const timer = window.setInterval(() => void loadInsights(), 5000)
+    return () => window.clearInterval(timer)
+  }, [loadInsights, active])
 
   useEffect(() => {
     let cancelled = false
-    void (async () => {
+    const loadCost = async () => {
       try {
         const { data } = await apiClient.GET("/runs/{id}/cost", { params: { path: { id } } })
         if (!cancelled && data) setCost(data)
       } catch {
         // Стоимость может быть недоступна - это не ошибка страницы.
       }
-    })()
+    }
+    void loadCost()
+    if (!active) {
+      return () => {
+        cancelled = true
+      }
+    }
+    const timer = window.setInterval(() => void loadCost(), 5000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
-  }, [id])
+  }, [id, active])
 
   useEffect(() => {
     let cancelled = false
@@ -1143,6 +1154,19 @@ function TreeTab({
                   %
                 </>
               )}
+              {cost.duration_seconds !== null &&
+                cost.estimate.estimated_duration_seconds > 0 && (
+                  <>
+                    {" "}
+                    · время{" "}
+                    {Math.round(
+                      ((cost.duration_seconds - cost.estimate.estimated_duration_seconds) /
+                        cost.estimate.estimated_duration_seconds) *
+                        100,
+                    )}
+                    %
+                  </>
+                )}
             </span>
           )}
         </div>

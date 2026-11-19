@@ -14,6 +14,7 @@ import {
 import { getValidToken } from "@/lib/auth"
 import { downloadText } from "@/lib/export-tree"
 import { SOURCE_TYPE_LABEL } from "@/lib/status"
+import { NODE_TYPE_LABELS } from "@/components/activity-tree-model"
 import { DownloadIcon, Loader2Icon } from "lucide-react"
 
 export function CoverageTab({ runId }: { runId: string }) {
@@ -137,7 +138,9 @@ export function CoverageTab({ runId }: { runId: string }) {
               <tr key={row.node_id} className="border-t">
                 <td className="px-3 py-2">
                   <span className="font-medium">{row.title}</span>
-                  <span className="ml-2 text-[11px] text-muted-foreground">{row.type}</span>
+                  <span className="ml-2 text-[11px] text-muted-foreground">
+                    {NODE_TYPE_LABELS[row.type] ?? row.type}
+                  </span>
                 </td>
                 {coverage.columns.map((column) => {
                   const value = row.cells[column] ?? 0

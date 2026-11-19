@@ -996,7 +996,7 @@ function ReviewQueueSection({
     const tag = (event.target as HTMLElement).tagName
     if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return
     const current = items[selectedIndex]
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "n" || event.key === "N") {
       event.preventDefault()
       setSelectedIndex((index) => Math.min(items.length - 1, index + 1))
       return
@@ -1065,14 +1065,14 @@ function ReviewQueueSection({
             {loading
               ? "Загрузка…"
               : progress
-                ? `Проверено ${progress.approved + progress.rejected} из ${progress.total} · на проверке ${progress.pending}`
+                ? `Подтверждено ${progress.approved} из ${progress.total} · проверено ${progress.approved + progress.rejected}, на проверке ${progress.pending}`
                 : status === "pending" && initialPending > 0
                   ? `Подтверждено ${approvedCount} из ${initialPending} · записей: ${items.length}`
                   : `Записей: ${items.length} (лимит ${REVIEW_PAGE_LIMIT})`}
           </span>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Горячие клавиши: A - подтвердить, R - отклонить, стрелки - выбрать цитату.
+          Горячие клавиши: A - подтвердить, R - отклонить, N или стрелки - выбрать следующую цитату.
         </p>
         {loading ? (
           <div className="space-y-2">
@@ -1113,7 +1113,10 @@ function ReviewQueueSection({
                   className={`space-y-2 rounded-lg border bg-muted/20 p-3 ${
                     index === selectedIndex ? "ring-2 ring-primary/40" : ""
                   }`}
-                  onClick={() => setSelectedIndex(index)}
+                  onClick={(event) => {
+                    setSelectedIndex(index)
+                    ;(event.currentTarget.parentElement as HTMLElement | null)?.focus()
+                  }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge

@@ -172,7 +172,7 @@ function EvidenceList({
             >
               {STATUS_LABEL[status]}
             </span>
-            {onShowTranscript && item.ref_id && source?.type === "interview" && (
+            {onShowTranscript && source?.type === "interview" && (
               <Button
                 variant="ghost"
                 size="sm"
