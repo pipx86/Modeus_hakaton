@@ -35,6 +35,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
 import { SkillGraph } from "@/components/skill-graph"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
+import { CorrelationMap } from "@/components/correlation-map"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
 import { ZunSuggestionsDialog } from "@/components/zun-suggestions-dialog"
@@ -55,6 +56,7 @@ import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
 import { buildTreeChord } from "@/lib/tree-chord"
+import { buildTreeCorrelation } from "@/lib/tree-correlation"
 import {
   CheckIcon,
   EyeIcon,
@@ -1084,7 +1086,7 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
-  const [view, setView] = useState<"list" | "map">("list")
+  const [view, setView] = useState<"list" | "map" | "correlation">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
     { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
@@ -1092,6 +1094,7 @@ function TreeTab({
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const treeChord = useMemo(() => buildTreeChord(nodes), [nodes])
+  const treeCorrelation = useMemo(() => buildTreeCorrelation(nodes), [nodes])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1475,6 +1478,15 @@ function TreeTab({
         >
           Карта связей
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={view === "correlation" ? "secondary" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setView("correlation")}
+        >
+          Корреляция
+        </Button>
       </div>
       {view === "map" ? (
         <div className="space-y-2">
@@ -1491,6 +1503,8 @@ function TreeTab({
             </p>
           )}
         </div>
+      ) : view === "correlation" ? (
+        <CorrelationMap data={treeCorrelation} sampleLabel="узлов" />
       ) : (
         <ActivityTree
         nodes={nodes}

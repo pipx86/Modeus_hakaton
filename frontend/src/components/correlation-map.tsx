@@ -10,8 +10,14 @@ function cellStyle(value: number): CSSProperties {
   }
 }
 
-/** Тепловая карта коэффициентов Пирсона между метриками завершённых прогонов. */
-export function CorrelationMap({ data }: { data: CorrelationResponse }) {
+/** Тепловая карта коэффициентов Пирсона между метриками. */
+export function CorrelationMap({
+  data,
+  sampleLabel = "исследований",
+}: {
+  data: CorrelationResponse
+  sampleLabel?: string
+}) {
   if (data.metrics.length === 0 || data.matrix.length === 0) {
     return (
       <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -22,7 +28,7 @@ export function CorrelationMap({ data }: { data: CorrelationResponse }) {
   if (data.sample_size < 2) {
     return (
       <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-        Нужно минимум два завершённых исследования с деревом. Сейчас: {data.sample_size}.
+        Нужно минимум два объекта с данными. Сейчас: {data.sample_size}.
       </p>
     )
   }
@@ -72,7 +78,7 @@ export function CorrelationMap({ data }: { data: CorrelationResponse }) {
         <span>−1</span>
         <span className="h-2 w-32 rounded-full bg-gradient-to-r from-rose-500/70 via-muted to-emerald-500/70" />
         <span>+1</span>
-        <span>· исследования: {data.sample_size}</span>
+        <span>· {sampleLabel}: {data.sample_size}</span>
       </div>
     </div>
   )
