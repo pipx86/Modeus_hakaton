@@ -766,19 +766,21 @@ export function ActivityTree({
         >
           С ЗУН
         </Button>
-        <Button
-          variant={onlyProblem ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={onlyProblem}
-          onClick={() => setOnlyProblem((value) => !value)}
-          className="h-7 gap-1 px-2.5 text-xs"
-          title="Показать узлы с замечаниями качества"
-        >
-          <AlertTriangleIcon className="size-3.5" />
-          Проблемные
-          {flagsTotal > 0 && <span className="text-muted-foreground">{flagsTotal}</span>}
-        </Button>
-        {insights && (
+        {!readOnly && (
+          <Button
+            variant={onlyProblem ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={onlyProblem}
+            onClick={() => setOnlyProblem((value) => !value)}
+            className="h-7 gap-1 px-2.5 text-xs"
+            title="Показать узлы с замечаниями качества"
+          >
+            <AlertTriangleIcon className="size-3.5" />
+            Проблемные
+            {flagsTotal > 0 && <span className="text-muted-foreground">{flagsTotal}</span>}
+          </Button>
+        )}
+        {insights && !readOnly && (
           <Button
             variant="outline"
             size="sm"

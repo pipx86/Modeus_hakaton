@@ -316,11 +316,11 @@ func TestRunCoverageAuthBoundary(t *testing.T) {
 	if response := do(t, handler, http.MethodGet, path, "", ""); response.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: status = %d, want 401", response.Code)
 	}
-	if response := do(t, handler, http.MethodGet, path, "student", ""); response.Code != http.StatusNotImplemented {
-		t.Fatalf("student: status = %d, want 501", response.Code)
+	if response := do(t, handler, http.MethodGet, path, "student", ""); response.Code != http.StatusForbidden {
+		t.Fatalf("student: status = %d, want 403", response.Code)
 	}
-	if response := do(t, handler, http.MethodGet, path, "guest", ""); response.Code != http.StatusNotImplemented {
-		t.Fatalf("guest: status = %d, want 501", response.Code)
+	if response := do(t, handler, http.MethodGet, path, "guest", ""); response.Code != http.StatusForbidden {
+		t.Fatalf("guest: status = %d, want 403", response.Code)
 	}
 }
 

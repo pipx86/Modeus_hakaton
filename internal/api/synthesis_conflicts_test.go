@@ -66,9 +66,6 @@ func TestSynthesisReviewEndpointsAuth(t *testing.T) {
 		for _, path := range []string{"/api/v1/runs/run-1/conflicts", "/api/v1/runs/run-1/agent-messages"} {
 			t.Run("role="+test.role+" path="+path, func(t *testing.T) {
 				want := test.want
-				if (test.role == "student" || test.role == "guest") && path == "/api/v1/runs/run-1/conflicts" {
-					want = http.StatusOK
-				}
 				rec := do(t, handler, http.MethodGet, path, test.role, "")
 				if rec.Code != want {
 					t.Fatalf("роль %q: ожидали %d, получили %d (%s)", test.role, want, rec.Code, rec.Body.String())

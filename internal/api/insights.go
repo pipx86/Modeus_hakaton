@@ -200,7 +200,7 @@ func (s *Server) handleRunInsights(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/coverage [get]
 func (s *Server) handleRunCoverage(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	reader, ok := s.requireInsightsReader(w)

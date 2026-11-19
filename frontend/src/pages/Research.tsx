@@ -1413,6 +1413,7 @@ export function Research() {
   const focusNodeId = searchParams.get("node")
   const guestView = searchParams.get("view") === "readonly"
   const role = getCurrentRole()
+  const adminView = role === null || role === "admin"
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
   const canAttach = !treeReadOnly && (role === null || role === "admin")
@@ -1578,15 +1579,19 @@ export function Research() {
           <TabsTrigger value="tree" className={TAB_TRIGGER_CLASS}>
             Дерево
           </TabsTrigger>
-          <TabsTrigger value="coverage" className={TAB_TRIGGER_CLASS}>
-            Покрытие
-          </TabsTrigger>
+          {adminView && (
+            <TabsTrigger value="coverage" className={TAB_TRIGGER_CLASS}>
+              Покрытие
+            </TabsTrigger>
+          )}
           <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
             Снимки и проверка
           </TabsTrigger>
-          <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
-            Конфликты
-          </TabsTrigger>
+          {adminView && (
+            <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
+              Конфликты
+            </TabsTrigger>
+          )}
           <TabsTrigger value="chat" className={TAB_TRIGGER_CLASS}>
             Чат
           </TabsTrigger>
@@ -1604,13 +1609,13 @@ export function Research() {
           />
         </TabsContent>
         <TabsContent value="coverage">
-          <CoverageTab runId={id} />
+          {adminView && <CoverageTab runId={id} />}
         </TabsContent>
         <TabsContent value="snapshots">
           <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
         </TabsContent>
         <TabsContent value="conflicts">
-          <ConflictsTab runId={id} onFocusNode={focusNode} />
+          {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab

@@ -426,6 +426,8 @@ describe("ActivityTree", () => {
     expect(
       screen.queryByRole("button", { name: /Добавить обоснование к узлу/ }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Проблемные/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Здоровье дерева/ })).not.toBeInTheDocument()
 
     fireEvent.click(
       screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),

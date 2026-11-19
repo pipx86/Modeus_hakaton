@@ -1382,8 +1382,8 @@ paths:
       - runs
       summary: Source-type coverage matrix for a run
       description: Returns the coverage matrix of role/function/task rows by source-type
-        evidence counts. JSON is the default; any `format` value other than `csv`
-        (compared case-insensitively and trimmed) also selects JSON. `format=csv`
+        evidence counts. Admin only. JSON is the default; any `format` value other
+        than `csv` (compared case-insensitively and trimmed) also selects JSON. `format=csv`
         returns the same matrix as a text/csv attachment with the header `node_id,title,type,interview,standard,vacancy,document`.
         Every column is always present (cells are 0 when no source of that type is
         linked) and action nodes are excluded from the rows. Requires PostgreSQL;
@@ -2162,7 +2162,7 @@ paths:
       description: Returns title/description conflicts detected and deterministically
         resolved by the synthesizer during finalization. Every conflict keeps the
         competing values and the winner (interview > standard > vacancy > document).
-        The list is empty when the run has no stored conflicts.
+        Admin only. The list is empty when the run has no stored conflicts.
       operationId: getRunConflicts
       parameters:
       - $ref: '#/components/parameters/RunId'

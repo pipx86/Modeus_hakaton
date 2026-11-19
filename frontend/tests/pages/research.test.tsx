@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { Research } from "@/pages/Research"
+import { clearToken, storeToken } from "@/lib/auth"
 
 function renderPage(runId = "7", search = "") {
   return render(
@@ -13,6 +14,16 @@ function renderPage(runId = "7", search = "") {
       </Routes>
     </MemoryRouter>,
   )
+}
+
+function makeUserToken(): string {
+  const encode = (value: unknown) =>
+    window.btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
+    sub: "user-1",
+    role: "user",
+    exp: 4102444800,
+  })}.signature`
 }
 
 function stubRun(
@@ -966,5 +977,18 @@ describe("Research", () => {
     expect(
       fetchCalls().some((call) => call.url.includes("/runs/7/conflicts")),
     ).toBe(true)
+  })
+
+  it("скрывает админские вкладки покрытия и конфликтов для пользователя", async () => {
+    storeToken(makeUserToken())
+    stubRun()
+    try {
+      renderPage()
+      expect(await screen.findByRole("tab", { name: "Дерево" })).toBeInTheDocument()
+      expect(screen.queryByRole("tab", { name: "Покрытие" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("tab", { name: "Конфликты" })).not.toBeInTheDocument()
+    } finally {
+      clearToken()
+    }
   })
 })

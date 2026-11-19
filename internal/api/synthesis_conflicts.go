@@ -275,7 +275,7 @@ func synthesisReviewError(w http.ResponseWriter, err error) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/conflicts [get]
 func (s *Server) handleRunConflicts(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	reader, ok := s.store.(synthesisReviewReader)
