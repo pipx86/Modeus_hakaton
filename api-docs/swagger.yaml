@@ -918,19 +918,20 @@ paths:
       tags:
       - runs
       summary: Get the activity tree of a run
-      description: Flat array of nodes; clients rebuild the hierarchy via `parent_id`.
+      description: 'Flat list of nodes plus deterministic insights: provenance per
+        node, tree health score with breakdown, five red-flag rules, market heat,
+        coverage matrix, run sources and template-only node explanations. Clients
+        rebuild the hierarchy via `parent_id`.'
       operationId: getRunTree
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
         '200':
-          description: Array of nodes.
+          description: Tree nodes and their deterministic insights.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Node'
+                $ref: '#/components/schemas/TreeResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1706,6 +1707,58 @@ paths:
                 code: ZUN_ALREADY_SET
                 message: node already has ZUN; automatic suggestion does not overwrite
                   it
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+  /runs/{id}/zun/suggestions/reject:
+    post:
+      tags:
+      - runs
+      summary: Persistently reject one rule-based ZUN suggestion
+      description: Remembers that the expert rejected the suggestion for one node
+        of the run tree. Later GET requests omit that node until the rejection is
+        removed from the database; the tree and any existing ZUN are untouched. Repeated
+        rejection is idempotent. Expert roles only.
+      operationId: rejectZunSuggestion
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZunRejectRequest'
+            example:
+              node_id: 6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11
+      responses:
+        '200':
+          description: Rejection saved; the suggestion will no longer be listed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZunRejectResponse'
+              example:
+                run_id: 4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f
+                node_id: 6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11
+                rejected: true
+        '400':
+          description: Malformed JSON, unknown fields, trailing data or a missing
+            node_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The run does not exist or the node does not belong to it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
         '501':
@@ -3939,6 +3992,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExplanationEvidence'
+    TreeResponse:
+      type: object
+      description: JSON body of GET /runs/{id}/tree; nodes plus the same deterministic
+        insights as GET /runs/{id}/insights.
+      required:
+      - nodes
+      - insights
+      additionalProperties: false
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        insights:
+          $ref: '#/components/schemas/Insights'
     Insights:
       type: object
       description: JSON body of GET /runs/{id}/insights; all collections are non-null.
@@ -4152,6 +4220,31 @@ components:
         can_apply:
           type: boolean
           description: True only when the node has no ZUN and the suggestion is non-empty.
+    ZunRejectRequest:
+      type: object
+      description: Body of POST /runs/{id}/zun/suggestions/reject.
+      required:
+      - node_id
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+          minLength: 1
+    ZunRejectResponse:
+      type: object
+      description: Result of persisting a rejected ZUN suggestion.
+      required:
+      - run_id
+      - node_id
+      - rejected
+      additionalProperties: false
+      properties:
+        run_id:
+          type: string
+        node_id:
+          type: string
+        rejected:
+          type: boolean
     ZunApplyRequest:
       type: object
       description: Body of POST /runs/{id}/zun/suggestions/apply.
