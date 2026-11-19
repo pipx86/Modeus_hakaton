@@ -20,7 +20,7 @@ try {
     $dsn = 'postgres://postgres:acceptance-only@127.0.0.1:' + $Matches[1] + '/acceptance?sslmode=disable'
     & goose -dir (Join-Path $database 'migrations') postgres $dsn up
     if ($LASTEXITCODE -ne 0) { throw 'Ошибка основных миграций.' }
-    & goose -table goose_vector_versions -dir (Join-Path $database 'migrations_optional\vector') postgres $dsn up
+    & goose -table goose_vector_versions -dir (Join-Path $database 'migrations/optional\vector') postgres $dsn up
     if ($LASTEXITCODE -ne 0) { throw 'Ошибка поисковых миграций.' }
     & docker compose -f $compose -p $project run --rm checks
     if ($LASTEXITCODE -ne 0) { throw 'Приёмочные проверки завершились ошибкой; смотрите сохранённые логи.' }

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Runs the CI-equivalent checks locally when GitHub Actions is unavailable.
 
@@ -75,10 +75,10 @@ try {
   if (-not $SkipFrontend -and (Test-Path (Join-Path $frontend "package.json"))) {
     $npm = Get-Command -Name npm.cmd,npm -ErrorAction SilentlyContinue | Select-Object -First 1
     $node = Get-Command -Name node -ErrorAction SilentlyContinue
-    if ($npm -and $node -and ((& $node.Source --version) -match '^v24\.')) {
+    if ($npm -and $node) {
       Push-Location $frontend
       try {
-        Step "frontend install (Node 24)" { & $npm.Source ci --no-audit --no-fund }
+        Step "frontend install" { & $npm.Source ci --no-audit --no-fund }
         if ($LASTEXITCODE -eq 0) {
           Step "frontend lint" { & $npm.Source run lint }
           Step "frontend typecheck" { & $npm.Source run typecheck }

@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: >-
     Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20).
-    This file is the source of truth; the copies served by the API from `api-docs/`
+    This file is the source of truth; the copies served by the API from `docs/api-docs/`
     (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it.
     All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`,
     require a JWT bearer token. Successful responses are JSON, except the run export

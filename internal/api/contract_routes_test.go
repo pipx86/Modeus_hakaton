@@ -10,7 +10,7 @@ import (
 )
 
 // The public HTTP contract required by the demo is documented in openapi.yaml
-// and served to Swagger UI from api-docs/. This table is the protected /api/v1
+// and served to Swagger UI from docs/api-docs/. This table is the protected /api/v1
 // route surface the demo must expose; keep it in sync with openapi.yaml when
 // the contract changes. GET /api/v1/health is public and has its own check.
 //
@@ -118,7 +118,7 @@ func TestContractAuthBoundary(t *testing.T) {
 }
 
 // TestContractSwaggerUIServed proves that Routes() mounts the static Swagger UI
-// from the repository's api-docs/ directory, which is what cmd/api serves at
+// from the repository's docs/api-docs/ directory, which is what cmd/api serves at
 // /swagger/ when started from the repo root. demo_swagger.go is redundant: it
 // used the same Routes() mount (api.NewServerForDemo() == NewServer(memStore)).
 func TestContractSwaggerUIServed(t *testing.T) {
@@ -127,12 +127,12 @@ func TestContractSwaggerUIServed(t *testing.T) {
 		t.Fatal("cannot resolve the test file path")
 	}
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
-	t.Chdir(repoRoot) // api-docs/ is resolved relative to the process cwd
+	t.Chdir(repoRoot) // docs/api-docs/ is resolved relative to the process cwd
 
 	h := contractHandler()
 	index := do(t, h, http.MethodGet, "/swagger/", "", "")
 	if index.Code != http.StatusOK {
-		t.Fatalf("GET /swagger/: status = %d, want 200 (is api-docs/ missing?)", index.Code)
+		t.Fatalf("GET /swagger/: status = %d, want 200 (is docs/api-docs/ missing?)", index.Code)
 	}
 	if !strings.Contains(index.Body.String(), "SwaggerUIBundle") {
 		t.Error("GET /swagger/ does not return the Swagger UI index.html")

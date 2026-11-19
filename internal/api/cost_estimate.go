@@ -22,7 +22,7 @@ package api
 // request multiplied by the expected number of provider calls of the run type
 // (batch: 1 analyst call; chat: 6 planned interview questions + 1 analyst
 // finalize). Only when the llm_usage table is empty are the constants from
-// docs/LIVE_EVAL.md and docs/LLM_MODEL_BAKEOFF.md used.
+// README.md used.
 //
 // Cost USD: mean recorded cost_usd of the same-profession runs, then of all
 // runs; then a price per token derived from stored llm_usage cost rows; then
@@ -88,14 +88,14 @@ const (
 	// expectedChatLLMCalls is 6 planned interview questions
 	// (interviewer.defaultPlan) plus one analyst finalize call. The live eval
 	// observed exactly 7 model calls for a chat-like baseline run
-	// (docs/LIVE_EVAL.md).
+	// (README.md).
 	expectedChatLLMCalls = 7
 
 	// Last-resort constants, used only when no history exists at all. They are
 	// grounded in observed live runs, not in precise accounting:
 	// a chat run made 7 calls in ~36-67 s, one analyst call takes ~20-28 s and
 	// consumes ~2.4k-6.1k tokens (docs/LIVE_EVAL.md,
-	// docs/LLM_MODEL_BAKEOFF.md). The estimates are deliberately coarse.
+	// README.md). The estimates are deliberately coarse.
 	defaultBatchTokenEstimate      = 4000
 	defaultChatTokenEstimate       = 10000
 	defaultBatchDurationSeconds    = 60

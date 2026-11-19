@@ -55,6 +55,9 @@ REQUIRED_FILES = [
     ".golangci.yml",
     "Makefile",
     "cmd/api/main.go",
+    "docs/api-docs/index.html",
+    "docs/api-docs/swagger.json",
+    "docs/api-docs/swagger.yaml",
     "internal/metrics/metrics.go",
     "internal/metrics/metrics_test.go",
     "internal/llm/metrics/metrics.go",
@@ -67,30 +70,17 @@ REQUIRED_FILES = [
     "deploy/grafana/provisioning/dashboards/dashboards.yml",
     "deploy/grafana/dashboards/activity-descriptor.json",
     "deploy/grafana/dashboards/activity-descriptor-business.json",
-    "deploy/n8n/workflows/README.md",
     "deploy/n8n/workflows/nightly_ingestion.json",
     "deploy/n8n/workflows/notion_email_notifications.json",
-    "migrations_optional/vector/20261109010000_vector_retrieval.sql",
-    "migrations_optional/vector/20261109010001_lexical_fallback.sql",
-    "migrations_optional/vector/VECTOR_STORAGE_GUIDE.md",
-    "docs/DOCKER.md",
-    "docs/DOCKER_SERVER.md",
-    "docs/GRAFANA.md",
-    "docs/METRICS.md",
-    "docs/N8N.md",
-    "docs/CI.md",
+    "migrations/optional/vector/20261109010000_vector_retrieval.sql",
+    "migrations/optional/vector/20261109010001_lexical_fallback.sql",
     "scripts/check_deploy.py",
+    "README.md",
 ]
 
-# Docs owned by the DevOps package: their relative links are validated.
+# Final README: relative links are validated.
 OWNED_DOCS = [
-    "docs/DOCKER.md",
-    "docs/DOCKER_SERVER.md",
-    "docs/GRAFANA.md",
-    "docs/METRICS.md",
-    "docs/N8N.md",
-    "docs/CI.md",
-    "deploy/n8n/workflows/README.md",
+    "README.md",
 ]
 
 SECRET_PATTERNS = [
@@ -111,14 +101,10 @@ SECRET_SCAN_GLOBS = [
     "cmd/api",
     "internal/metrics",
     "deploy",
-    "web",
-    "docs/DOCKER.md",
-    "docs/DOCKER_SERVER.md",
-    "docs/GRAFANA.md",
-    "docs/METRICS.md",
-    "docs/N8N.md",
-    "docs/CI.md",
     "scripts/check_deploy.py",
+    "README.md",
+    "docs/api-docs",
+    "migrations",
     ".github/workflows/ci.yml",
 ]
 
@@ -177,7 +163,7 @@ def check_dockerfile() -> None:
             raise SystemExit(f"FAIL: Dockerfile is missing the {stage!r} build stage")
     if stages[-1] != "api":
         raise SystemExit(f"FAIL: last Dockerfile stage must be 'api' (default build target), got {stages[-1]!r}")
-    for marker in ("./cmd/server", "goose@v3.29.0", "api-docs", "/app/healthcheck"):
+    for marker in ("./cmd/server", "goose@v3.29.0", "docs/api-docs", "/app/healthcheck"):
         if marker not in dockerfile:
             raise SystemExit(f"FAIL: Dockerfile must include {marker!r}")
     # Full-stack web target: the SPA is built inside the image and served by
@@ -258,7 +244,7 @@ def check_compose() -> None:
     if "server" not in (migrate_vector.get("profiles") or []):
         raise SystemExit("FAIL: migrate-vector service must be behind the 'server' profile")
     vector_command = " ".join(str(part) for part in migrate_vector.get("command") or [])
-    for flag in ("-table goose_vector_versions", "-dir /migrations_optional/vector", "up"):
+    for flag in ("-table goose_vector_versions", "-dir /migrations/optional/vector", "up"):
         if flag not in vector_command:
             raise SystemExit(f"FAIL: migrate-vector command must contain {flag!r}")
     vector_deps = migrate_vector.get("depends_on") or {}
@@ -480,11 +466,11 @@ def check_metrics_labels() -> None:
 
 def check_vector_migrations() -> None:
     """The optional vector group must stay a separate, goose-managed history."""
-    directory = os.path.join(ROOT, "migrations_optional/vector")
+    directory = os.path.join(ROOT, "migrations/optional/vector")
     files = sorted(name for name in os.listdir(directory) if name.endswith(".sql"))
     if len(files) < 2:
-        raise SystemExit(f"FAIL: migrations_optional/vector has {len(files)} SQL migrations, expected >= 2")
-    retrieval = read("migrations_optional/vector/20261109010000_vector_retrieval.sql")
+        raise SystemExit(f"FAIL: migrations/optional/vector has {len(files)} SQL migrations, expected >= 2")
+    retrieval = read("migrations/optional/vector/20261109010000_vector_retrieval.sql")
     for marker in (
         "+goose Up",
         "CREATE EXTENSION IF NOT EXISTS vector",

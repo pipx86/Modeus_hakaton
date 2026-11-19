@@ -10,7 +10,7 @@
 
   Required: DATABASE_URL (from env files or the current environment), a running
   Ollama with the embedding model pulled, and the optional
-  migrations_optional/vector package applied. See docs/EMBEDDINGS.md.
+  migrations/optional/vector package applied. See README.md.
 
 .PARAMETER EnvFiles
   Additional dotenv files to load after .env and .secrets/llm.env.

@@ -132,7 +132,7 @@ services:
     restart: "no"
 
   # Second one-shot goose runner: the optional vector/embedding migrations from
-  # ./migrations_optional/vector, tracked in their OWN version table
+  # ./migrations/optional/vector, tracked in their OWN version table
   # (goose_vector_versions) so the main goose history stays independent. They run
   # after the main group because the SQL references tables created there
   # (sources, run_sources) and they need the pgvector extension. Idempotent like
@@ -148,10 +148,10 @@ services:
     environment:
       GOOSE_DRIVER: "postgres"
       GOOSE_DBSTRING: "${SERVER_DATABASE_URL:-postgres://activity:activity_dev_password@postgres:5432/activity_descriptor?sslmode=disable}"
-      GOOSE_MIGRATION_DIR: "/migrations_optional/vector"
+      GOOSE_MIGRATION_DIR: "/migrations/optional/vector"
     # Global goose flags must precede the `up` command; -table/-dir override the
     # GOOSE_MIGRATION_DIR default of the image so the separate history is used.
-    command: ["-table", "goose_vector_versions", "-dir", "/migrations_optional/vector", "up"]
+    command: ["-table", "goose_vector_versions", "-dir", "/migrations/optional/vector", "up"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

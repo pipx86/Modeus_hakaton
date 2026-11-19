@@ -194,7 +194,7 @@ func run(ctx context.Context, c config) error {
 	app.SetBatchPlan(batchPlan)
 	// Семантическая индексация: источники, созданные через POST /sources и
 	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).
-	// Уже существующие источники догоняет cmd/index-sources (docs/EMBEDDINGS.md).
+	// Уже существующие источники догоняет cmd/index-sources (README.md).
 	if sourceAutoIndexEnabled() {
 		if app.EnableSourceAutoIndex() {
 			embedConfig := search.ConfigFromEnv()

@@ -30,8 +30,6 @@ frontend/.env.local
 deploy/grafana
 deploy/n8n
 deploy/prometheus
-docs
-web
 docker-compose*.yml
 Dockerfile
 .dockerignore

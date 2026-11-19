@@ -1,6 +1,6 @@
 // Команда index-sources догоняет семантический индекс источников: строит
 // фрагменты source_fragments и векторы fragment_embeddings для уже созданных
-// источников. Нужна после применения migrations_optional/vector или при смене
+// источников. Нужна после применения migrations/optional/vector или при смене
 // модели эмбеддингов. Модель чата не вызывается: только Ollama /api/embed.
 //
 // Примеры:
@@ -202,7 +202,7 @@ func ensureVectorSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("проверить схему поиска: %w", err)
 	}
 	if !ready {
-		return errors.New("нет таблиц source_fragments/fragment_embeddings: примените migrations_optional/vector (см. migrations_optional/vector/VECTOR_STORAGE_GUIDE.md)")
+		return errors.New("нет таблиц source_fragments/fragment_embeddings: примените migrations/optional/vector (см. migrations/optional/vector/VECTOR_STORAGE_GUIDE.md)")
 	}
 	return nil
 }

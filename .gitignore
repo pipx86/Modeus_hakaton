@@ -55,3 +55,6 @@ data/reports/
 *.njsproj
 *.sln
 *.sw?
+
+# Shared prompt rules are local-only / generated outside git.
+prompts/_shared/

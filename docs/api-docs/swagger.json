@@ -3,7 +3,7 @@
   "info": {
     "title": "Modeus activity-descriptor API",
     "version": "0.1.0",
-    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`, require a JWT bearer token. Successful responses are JSON, except the run export which serves Markdown by default (`?format=md`) and JSON on request (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`."
+    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `docs/api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`, require a JWT bearer token. Successful responses are JSON, except the run export which serves Markdown by default (`?format=md`) and JSON on request (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`."
   },
   "servers": [
     {
