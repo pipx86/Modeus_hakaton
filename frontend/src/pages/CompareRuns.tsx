@@ -152,7 +152,7 @@ export function CompareRuns() {
           )}
 
           {!baseId || !headId ? (
-            <p className="text-sm text-muted-foreground">Выберите оба исследования, чтобы увидеть diff.</p>
+            <p className="text-sm text-muted-foreground">Выберите оба исследования, чтобы увидеть разницу.</p>
           ) : baseId === headId ? (
             <p className="text-sm text-muted-foreground">
               Выберите разные исследования: сравнивать исследование само с собой нечего.
@@ -239,7 +239,7 @@ export function CompareRuns() {
           ) : comparing ? (
             <div className="text-sm text-muted-foreground">Сравнение…</div>
           ) : (
-            <div className="text-sm text-muted-foreground">Выберите оба исследования, чтобы увидеть diff.</div>
+            <div className="text-sm text-muted-foreground">Выберите оба исследования, чтобы увидеть разницу.</div>
           )}
         </>
       )}
