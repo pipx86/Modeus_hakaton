@@ -265,12 +265,14 @@ func (s *Store) ListRequests(ctx context.Context, filter ListFilter) ([]Request,
 	rows, err := s.pool.Query(ctx, `
 		SELECT id::text, trace_id, run_id::text, agent, provider, model,
 			prompt_version_id, request_hash, status, error_code,
-			started_at, finished_at, latency_ms, attempt, max_attempts, created_at
-		FROM llm_requests
+			started_at, finished_at, r.latency_ms, attempt, max_attempts, r.created_at,
+			uu.total_tokens
+		FROM llm_requests r
+		LEFT JOIN llm_usage uu ON uu.request_id = r.id
 		WHERE ($1 = '' OR run_id=$1::uuid)
 		  AND ($2 = '' OR agent=$2)
 		  AND ($3 = '' OR status=$3)
-		ORDER BY created_at DESC
+		ORDER BY r.created_at DESC
 		LIMIT $4`, filter.RunID, filter.Agent, filter.Status, limit,
 	)
 	if err != nil {
@@ -284,10 +286,12 @@ func (s *Store) ListRequests(ctx context.Context, filter ListFilter) ([]Request,
 		var runID, promptVersionID, requestHash, errorCode pgtype.Text
 		var startedAt, finishedAt pgtype.Timestamptz
 		var latencyMS, attempt, maxAttempts pgtype.Int4
+		var totalTokens pgtype.Int4
 		if err := rows.Scan(
 			&req.ID, &req.TraceID, &runID, &req.Agent, &req.Provider, &req.Model,
 			&promptVersionID, &requestHash, &req.Status, &errorCode,
 			&startedAt, &finishedAt, &latencyMS, &attempt, &maxAttempts, &req.CreatedAt,
+			&totalTokens,
 		); err != nil {
 			return nil, fmt.Errorf("llmobs: scan request: %w", err)
 		}
@@ -300,6 +304,9 @@ func (s *Store) ListRequests(ctx context.Context, filter ListFilter) ([]Request,
 		req.LatencyMS = int(latencyMS.Int32)
 		req.Attempt = int(attempt.Int32)
 		req.MaxAttempts = int(maxAttempts.Int32)
+		if totalTokens.Valid {
+			req.Usage = &Usage{TotalTokens: int(totalTokens.Int32)}
+		}
 		out = append(out, req)
 	}
 	if err := rows.Err(); err != nil {

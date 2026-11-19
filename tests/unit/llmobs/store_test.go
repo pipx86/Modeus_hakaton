@@ -107,10 +107,13 @@ func TestTelemetryReadsNullableTimestampsUsageAndCost(t *testing.T) {
 	if _, err := store.GetRequest(ctx, id); !errors.Is(err, llmobs.ErrNotFound) {
 		t.Fatalf("отсутствующий запрос: %v", err)
 	}
-	pool.ExpectQuery("ORDER BY created_at DESC").WithArgs("run", "analyst", "success", 100).
-		WillReturnRows(pgxmock.NewRows(baseColumns).AddRow(baseRow...))
+	listColumns := append(append([]string{}, baseColumns...), "total_tokens")
+	listRow := append(append([]any{}, baseRow...), asCount(19))
+	pool.ExpectQuery("ORDER BY r.created_at DESC").WithArgs("run", "analyst", "success", 100).
+		WillReturnRows(pgxmock.NewRows(listColumns).AddRow(listRow...))
 	list, err := store.ListRequests(ctx, llmobs.ListFilter{RunID: "run", Agent: "analyst", Status: "success", Limit: 501})
-	if err != nil || len(list) != 1 || list[0].ID != id || list[0].Attempt != 1 || list[0].FinishedAt != nil {
+	if err != nil || len(list) != 1 || list[0].ID != id || list[0].Attempt != 1 || list[0].FinishedAt != nil ||
+		list[0].Usage == nil || list[0].Usage.TotalTokens != 19 {
 		t.Fatalf("отфильтрованный список: %#v, %v", list, err)
 	}
 	pool.ExpectQuery("GROUP BY r.model").WithArgs(stamp).

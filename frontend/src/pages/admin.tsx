@@ -48,6 +48,7 @@ interface LlmRequest {
   status: string
   error_code?: string
   latency_ms: number
+  usage?: { total_tokens?: number }
   attempt?: number
   max_attempts?: number
   created_at?: string
@@ -662,7 +663,7 @@ export function Admin() {
                     <th className="py-2 pr-3 font-medium">Агент</th>
                     <th className="py-2 pr-3 font-medium">Модель</th>
                     <th className="py-2 pr-3 font-medium">Статус</th>
-                    <th className="py-2 pr-3 font-medium">Латентность</th>
+                    <th className="py-2 pr-3 font-medium">Токены</th>
                     <th className="py-2 font-medium">Ошибка</th>
                   </tr>
                 </thead>
@@ -683,7 +684,11 @@ export function Admin() {
                           {request.status}
                         </Badge>
                       </td>
-                      <td className="py-2 pr-3">{formatMs(request.latency_ms)}</td>
+                      <td className="py-2 pr-3">
+                        {request.usage?.total_tokens
+                          ? request.usage.total_tokens.toLocaleString("ru-RU")
+                          : "-"}
+                      </td>
                       <td className="py-2 text-muted-foreground">{request.error_code || "-"}</td>
                     </tr>
                   ))}
