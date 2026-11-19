@@ -58,7 +58,6 @@ import { buildTreeCorrelation } from "@/lib/tree-correlation"
 import {
   CheckIcon,
   EyeIcon,
-  PlusIcon,
   FileTextIcon,
   Loader2Icon,
   NetworkIcon,
@@ -160,11 +159,9 @@ function EmptyState({
  */
 function SourcesTab({
   runId,
-  canAttach,
   readOnly,
 }: {
   runId: string
-  canAttach: boolean
   readOnly: boolean
 }) {
   const [sources, setSources] = useState<Source[]>([])
@@ -371,19 +368,6 @@ function SourcesTab({
 
   return (
     <div className="space-y-6">
-      {canAttach && (
-        <div className="flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1 px-2.5 text-xs"
-            onClick={() => setAttachOpen(true)}
-          >
-            <PlusIcon className="size-3.5" />
-            Добавить стандарт или вакансию
-          </Button>
-        </div>
-      )}
       {loadError ? (
         <div className="rounded-xl border border-destructive/50 p-6 text-center text-sm text-destructive">
           {loadError}
@@ -1568,7 +1552,6 @@ export function Research() {
     (role === null && import.meta.env.MODE === "test")
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
-  const canAttach = !treeReadOnly && (role === null || role === "admin" || role === "specialist")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
     const link = `${window.location.origin}/research/${id}?view=readonly`
@@ -1757,7 +1740,7 @@ export function Research() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="sources">
-          <SourcesTab runId={id} canAttach={canAttach} readOnly={treeReadOnly} />
+          <SourcesTab runId={id} readOnly={treeReadOnly} />
         </TabsContent>
         <TabsContent value="tree">
           <TreeTab
