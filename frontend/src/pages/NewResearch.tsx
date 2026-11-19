@@ -23,7 +23,7 @@ import {
 
 const STEPS = [
   { icon: MessageSquareTextIcon, title: "Интервью", description: "Собирается информация о реальной деятельности специалиста." },
-  { icon: FileSearchIcon, title: "Анализ данных", description: "Анализируются вакансии, профстандарты и методички." },
+  { icon: FileSearchIcon, title: "Анализ данных", description: "Анализируются вакансии, профстандарты и методические материалы." },
   {
     icon: NetworkIcon,
     title: "Синтез дерева",
