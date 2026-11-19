@@ -152,7 +152,7 @@ export function Admin() {
     await Promise.resolve()
     setLlmLoading(true)
     try {
-      const params = new URLSearchParams({ limit: "20" })
+      const params = new URLSearchParams({ limit: "10" })
       if (agentFilter !== "all") params.set("agent", agentFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
       const token = getValidToken() ?? apiToken
@@ -607,7 +607,7 @@ export function Admin() {
             <ActivityIcon className="size-4 shrink-0" />
             LLM-запросы
           </CardTitle>
-          <CardDescription>Последние 20 обращений к модели: статус, латентность, ошибки.</CardDescription>
+          <CardDescription>Последние 10 обращений к модели: статус, токены, ошибки.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
