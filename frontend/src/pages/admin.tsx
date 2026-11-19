@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
+import { scoreSource, scoreTone, type SourceQualityItem } from "@/lib/source-quality"
 import {
   averageHistogramMs,
   fetchMetricsText,
@@ -83,6 +84,20 @@ const ROLE_LABEL: Record<string, string> = {
   user: "Пользователь",
 }
 
+function scoreTextClass(total: number): string {
+  const tone = scoreTone(total)
+  if (tone === "success") return "text-success"
+  if (tone === "warning") return "text-warning"
+  return "text-destructive"
+}
+
+function scoreBarClass(total: number): string {
+  const tone = scoreTone(total)
+  if (tone === "success") return "bg-success"
+  if (tone === "warning") return "bg-warning"
+  return "bg-destructive"
+}
+
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`
 }
@@ -123,6 +138,7 @@ export function Admin() {
   const [agentFilter, setAgentFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sources, setSources] = useState<AdminSource[]>([])
+  const [sourceQuality, setSourceQuality] = useState<SourceQualityItem[]>([])
   const [materialsOpen, setMaterialsOpen] = useState(true)
   const [sourceType, setSourceType] = useState("document")
   const [sourceTitle, setSourceTitle] = useState("")
@@ -130,6 +146,20 @@ export function Admin() {
   const [sourceFileKey, setSourceFileKey] = useState(0)
   const [sourceSaving, setSourceSaving] = useState(false)
   const [indexingId, setIndexingId] = useState<string | null>(null)
+
+  const loadSourceQuality = useCallback(async () => {
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/admin/sources/quality`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) throw new Error(`sources quality: ${response.status}`)
+      const body = (await response.json()) as { items?: SourceQualityItem[] }
+      setSourceQuality(body.items ?? [])
+    } catch {
+      setSourceQuality([])
+    }
+  }, [])
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -209,6 +239,7 @@ export function Admin() {
       ])
       await loadMetrics()
       await loadPromptVersions()
+      await loadSourceQuality()
       if (cancelled) return
       if (runsResponse.data) setRuns(runsResponse.data)
       if (sourcesResponse.data) setSources(sourcesResponse.data)
@@ -218,7 +249,7 @@ export function Admin() {
     return () => {
       cancelled = true
     }
-  }, [isAdmin, loadMetrics, loadPromptVersions])
+  }, [isAdmin, loadMetrics, loadPromptVersions, loadSourceQuality])
   useEffect(() => {
     if (!isAdmin) return
     const timer = window.setTimeout(() => {
@@ -231,6 +262,7 @@ export function Admin() {
     setRefreshing(true)
     await loadMetrics()
     await loadPromptVersions()
+    await loadSourceQuality()
     await loadLlmRequests()
     setRefreshing(false)
   }
@@ -407,6 +439,21 @@ export function Admin() {
       empty: sources.length - withContent,
     }
   }, [sources])
+
+  const scoredSources = useMemo(
+    () =>
+      sourceQuality
+        .map((item) => ({ item, score: scoreSource(item) }))
+        .sort((left, right) => right.score.total - left.score.total),
+    [sourceQuality],
+  )
+  const averageSourceScore =
+    scoredSources.length > 0
+      ? Math.round(
+          scoredSources.reduce((total, entry) => total + entry.score.total, 0) /
+            scoredSources.length,
+        )
+      : null
 
   const routeStats = useMemo(() => {
     const map = new Map<
@@ -778,7 +825,8 @@ export function Admin() {
         <CardHeader>
           <CardTitle className="text-base">Качество источников</CardTitle>
           <CardDescription>
-            Состав материалов и наличие извлечённого текста, на который опираются агенты.
+            Оценка по типу, свежести, объёму, извлечению текста, происхождению, цитированию и
+            подтверждению цитат.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -793,23 +841,74 @@ export function Admin() {
                   </Badge>
                 ))}
               </div>
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>С извлечённым текстом</span>
-                  <span>
-                    {sourceStats.withContent} из {sources.length}
-                  </span>
+              {scoredSources.length > 0 ? (
+                <>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Средняя оценка</p>
+                      <p
+                        className={`text-2xl font-semibold tabular-nums ${scoreTextClass(averageSourceScore ?? 0)}`}
+                      >
+                        {averageSourceScore}
+                        <span className="ml-1 text-sm font-normal text-muted-foreground">/ 100</span>
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      источников: {scoredSources.length}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full ${scoreBarClass(averageSourceScore ?? 0)}`}
+                      style={{ width: `${averageSourceScore ?? 0}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Тип 20 · Свежесть 15 · Объём 15 · Текст 10 · Происхождение 10 · Цитирование 20 ·
+                    Цитаты 10
+                  </p>
+                  <ul className="max-h-72 divide-y overflow-y-auto">
+                    {scoredSources.map(({ item, score }) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-2 py-2 text-sm"
+                        title={`Тип ${score.authority}/20 · свежесть ${score.freshness}/15 · объём ${score.volume}/15 · текст ${score.extraction}/10 · происхождение ${score.origin}/10 · цитаты ${score.citations}/20 · подтверждение ${score.quotes}/10`}
+                      >
+                        <span
+                          className={`w-8 shrink-0 text-right font-semibold tabular-nums ${scoreTextClass(score.total)}`}
+                        >
+                          {score.total}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                        <Badge variant="secondary">
+                          {SOURCE_TYPE_LABELS[item.type] ?? item.type}
+                        </Badge>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {item.citations} цит.
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>С извлечённым текстом</span>
+                    <span>
+                      {sourceStats.withContent} из {sources.length}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${(sourceStats.withContent / sources.length) * 100}%` }}
+                    />
+                  </div>
+                  {sourceStats.empty > 0 && (
+                    <p className="text-xs text-warning">Без текста: {sourceStats.empty}</p>
+                  )}
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${(sourceStats.withContent / sources.length) * 100}%` }}
-                  />
-                </div>
-                {sourceStats.empty > 0 && (
-                  <p className="text-xs text-warning">Без текста: {sourceStats.empty}</p>
-                )}
-              </div>
+              )}
             </>
           )}
         </CardContent>

@@ -35,6 +35,28 @@ function stubAdminData() {
         ],
       }
     }
+    if (url.includes("/api/v1/admin/sources/quality")) {
+      return {
+        status: 200,
+        body: {
+          items: [
+            {
+              id: "s-1",
+              type: "document",
+              title: "Профстандарт аналитика",
+              content_chars: 6000,
+              created_at: "2026-11-01T00:00:00Z",
+              content_present: true,
+              origin_present: true,
+              url_format: "valid",
+              citations: 5,
+              quote_checked: 5,
+              quote_matched: 5,
+            },
+          ],
+        },
+      }
+    }
     if (url.endsWith("/api/v1/runs")) {
       return {
         status: 200,
@@ -114,7 +136,8 @@ describe("админка", () => {
     expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
     expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
     expect(screen.getByText("Материалы для агентов")).toBeInTheDocument()
-    expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
+    expect((await screen.findAllByText("Профстандарт аналитика")).length).toBeGreaterThan(0)
+    expect(await screen.findByText("Средняя оценка")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Свернуть материалы" }))
     expect(screen.queryByText("Загрузить файл")).not.toBeInTheDocument()
