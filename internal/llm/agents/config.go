@@ -178,7 +178,8 @@ func specFromEnv(name AgentName, defaultModel string, defaultTimeout time.Durati
 		MaxTokens:     3000,
 	}
 	// Agent-specific defaults: the interviewer is short and creative, the
-	// analyst is precise and long, the synthesizer is deterministic.
+	// analyst is precise and long, the synthesizer only normalizes
+	// human-readable node titles/descriptions after the deterministic merge.
 	switch name {
 	case Interviewer:
 		spec.Temperature = 0.4

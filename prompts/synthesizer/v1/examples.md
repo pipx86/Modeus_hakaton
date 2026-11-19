@@ -1,48 +1,42 @@
 # Примеры ответов синтезатора
 
-## Пример 1: конфликт названия между интервью и вакансией
+Синтезатор не собирает дерево: детерминированный merge уже сделан. Он
+возвращает только нормализованные `title`/`description` существующих узлов.
 
-Интервью: задача `tax-task-sql` «Писать SQL-запросы».
-Вакансия: та же задача `tax-task-sql` «Готовить выгрузки».
+## Пример 1: нормализация названия
 
-Побеждает интервью (приоритет 300 против 100); обе цитаты остаются у узла,
-конфликт попадает в `conflicts` и в `messages`.
+Вход — merged узлы: роль «Аналитик данных», функция
+«Отчётность и визуализация», задача «Писать SQL-запросы». Id, evidence и
+иерархия зафиксированы merge и в ответ не попадают.
 
 ```json
 {
-  "tree": [
-    {
-      "id": "tax-task-sql",
-      "type": "task",
-      "title": "Писать SQL-запросы",
-      "parent_id": "tax-fn-reporting",
-      "evidence": [
-        {"id": "ev-i1", "source_id": "src-interview-1", "ref_id": "msg-4", "quote": "каждый день пишу SQL-запросы"},
-        {"id": "ev-v1", "source_id": "src-vacancy-1", "ref_id": "req-2", "quote": "подготовка выгрузок"}
-      ]
-    }
-  ],
-  "conflicts": [
-    {
-      "id": "c-1",
-      "node_id": "tax-task-sql",
-      "field": "title",
-      "values": [
-        {"source_id": "src-interview-1", "source_type": "interview", "value": "Писать SQL-запросы", "priority": 300},
-        {"source_id": "src-vacancy-1", "source_type": "vacancy", "value": "Готовить выгрузки", "priority": 100}
-      ],
-      "winner": {"source_id": "src-interview-1", "source_type": "interview", "value": "Писать SQL-запросы", "priority": 300},
-      "reason": "higher source priority wins: interview (300)"
-    }
-  ],
-  "messages": [
-    {"id": "msg-1", "kind": "conflict", "text": "Конфликт title узла tax-task-sql", "payload": {"conflict_id": "c-1"}}
+  "nodes": [
+    {"id": "tax-task-sql", "title": "Писать SQL-запросы"},
+    {"id": "tax-fn-reporting", "title": "Отчётность и визуализация"}
   ]
 }
 ```
 
-## Пример 2: сгенерированный узел-родитель
+## Пример 2: нормализация существующего описания
 
-Если из интервью пришла только задача, а функции нет, синтезатор создаёт
-функцию и агрегирует evidence из дочерней задачи. Узел без evidence
-недопустим.
+Если у узла уже было `description`, его можно переписать без новых фактов:
+
+вход:
+
+```json
+{"id": "tax-task-sql", "type": "task", "title": "SQL-запросы: писать", "description": "каждый день пишу запросы"}
+```
+
+ответ:
+
+```json
+{"nodes": [{"id": "tax-task-sql", "title": "Писать SQL-запросы", "description": "Ежедневно писать SQL-запросы"}]}
+```
+
+## Чего делать нельзя
+
+- добавлять узлы, которых не было во входе, или удалять существующие;
+- менять `id`, `type`, `parent_id`, evidence и конфликты;
+- возвращать `nodes` для неизвестных id;
+- добавлять `description` узлу, у которого его не было.
