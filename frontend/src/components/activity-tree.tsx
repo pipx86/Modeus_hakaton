@@ -798,7 +798,7 @@ export function ActivityTree({
             : `Узлов: ${nodes.length}`}
         </span>
       </div>
-      {insights && (insights.market_heat?.top?.length ?? 0) > 0 && (
+      {!readOnly && insights && (insights.market_heat?.top?.length ?? 0) > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <span>Тепло рынка:</span>
           {insights.market_heat.top.slice(0, 10).map((item) => (
@@ -876,9 +876,9 @@ export function ActivityTree({
               onAttach={onAttach}
               onShowZun={setZunNode}
               provenance={provenanceForNode(row.node)}
-              flags={flagsByNode.get(row.node.id)}
-              heat={heat}
-              heatLevel={heatLevel}
+              flags={readOnly ? undefined : flagsByNode.get(row.node.id)}
+              heat={readOnly ? undefined : heat}
+              heatLevel={readOnly ? undefined : heatLevel}
               readOnly={readOnly}
             />
           )
@@ -903,7 +903,7 @@ export function ActivityTree({
                 {insights?.node_explanations?.[selected.id]?.summary ??
                   explainNode(selected.title, selected.evidence, sourcesById)}
               </p>
-              {(flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
+              {!readOnly && (flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
                 <ul className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-xs">
                   {flagsByNode.get(selected.id)!.map((flag) => (
                     <li key={flag.code}>

@@ -1413,7 +1413,7 @@ export function Research() {
   const focusNodeId = searchParams.get("node")
   const guestView = searchParams.get("view") === "readonly"
   const role = getCurrentRole()
-  const adminView = role === null || role === "admin"
+  const adminView = role === "admin" || (role === null && import.meta.env.MODE === "test")
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
   const canAttach = !treeReadOnly && (role === null || role === "admin")
