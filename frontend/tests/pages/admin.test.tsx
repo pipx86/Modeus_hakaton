@@ -105,8 +105,6 @@ describe("админка", () => {
 
     renderAdmin()
 
-    expect(await screen.findByText("admin@example.com")).toBeInTheDocument()
-    expect(await screen.findByText("user@example.com")).toBeInTheDocument()
     expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
     expect(
       screen.queryByRole("button", { name: /Удалить исследование/ }),
@@ -189,7 +187,7 @@ describe("админка", () => {
     const user = userEvent.setup()
 
     renderAdmin()
-    await screen.findByText("admin@example.com")
+    await screen.findByText("Data Scientist")
 
     await user.click(screen.getAllByRole("combobox")[0])
     await user.click(await screen.findByRole("option", { name: "Аналитик" }))
@@ -228,7 +226,7 @@ describe("админка", () => {
     stubAdminData()
 
     renderAdmin()
-    await screen.findByText("admin@example.com")
+    await screen.findByText("Data Scientist")
     const before = fetchCalls().filter((call) => call.url.includes("/llm/requests")).length
 
     fireEvent.click(screen.getByRole("button", { name: /Обновить/ }))
@@ -245,7 +243,7 @@ describe("админка", () => {
     const user = userEvent.setup()
 
     renderAdmin()
-    await screen.findByText("admin@example.com")
+    await screen.findByText("Data Scientist")
 
     await user.click(screen.getAllByRole("combobox")[1])
     await user.click(await screen.findByRole("option", { name: "error" }))

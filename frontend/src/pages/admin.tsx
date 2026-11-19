@@ -1,6 +1,6 @@
 /**
  * @file admin.tsx
- * @description Админка: пользователи, исследования, LLM-метрики, расход токенов и материалы для агентов.
+ * @description Админка: исследования, LLM-метрики, расход токенов и материалы для агентов.
  */
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
@@ -13,7 +13,6 @@ import {
   RefreshCwIcon,
   ShieldAlertIcon,
   Trash2Icon,
-  UsersIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -34,13 +33,6 @@ import {
   sumWhere,
   type MetricSample,
 } from "@/lib/metrics"
-
-interface AppUser {
-  id: string
-  email: string
-  display_name: string
-  role: string
-}
 
 interface LlmRequest {
   id: string
@@ -113,16 +105,14 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   )
 }
 
-/** Админка: KPI, пользователи, исследования, LLM-журнал, метрики агентов. */
+/** Админка: KPI, исследования, LLM-журнал, метрики агентов. */
 export function Admin() {
   const role = getCurrentRole()
   const isAdmin = role === "admin"
-  const [users, setUsers] = useState<AppUser[]>([])
   const [runs, setRuns] = useState<Run[]>([])
   const [health, setHealth] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<MetricSample[]>([])
   const [metricsText, setMetricsText] = useState("")
-  const [loading, setLoading] = useState(isAdmin)
   const [refreshing, setRefreshing] = useState(false)
   const [llmRequests, setLlmRequests] = useState<LlmRequest[]>([])
   const [llmUsage, setLlmUsage] = useState<ModelUsage[]>([])
@@ -217,8 +207,7 @@ export function Admin() {
     if (!isAdmin) return
     let cancelled = false
     const load = async () => {
-      const [usersResponse, runsResponse, healthResponse, sourcesResponse] = await Promise.all([
-        apiClient.GET("/users"),
+      const [runsResponse, healthResponse, sourcesResponse] = await Promise.all([
         apiClient.GET("/runs"),
         apiClient.GET("/health"),
         apiClient.GET("/sources"),
@@ -226,11 +215,9 @@ export function Admin() {
       await loadMetrics()
       await loadPromptVersions()
       if (cancelled) return
-      if (usersResponse.data) setUsers(usersResponse.data)
       if (runsResponse.data) setRuns(runsResponse.data)
       if (sourcesResponse.data) setSources(sourcesResponse.data)
       setHealth(healthResponse.data?.status ?? "недоступен")
-      setLoading(false)
     }
     void load()
     return () => {
@@ -1012,35 +999,6 @@ export function Admin() {
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <UsersIcon className="size-4 shrink-0" />
-            Пользователи
-          </CardTitle>
-          <CardDescription>Зарегистрированные учётные записи и их роли.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : (
-            <ul className="divide-y">
-              {users.map((user) => (
-                <li key={user.id} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="font-medium">{user.display_name}</span>
-                  <span className="text-xs text-muted-foreground">{user.email}</span>
-                  <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                    {ROLE_LABEL[user.role] ?? user.role}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
           )}
         </CardContent>
       </Card>
