@@ -56,7 +56,7 @@ try {
   Step "go build ./..." { go build ./... }
   Step "go vet ./..." { go vet ./... }
   Step "go test ./..." { go test ./... }
-  Step "git diff --check" { git diff --check }
+  Step "git diff --check" { git diff --check HEAD }
   Step "deploy config validation" { python scripts\check_deploy.py }
 
   if (-not $SkipDocker -and (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -71,14 +71,39 @@ try {
     Write-Host "SKIP docker compose config (docker unavailable or -SkipDocker)" -ForegroundColor Yellow
   }
 
-  if (-not $SkipFrontend -and (Test-Path "$root\frontend\package.json")) {
-    if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { throw "npm.cmd not found" }
-    Push-Location "$root\frontend"
-    try {
-      Step "frontend lint" { npm.cmd run lint }
-      Step "frontend tests" { npm.cmd test -- --run }
-      Step "frontend build" { npm.cmd run build }
-    } finally { Pop-Location }
+  $frontend = Join-Path $root "frontend"
+  if (-not $SkipFrontend -and (Test-Path (Join-Path $frontend "package.json"))) {
+    $npm = Get-Command -Name npm.cmd,npm -ErrorAction SilentlyContinue | Select-Object -First 1
+    $node = Get-Command -Name node -ErrorAction SilentlyContinue
+    if ($npm -and $node -and ((& $node.Source --version) -match '^v24\.')) {
+      Push-Location $frontend
+      try {
+        Step "frontend install (Node 24)" { & $npm.Source ci --no-audit --no-fund }
+        if ($LASTEXITCODE -eq 0) {
+          Step "frontend lint" { & $npm.Source run lint }
+          Step "frontend typecheck" { & $npm.Source run typecheck }
+          Step "frontend tests" { & $npm.Source test }
+          Step "frontend build" { & $npm.Source run build }
+        }
+      } finally { Pop-Location }
+    } elseif (-not $SkipDocker -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+      Step "frontend install, lint, typecheck, tests and build (Docker Node 24)" {
+        docker run --rm --mount "type=bind,source=$frontend,target=/source,readonly" -e CI=true node:24-alpine sh -ec '
+          node --version
+          mkdir /app
+          tar -C /source --exclude="./node_modules" --exclude="./dist" --exclude="./coverage" --exclude="./.env*" --exclude="./.npmrc" -cf /tmp/frontend.tar .
+          tar -C /app -xf /tmp/frontend.tar
+          cd /app
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+        '
+      }
+    } else {
+      Step "frontend prerequisites" { throw "Для проверки фронтенда нужен Node.js 24 с npm или запущенный Docker" }
+    }
   } else {
     Write-Host "SKIP frontend (missing package.json or -SkipFrontend)" -ForegroundColor Yellow
   }

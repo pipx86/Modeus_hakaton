@@ -102,11 +102,13 @@ or your spending limit needs to be increased.
 Please check the 'Billing & plans' section in your settings.
 ```
 
-The annotation is attached to each job; `runner_name` is empty and the jobs
-finish in 2–4 seconds without logs. This is **not a code/test failure**. GitHub
-Status reported all systems operational. Fixing it requires the repository owner
-to update the payment method or Actions spending limit in
-`Settings -> Billing and plans -> Actions`, then re-run the failed jobs.
+Each affected job has an empty `runner_name` and finishes in 2–4 seconds
+without logs because GitHub stops it before executing project code. The account
+owner or billing manager can check `Payment information` and the Actions budget
+under `Billing & Licensing`, then rerun the failed jobs after restoring access.
+[Payment information](https://docs.github.com/en/billing/how-tos/set-up-payment/manage-payment-info)
+[Budgets](https://docs.github.com/en/billing/how-tos/set-up-budgets)
+[Re-running workflows](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
 
 While Actions is blocked, run the same important gates locally:
 
@@ -123,11 +125,17 @@ go test ./...
 git diff --check
 python scripts/check_deploy.py
 docker compose config --quiet (default + server + monitoring/automation)
-frontend lint / tests / build (when frontend/package.json exists)
+frontend npm ci / lint / typecheck / tests / build (when frontend/package.json exists)
 ```
 
-It exits non-zero on the first failed step and prints a timing summary. Use
-`-SkipFrontend`, `-SkipDocker` or `-BuildDocker` to trade speed for coverage.
-The local baseline on 2026-11-19 passed all nine checks; the Docker image build
-and live acceptance still run in GitHub Actions (or manually with
-`make docker-smoke`), because they need a running Docker daemon.
+The script runs the frontend with Node.js 24 and npm, or uses the Node 24 Docker
+image when the matching host tools are unavailable. The Docker frontend step
+builds inside the disposable container.
+
+The timing summary includes failures from all steps that ran. The script exits
+non-zero if any step fails. Use `-SkipFrontend`, `-SkipDocker` or `-BuildDocker`
+to select checks. Race tests, coverage thresholds and PostgreSQL acceptance
+are separate CI jobs and need separate local runs.
+
+Record the exact commit SHA when sharing a local result. GitHub-hosted check
+statuses update when the corresponding workflow is rerun after billing is restored.
