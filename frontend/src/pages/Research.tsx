@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
+import { TreeMatrix } from "@/components/tree-matrix"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { CorrelationMap } from "@/components/correlation-map"
 import { ConflictsTab } from "@/components/conflicts-tab"
@@ -54,6 +55,7 @@ import {
 import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
+import { buildTreeMatrix } from "@/lib/tree-matrix"
 import { buildTreeCorrelation } from "@/lib/tree-correlation"
 import {
   CheckIcon,
@@ -1084,13 +1086,14 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
-  const [view, setView] = useState<"list" | "correlation">("list")
+  const [view, setView] = useState<"list" | "matrix" | "correlation">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
     { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
   >([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const treeMatrix = useMemo(() => buildTreeMatrix(nodes), [nodes])
   const treeCorrelation = useMemo(() => buildTreeCorrelation(nodes), [nodes])
   const loadInsights = useCallback(async () => {
     try {
@@ -1469,6 +1472,15 @@ function TreeTab({
         <Button
           type="button"
           size="sm"
+          variant={view === "matrix" ? "secondary" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setView("matrix")}
+        >
+          Матрица
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           variant={view === "correlation" ? "secondary" : "ghost"}
           className="h-7 px-2.5 text-xs"
           onClick={() => setView("correlation")}
@@ -1476,7 +1488,9 @@ function TreeTab({
           Корреляция
         </Button>
       </div>
-      {view === "correlation" ? (
+      {view === "matrix" ? (
+        <TreeMatrix data={treeMatrix} />
+      ) : view === "correlation" ? (
         <CorrelationMap data={treeCorrelation} sampleLabel="узлов" />
       ) : (
         <ActivityTree
