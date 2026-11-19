@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"time"
 
+	"activity-descriptor/internal/store/db"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ErrNotFound marks a missing request or prompt version.
@@ -84,13 +85,18 @@ type ListFilter struct {
 	Limit  int
 }
 
+type database interface {
+	db.DBTX
+	Begin(context.Context) (pgx.Tx, error)
+}
+
 // Store is a PostgreSQL repository for LLM observability.
 type Store struct {
-	pool *pgxpool.Pool
+	pool database
 }
 
 // NewStore creates a repository.
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool database) *Store { return &Store{pool: pool} }
 
 // CreateRequest inserts a request and returns its id.
 func (s *Store) CreateRequest(ctx context.Context, req Request) (string, error) {

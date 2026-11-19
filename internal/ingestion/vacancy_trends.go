@@ -9,7 +9,6 @@ import (
 	"activity-descriptor/internal/store/db"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type VacancyMonth struct {
@@ -27,7 +26,7 @@ type VacancyTrend struct {
 }
 
 // VacancyPublicationTrend считает сохранённые публикации, разбивая их по UTC-месяцам.
-func VacancyPublicationTrend(ctx context.Context, pool *pgxpool.Pool, titleQuery string, from, until time.Time) (VacancyTrend, error) {
+func VacancyPublicationTrend(ctx context.Context, pool db.DBTX, titleQuery string, from, until time.Time) (VacancyTrend, error) {
 	titleQuery = strings.TrimSpace(titleQuery)
 	if titleQuery == "" || !from.Before(until) || until.After(from.AddDate(2, 0, 0)) {
 		return VacancyTrend{}, errors.New("нужны часть заголовка вакансии и период до 24 месяцев")

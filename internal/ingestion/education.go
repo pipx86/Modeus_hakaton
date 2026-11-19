@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ProgramKSA struct {
@@ -128,7 +127,7 @@ type EducationReport struct {
 }
 
 // SaveEducation не удаляет записи и связи, созданные при предыдущих загрузках.
-func SaveEducation(ctx context.Context, pool *pgxpool.Pool, key, taxonomyID string, data EducationProgram) (EducationReport, error) {
+func SaveEducation(ctx context.Context, pool transactionPool, key, taxonomyID string, data EducationProgram) (EducationReport, error) {
 	report := EducationReport{UnknownTaxonomyCodes: []string{}}
 	key = strings.TrimSpace(key)
 	if key == "" {

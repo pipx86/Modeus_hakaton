@@ -326,3 +326,45 @@ func TestRunStatusSaveUnit(t *testing.T) {
 		}
 	})
 }
+
+func TestSnapshotRollsBackWhenAnyStepFailsAfterLock(t *testing.T) {
+	runID, rootID, snapshotID := testUUID(500), testUUID(1), testUUID(700)
+	tree := []byte(`{"root_node_id":"root"}`)
+	dbErr := errors.New("сбой записи снимка")
+	for _, step := range []string{"проверка корня", "построение дерева", "запись снимка", "фиксация"} {
+		t.Run(step, func(t *testing.T) {
+			pool, repo := testStore(t)
+			pool.ExpectBegin()
+			pool.ExpectQuery("SELECT id, root_node_id FROM runs").WithArgs(runID).
+				WillReturnRows(pgxmock.NewRows([]string{"id", "root_node_id"}).AddRow(runID, rootID))
+			verify := pool.ExpectQuery("SELECT EXISTS").WithArgs(rootID, runID)
+			if step == "проверка корня" {
+				verify.WillReturnError(dbErr)
+			} else {
+				verify.WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+				build := pool.ExpectQuery("SELECT jsonb_build_object").WithArgs(rootID, runID)
+				if step == "построение дерева" {
+					build.WillReturnError(dbErr)
+				} else {
+					build.WillReturnRows(pgxmock.NewRows([]string{"tree"}).AddRow(tree))
+					create := pool.ExpectQuery("INSERT INTO snapshots").WithArgs(runID, tree)
+					if step == "запись снимка" {
+						create.WillReturnError(dbErr)
+					} else {
+						create.WillReturnRows(pgxmock.NewRows([]string{"id", "run_id", "version", "tree", "created_at"}).
+							AddRow(snapshotID, runID, int32(1), tree, time.Now()))
+						pool.ExpectCommit().WillReturnError(dbErr)
+					}
+				}
+			}
+			pool.ExpectRollback()
+			got, err := repo.SaveSnapshot(context.Background(), runID)
+			if !errors.Is(err, dbErr) || got.ID.Valid {
+				t.Fatalf("после ошибки %s получен снимок: %+v, %v", step, got, err)
+			}
+			if err := pool.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

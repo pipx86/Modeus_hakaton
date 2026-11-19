@@ -13,13 +13,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // PGStore реализует контракт API и сохранение состояния оркестратора в PostgreSQL.
-type PGStore struct{ Pool *pgxpool.Pool }
+type PGStore struct{ Pool store.Database }
 
-func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{Pool: pool} }
+func NewPGStore(pool store.Database) *PGStore { return &PGStore{Pool: pool} }
 func operation() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 10*time.Second)
 }

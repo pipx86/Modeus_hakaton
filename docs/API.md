@@ -33,7 +33,7 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 
 ## Авторизация, роли и ошибки
 
-- Все `/api/v1/*`, кроме `GET /api/v1/health`, требуют заголовок
+- Все `/api/v1/*`, кроме `GET /api/v1/health` и `GET /api/v1/ready`, требуют заголовок
   `Authorization: Bearer <JWT>`; `role` claim — `admin`, `teacher`, `rop`,
   `student` или `guest`. `401` — токен отсутствует или невалиден, `403` — роль не
   разрешена для операции. Для GET-роутов демо-данных гость (guest) имеет доступ

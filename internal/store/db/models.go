@@ -65,6 +65,13 @@ type EvidenceQuoteCheck struct {
 	CheckedAt  pgtype.Timestamptz `json:"checked_at"`
 }
 
+type FileImportResult struct {
+	ScopeKey  string             `json:"scope_key"`
+	BodyHash  string             `json:"body_hash"`
+	Report    []byte             `json:"report"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
 type IdempotencyKey struct {
 	ID           pgtype.UUID        `json:"id"`
 	Key          string             `json:"key"`
@@ -193,6 +200,29 @@ type PromptVersion struct {
 	ActivatedAt  pgtype.Timestamptz `json:"activated_at"`
 }
 
+type PublicationNotification struct {
+	ID             pgtype.UUID        `json:"id"`
+	SubscriptionID pgtype.UUID        `json:"subscription_id"`
+	OwnerID        string             `json:"owner_id"`
+	Title          string             `json:"title"`
+	Body           string             `json:"body"`
+	ArticleUrl     string             `json:"article_url"`
+	ArticleSource  string             `json:"article_source"`
+	IsRead         bool               `json:"is_read"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type PublicationSubscription struct {
+	ID             pgtype.UUID        `json:"id"`
+	OwnerID        string             `json:"owner_id"`
+	Topic          string             `json:"topic"`
+	Source         string             `json:"source"`
+	TelegramChatID string             `json:"telegram_chat_id"`
+	Email          string             `json:"email"`
+	LastCheckedAt  pgtype.Timestamptz `json:"last_checked_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Role struct {
 	ID          pgtype.UUID        `json:"id"`
 	Code        string             `json:"code"`
@@ -240,6 +270,12 @@ type RunSseEvent struct {
 	EventType  string             `json:"event_type"`
 	Payload    []byte             `json:"payload"`
 	OccurredAt pgtype.Timestamptz `json:"occurred_at"`
+}
+
+type SkillFrequencySnapshot struct {
+	Series        string      `json:"series"`
+	SnapshotMonth pgtype.Date `json:"snapshot_month"`
+	Frequencies   []byte      `json:"frequencies"`
 }
 
 type Snapshot struct {
@@ -303,6 +339,32 @@ type User struct {
 	RoleID      pgtype.UUID        `json:"role_id"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type VacancyCatalog struct {
+	SourceID       pgtype.UUID        `json:"source_id"`
+	ID             pgtype.Text        `json:"id"`
+	Name           string             `json:"name"`
+	Description    string             `json:"description"`
+	AlternateUrl   string             `json:"alternate_url"`
+	PublishedAt    pgtype.Timestamptz `json:"published_at"`
+	Area           interface{}        `json:"area"`
+	EmployerName   interface{}        `json:"employer_name"`
+	EmployerID     interface{}        `json:"employer_id"`
+	EmployerLogo   interface{}        `json:"employer_logo"`
+	ParsedSkills   interface{}        `json:"parsed_skills"`
+	ExperienceID   interface{}        `json:"experience_id"`
+	Experience     string             `json:"experience"`
+	SalaryFrom     int64              `json:"salary_from"`
+	SalaryTo       int64              `json:"salary_to"`
+	SalaryCurrency interface{}        `json:"salary_currency"`
+	KeySkills      interface{}        `json:"key_skills"`
+	Snippet        interface{}        `json:"snippet"`
+}
+
+type VacancyMarketDetail struct {
+	SourceID pgtype.UUID `json:"source_id"`
+	Details  []byte      `json:"details"`
 }
 
 type ZunSuggestionRejection struct {

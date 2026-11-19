@@ -11,7 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type database interface {
+// Database задаёт операции PostgreSQL, нужные хранилищам для запросов и транзакций.
+type Database interface {
 	db.DBTX
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -19,10 +20,10 @@ type database interface {
 // Store предоставляет запросы sqlc и сохраняет дерево одной транзакцией.
 type Store struct {
 	*db.Queries
-	pool database
+	pool Database
 }
 
-func New(pool database) *Store { return &Store{Queries: db.New(pool), pool: pool} }
+func New(pool Database) *Store { return &Store{Queries: db.New(pool), pool: pool} }
 
 // TreeNode содержит узел и потомков; каждый узел требует подтверждение источником.
 type TreeNode struct {

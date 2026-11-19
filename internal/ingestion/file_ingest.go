@@ -3,8 +3,6 @@ package ingestion
 import (
 	"context"
 	"errors"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
@@ -28,7 +26,7 @@ type FileImportReport struct {
 	Standards int    `json:"standards"`
 }
 
-func (files ImportFiles) Run(ctx context.Context, pool *pgxpool.Pool, sources []string) (FileImportReport, error) {
+func (files ImportFiles) Run(ctx context.Context, pool transactionPool, sources []string) (FileImportReport, error) {
 	var vacancies, standards bool
 	if len(sources) == 0 || len(sources) > 2 {
 		return FileImportReport{}, ErrInvalidFileSources

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Sender interface {
@@ -16,7 +15,9 @@ type Sender interface {
 }
 
 type Worker struct {
-	Pool       *pgxpool.Pool
+	Pool interface {
+		Begin(context.Context) (pgx.Tx, error)
+	}
 	Sender     Sender
 	RetryDelay time.Duration
 }

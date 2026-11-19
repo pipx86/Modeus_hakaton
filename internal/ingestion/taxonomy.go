@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TaxonomyItem struct {
@@ -120,7 +119,7 @@ func ReadTaxonomy(r io.Reader, format, name string) (Taxonomy, error) {
 }
 
 // SaveTaxonomy добавляет или обновляет элементы по кодам в одной транзакции.
-func SaveTaxonomy(ctx context.Context, pool *pgxpool.Pool, key string, data Taxonomy) (string, error) {
+func SaveTaxonomy(ctx context.Context, pool transactionPool, key string, data Taxonomy) (string, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return "", errors.New("нужен постоянный ключ источника")

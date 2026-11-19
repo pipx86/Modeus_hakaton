@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
-// PGEventStore хранит историю событий в той же базе, что и исследования.
-type PGEventStore struct{ pool *pgxpool.Pool }
+type eventDatabase interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	Begin(context.Context) (pgx.Tx, error)
+}
 
-func NewPGEventStore(pool *pgxpool.Pool) *PGEventStore { return &PGEventStore{pool: pool} }
+// PGEventStore хранит историю событий в той же базе, что и исследования.
+type PGEventStore struct{ pool eventDatabase }
+
+func NewPGEventStore(pool eventDatabase) *PGEventStore { return &PGEventStore{pool: pool} }
 
 func (s *PGEventStore) Append(event *SSEEvent) error {
 	data, err := json.Marshal(event.Payload)

@@ -1,4 +1,4 @@
-package logging
+package logging_test
 
 import (
 	"io"
@@ -8,13 +8,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"activity-descriptor/internal/logging"
 )
 
 func TestRotatingWriterCreatesSecondFileAfterSlice(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	w := NewRotatingWriter(path, 1)
+	w := logging.NewRotatingWriter(path, 1)
 	line := strings.Repeat("x", 1024) + "\n"
 
 	for i := 0; i < 3000; i++ {
@@ -28,13 +30,31 @@ func TestRotatingWriterCreatesSecondFileAfterSlice(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read dir: %v", err)
-	}
-
-	if len(entries) < 2 {
-		t.Fatalf("ожидали минимум 2 файла после ротации, получили %d", len(entries))
+	// Архиватор сжимает предыдущие файлы уже после закрытия основного лога.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		archives, pending := 0, false
+		for _, entry := range entries {
+			if entry.Name() == filepath.Base(path) {
+				continue
+			}
+			if strings.HasSuffix(entry.Name(), ".gz") {
+				archives++
+			} else {
+				pending = true
+			}
+		}
+		if archives > 0 && !pending {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("архивирование после ротации не завершилось: %v", entries)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	info, err := os.Stat(path)
@@ -51,7 +71,7 @@ func TestInitWritesToFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.log")
 
-	writer := NewRotatingWriter(path, 1)
+	writer := logging.NewRotatingWriter(path, 1)
 	testLogger := slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	testLogger.Info("hello rotation", "key", "value")
 
@@ -69,10 +89,10 @@ func TestInitWritesToFile(t *testing.T) {
 }
 
 func TestLoggerNotNilByDefault(t *testing.T) {
-	if Logger == nil {
+	if logging.Logger == nil {
 		t.Fatal("Logger обязан быть инициализирован пакетом при загрузке")
 	}
-	Logger.Info("package init works")
+	logging.Logger.Info("package init works")
 }
 
 // === НОВЫЕ ТЕСТЫ ДЛЯ ПОДНЯТИЯ ПОКРЫТИЯ (Windows-safe) ===
@@ -81,7 +101,7 @@ func TestLoggerDifferentLevels(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "levels.log")
 
-	writer := NewRotatingWriter(path, 10) // Большой лимит, чтобы не ротировать
+	writer := logging.NewRotatingWriter(path, 10) // Большой лимит, чтобы не ротировать
 	defer func() {
 		if c, ok := writer.(io.Closer); ok {
 			c.Close()
@@ -113,7 +133,7 @@ func TestRotatingWriterEmptyWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "empty.log")
 
-	w := NewRotatingWriter(path, 1)
+	w := logging.NewRotatingWriter(path, 1)
 	defer func() {
 		if c, ok := w.(io.Closer); ok {
 			c.Close()
@@ -134,7 +154,7 @@ func TestRotatingWriterNilData(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nil.log")
 
-	w := NewRotatingWriter(path, 1)
+	w := logging.NewRotatingWriter(path, 1)
 	defer func() {
 		if c, ok := w.(io.Closer); ok {
 			c.Close()

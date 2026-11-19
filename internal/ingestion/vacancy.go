@@ -19,16 +19,24 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Vacancy struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	URL         string `json:"alternate_url"`
-	Description string `json:"description"`
-	PublishedAt string `json:"published_at,omitempty"`
-	Snippet     struct {
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	URL             string          `json:"alternate_url"`
+	Description     string          `json:"description"`
+	PublishedAt     string          `json:"published_at,omitempty"`
+	Area            vacancyLabel    `json:"area"`
+	Employer        vacancyEmployer `json:"employer"`
+	Experience      vacancyLabel    `json:"experience"`
+	Salary          vacancySalary   `json:"salary"`
+	KeySkills       []vacancyLabel  `json:"key_skills"`
+	ExtractedSkills []string        `json:"extracted_skills"`
+	RawData         struct {
+		ExtractedSkills []string `json:"extracted_skills"`
+	} `json:"raw_data"`
+	Snippet struct {
 		Requirement    string `json:"requirement"`
 		Responsibility string `json:"responsibility"`
 	} `json:"snippet"`
@@ -134,6 +142,9 @@ func ReadVacancies(r io.Reader, format string) ([]Vacancy, error) {
 				return ""
 			}
 			v := Vacancy{ID: get("id"), Name: get("name"), URL: get("alternate_url"), Description: get("description"), PublishedAt: get("published_at")}
+			if err := v.setCSVMarketFields(get); err != nil {
+				return nil, fmt.Errorf("строка %d: %w", n, err)
+			}
 			if err := v.validate(); err != nil {
 				return nil, fmt.Errorf("строка %d: %w", n, err)
 			}
@@ -206,8 +217,12 @@ func FetchHH(ctx context.Context, client *http.Client, endpoint, query, userAgen
 	return all, nil
 }
 
+type transactionPool interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
+
 // SaveVacancies выполняет импорт целиком в одной транзакции и не создаёт дубли.
-func SaveVacancies(ctx context.Context, pool *pgxpool.Pool, vacancies []Vacancy) (Counts, error) {
+func SaveVacancies(ctx context.Context, pool transactionPool, vacancies []Vacancy) (Counts, error) {
 	var counts Counts
 	vacancies = append([]Vacancy(nil), vacancies...)
 	sort.SliceStable(vacancies, func(i, j int) bool { return strings.TrimSpace(vacancies[i].ID) < strings.TrimSpace(vacancies[j].ID) })
@@ -231,7 +246,12 @@ func SaveVacancies(ctx context.Context, pool *pgxpool.Pool, vacancies []Vacancy)
 		if err := queries.LockVacancyImport(ctx, "hh:vacancy:"+v.ID); err != nil {
 			return Counts{}, err
 		}
+		marketDetails, err := v.marketDetails()
+		if err != nil {
+			return Counts{}, err
+		}
 		content := v.content()
+		unchanged := false
 		current, err := queries.GetVacancyForImport(ctx, v.ID)
 		dateUnchanged := !published.Valid || (current.VacancyPublishedAt.Valid && current.VacancyPublishedAt.Time.Equal(published.Time))
 		switch {
@@ -244,6 +264,7 @@ func SaveVacancies(ctx context.Context, pool *pgxpool.Pool, vacancies []Vacancy)
 		case err != nil:
 			return Counts{}, err
 		case current.Title == v.Name && current.Content == content && current.SourceUrl == v.URL && dateUnchanged:
+			unchanged = true
 			counts.Skipped++
 		default:
 			err = queries.UpdateImportedVacancy(ctx, db.UpdateImportedVacancyParams{
@@ -253,6 +274,18 @@ func SaveVacancies(ctx context.Context, pool *pgxpool.Pool, vacancies []Vacancy)
 		}
 		if err != nil {
 			return Counts{}, err
+		}
+		if len(marketDetails) > 0 {
+			changed, err := queries.MergeVacancyMarketDetails(ctx, db.MergeVacancyMarketDetailsParams{
+				Details: marketDetails, ExternalID: v.ID,
+			})
+			if err != nil {
+				return Counts{}, err
+			}
+			if unchanged && changed > 0 {
+				counts.Skipped--
+				counts.Updated++
+			}
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {

@@ -326,11 +326,6 @@ func (s *Service) lookup(runID string) (*session, error) {
 }
 
 func (s *Service) askNext(runID string, sess *session) {
-	defer func() {
-		sess.mu.Lock()
-		sess.asking = false
-		sess.mu.Unlock()
-	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	// Name the run in the audit context, so the LLM request rows written by
@@ -340,8 +335,9 @@ func (s *Service) askNext(runID string, sess *session) {
 
 	sess.mu.Lock()
 	question, err := sess.session.Next(ctx)
-	sess.mu.Unlock()
 	if err != nil {
+		sess.asking = false
+		sess.mu.Unlock()
 		if errors.Is(err, interviewer.ErrSessionDone) {
 			return
 		}
@@ -352,15 +348,16 @@ func (s *Service) askNext(runID string, sess *session) {
 		return
 	}
 
-	sess.mu.Lock()
 	message, err := s.appendMessageLocked(runID, sess, "agent", question.Text, false)
-	sess.mu.Unlock()
+	// Ответ на опубликованный вопрос может прийти сразу. Снимаем флаг до выдачи вопроса.
+	sess.asking = false
 	if err != nil {
+		sess.mu.Unlock()
 		log.Printf("chat: persist question for run %s: %v", runID, err)
 		return
 	}
-
-	s.publish(runID, Event{Type: "agent_message", Message: &message})
+	sess.publishLocked(Event{Type: "agent_message", Message: &message})
+	sess.mu.Unlock()
 }
 
 func (s *Service) complete(runID, profession string, state domain.InterviewSession) {
@@ -448,6 +445,10 @@ func (s *Service) publish(runID string, event Event) {
 	}
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+	sess.publishLocked(event)
+}
+
+func (sess *session) publishLocked(event Event) {
 	for ch := range sess.subscribers {
 		select {
 		case ch <- event:

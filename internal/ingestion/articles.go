@@ -15,7 +15,6 @@ import (
 	"activity-descriptor/internal/domain"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Article struct {
@@ -105,7 +104,7 @@ func abstractText(value string) string {
 }
 
 // SaveArticles сохраняет DOI как внешний идентификатор и при необходимости связывает статьи с исследованием.
-func SaveArticles(ctx context.Context, pool *pgxpool.Pool, items []Article, runID string) (Counts, error) {
+func SaveArticles(ctx context.Context, pool transactionPool, items []Article, runID string) (Counts, error) {
 	var counts Counts
 	tx, err := pool.Begin(ctx)
 	if err != nil {

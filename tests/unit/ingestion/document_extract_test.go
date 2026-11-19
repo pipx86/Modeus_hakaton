@@ -1,10 +1,12 @@
-package ingestion
+package ingestion_test
 
 import (
 	"archive/zip"
 	"bytes"
 	"strings"
 	"testing"
+
+	"activity-descriptor/internal/ingestion"
 )
 
 func makeDOCX(t *testing.T, body string) []byte {
@@ -29,7 +31,7 @@ func makeDOCX(t *testing.T, body string) []byte {
 }
 
 func TestExtractDocumentTextPlain(t *testing.T) {
-	text, err := ExtractDocumentText("role.md", []byte("# Роль\nТекст"))
+	text, err := ingestion.ExtractDocumentText("role.md", []byte("# Роль\nТекст"))
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
@@ -40,7 +42,7 @@ func TestExtractDocumentTextPlain(t *testing.T) {
 
 func TestExtractDocumentTextDOCX(t *testing.T) {
 	data := makeDOCX(t, `<w:p><w:r><w:t>Первая строка</w:t></w:r></w:p><w:p><w:r><w:t>Вторая строка</w:t></w:r></w:p>`)
-	text, err := ExtractDocumentText("standard.docx", data)
+	text, err := ingestion.ExtractDocumentText("standard.docx", data)
 	if err != nil {
 		t.Fatalf("extract docx: %v", err)
 	}
@@ -53,19 +55,19 @@ func TestExtractDocumentTextDOCX(t *testing.T) {
 }
 
 func TestExtractDocumentTextRejectsUnsupported(t *testing.T) {
-	if _, err := ExtractDocumentText("image.png", []byte("png")); err == nil {
+	if _, err := ingestion.ExtractDocumentText("image.png", []byte("png")); err == nil {
 		t.Fatal("ожидали ошибку для неподдерживаемого формата")
 	}
 }
 
 func TestExtractDocumentTextRejectsEmpty(t *testing.T) {
-	if _, err := ExtractDocumentText("empty.txt", nil); err == nil {
+	if _, err := ingestion.ExtractDocumentText("empty.txt", nil); err == nil {
 		t.Fatal("ожидали ошибку для пустого файла")
 	}
 }
 
 func TestExtractDocumentTextRejectsEmptyContent(t *testing.T) {
-	if _, err := ExtractDocumentText("empty.txt", []byte("   \n  ")); err == nil {
+	if _, err := ingestion.ExtractDocumentText("empty.txt", []byte("   \n  ")); err == nil {
 		t.Fatal("ожидали ошибку для файла без текста")
 	}
 }

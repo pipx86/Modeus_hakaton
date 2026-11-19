@@ -10,11 +10,10 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Service struct {
-	Pool  *pgxpool.Pool
+	Pool  store.Database
 	Model embeddings.Ollama
 }
 

@@ -1,4 +1,4 @@
-package ingestion
+package ingestion_test
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"activity-descriptor/internal/ingestion"
 )
 
 func TestFetchHHApplicationToken(t *testing.T) {
@@ -30,7 +32,7 @@ func TestFetchHHApplicationToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	token, err := FetchHHApplicationToken(context.Background(), server.Client(), server.URL, "client", "secret", "test-agent")
+	token, err := ingestion.FetchHHApplicationToken(context.Background(), server.Client(), server.URL, "client", "secret", "test-agent")
 	if err != nil {
 		t.Fatalf("FetchHHApplicationToken: %v", err)
 	}
@@ -45,16 +47,16 @@ func TestFetchHHApplicationToken(t *testing.T) {
 }
 
 func TestFetchHHApplicationTokenRejectsBadInput(t *testing.T) {
-	if _, err := FetchHHApplicationToken(context.Background(), nil, "http://example.test", "", "secret", "test-agent"); err == nil {
+	if _, err := ingestion.FetchHHApplicationToken(context.Background(), nil, "http://example.test", "", "secret", "test-agent"); err == nil {
 		t.Fatal("empty client id: want error")
 	}
-	if _, err := FetchHHApplicationToken(context.Background(), nil, "http://example.test", "client", "", "test-agent"); err == nil {
+	if _, err := ingestion.FetchHHApplicationToken(context.Background(), nil, "http://example.test", "client", "", "test-agent"); err == nil {
 		t.Fatal("empty client secret: want error")
 	}
-	if _, err := FetchHHApplicationToken(context.Background(), nil, "ftp://example.test", "client", "secret", "test-agent"); err == nil {
+	if _, err := ingestion.FetchHHApplicationToken(context.Background(), nil, "ftp://example.test", "client", "secret", "test-agent"); err == nil {
 		t.Fatal("unsupported scheme: want error")
 	}
-	if _, err := FetchHHApplicationToken(nil, nil, "http://example.test", "client", "secret", "test-agent"); err == nil {
+	if _, err := ingestion.FetchHHApplicationToken(nil, nil, "http://example.test", "client", "secret", "test-agent"); err == nil {
 		t.Fatal("nil context: want error")
 	}
 }
@@ -76,7 +78,7 @@ func TestFetchHHApplicationTokenErrorsAreSafe(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			defer server.Close()
-			_, err := FetchHHApplicationToken(context.Background(), server.Client(), server.URL, "client", "super-secret", "test-agent")
+			_, err := ingestion.FetchHHApplicationToken(context.Background(), server.Client(), server.URL, "client", "super-secret", "test-agent")
 			if err == nil {
 				t.Fatal("want error")
 			}
@@ -96,7 +98,7 @@ func TestFetchHHApplicationTokenTimeout(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	_, err := FetchHHApplicationToken(ctx, server.Client(), server.URL, "client", "secret", "test-agent")
+	_, err := ingestion.FetchHHApplicationToken(ctx, server.Client(), server.URL, "client", "secret", "test-agent")
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want deadline exceeded", err)
 	}

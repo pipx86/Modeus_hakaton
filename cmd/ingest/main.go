@@ -21,6 +21,15 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) >= 2 && os.Args[1] == "export-vacancies" {
+		return runVacancyArchive(os.Args[2:], os.Stdout)
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "skill-history" {
+		return runSkillHistory(os.Args[2:], os.Stdout)
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "forecast-audit" {
+		return runForecastAudit(os.Args[2:], os.Stdout)
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "vacancy-trends" {
 		return runVacancyTrends(os.Args[2:], os.Stdout)
 	}

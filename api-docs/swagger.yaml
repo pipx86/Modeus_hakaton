@@ -6,16 +6,23 @@ info:
     18, 19, 20). This file is the source of truth; the copies served by the API from
     `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated
     from it. All endpoints are relative to the `/api/v1` server and, except for `GET
-    /health`, require a JWT bearer token. Successful responses are JSON, except the
-    run export which serves Markdown by default (`?format=md`) and JSON on request
-    (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`.
-    Error responses carry a stable machine-readable `code` and a human-readable `message`.
+    /health` and `GET /ready`, require a JWT bearer token. Successful responses are
+    JSON, except the run export which serves Markdown by default (`?format=md`) and
+    JSON on request (`?format=json`); run progress is streamed by `GET /runs/{id}/events`
+    as `text/event-stream`. Error responses carry a stable machine-readable `code`
+    and a human-readable `message`.
 servers:
 - url: /api/v1
   description: API prefix used by cmd/api and cmd/server.
 tags:
 - name: system
   description: Liveness probe.
+- name: market
+  description: Каталог hh.ru и история спроса на навыки.
+- name: academic
+  description: Импортированные учебные программы и справочники.
+- name: subscriptions
+  description: Подписки и уведомления о публикациях.
 - name: sources
   description: Source documents (vacancies, interviews, standards) and their searchable
     fragments.
@@ -43,6 +50,20 @@ paths:
       summary: Запустить импорт настроенных файлов
       description: Требуется роль admin. Имена файлов задаются на сервере.
       operationId: ingestConfiguredFiles
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        schema:
+          type: string
+          maxLength: 256
+        description: Идентификатор запроса. Результат сохраняется в течение часа для
+          владельца JWT.
+      - name: X-Run-ID
+        in: header
+        schema:
+          type: string
+          maxLength: 256
+        description: Ключ импорта, если Idempotency-Key отсутствует.
       requestBody:
         required: true
         content:
@@ -94,6 +115,8 @@ paths:
           description: Нужен JWT
         '403':
           description: Недостаточно прав
+        '409':
+          description: Ключ уже использован для другого списка источников
         '500':
           description: Сбой загрузки настроенных файлов
         '503':
@@ -115,6 +138,1219 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
               example:
                 status: ok
+  /ready:
+    get:
+      tags:
+      - system
+      operationId: getReadiness
+      summary: Проверить готовность PostgreSQL
+      responses:
+        '200':
+          description: Проверить готовность PostgreSQL
+          content:
+            application/json:
+              schema: &id001
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - ok
+                    - not_ready
+                  problems:
+                    type: array
+                    items:
+                      type: string
+        '503':
+          description: PostgreSQL или миграции недоступны
+          content:
+            application/json:
+              schema: *id001
+      security: []
+  /vacancies:
+    get:
+      tags:
+      - market
+      operationId: listVacancies
+      summary: Найти вакансии hh.ru
+      description: Границы дат включительны и вычисляются по московскому времени.
+      parameters:
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: region
+        schema:
+          type: string
+      - in: query
+        name: employer
+        schema:
+          type: string
+      - in: query
+        name: experience
+        schema:
+          type: string
+          enum:
+          - junior
+          - middle
+          - senior
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: months
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 24
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 50
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          description: Найти вакансии hh.ru
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketVacancy'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  has_more:
+                    type: boolean
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /vacancies/{id}:
+    get:
+      tags:
+      - market
+      operationId: getVacancy
+      summary: Получить вакансию
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Получить вакансию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketVacancy'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /vacancies/info:
+    get:
+      tags:
+      - market
+      operationId: getVacancyInfo
+      summary: Получить объём и даты каталога
+      responses:
+        '200':
+          description: Получить объём и даты каталога
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  with_skills:
+                    type: integer
+                  date_range:
+                    type: object
+                    properties:
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+                    nullable: true
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /vacancies/stats/summary:
+    get:
+      tags:
+      - market
+      operationId: getVacancySummary
+      summary: Посчитать вакансии по опыту и зарплате
+      responses:
+        '200':
+          description: Посчитать вакансии по опыту и зарплате
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  by_experience:
+                    type: object
+                    properties:
+                      junior:
+                        type: integer
+                      middle:
+                        type: integer
+                      senior:
+                        type: integer
+                  salary_by_currency:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        currency:
+                          type: string
+                        count:
+                          type: integer
+                        average:
+                          type: integer
+                        min:
+                          type: integer
+                        max:
+                          type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /vacancies/stats/analytics:
+    get:
+      tags:
+      - market
+      operationId: getVacancyRankings
+      summary: Получить частоты регионов, работодателей и навыков
+      responses:
+        '200':
+          description: Получить частоты регионов, работодателей и навыков
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  top_regions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NameCount'
+                  top_employers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NameCount'
+                  top_skills:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NameCount'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /academic/programs:
+    get:
+      tags:
+      - academic
+      operationId: listAcademicPrograms
+      summary: Найти импортированные учебные программы
+      description: Чтение доступно ролям admin, teacher, rop и student.
+      parameters:
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          description: Найти импортированные учебные программы
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalAcademicProgram'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /academic/programs/{id}:
+    get:
+      tags:
+      - academic
+      operationId: getAcademicProgram
+      summary: Получить программу с компетенциями и ЗУН
+      description: Чтение доступно ролям admin, teacher, rop и student.
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Получить программу с компетенциями и ЗУН
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalAcademicProgram'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /academic/programs/{id}/summary:
+    get:
+      tags:
+      - academic
+      operationId: getAcademicProgramSummary
+      summary: Сверить программу со справочником
+      description: Чтение доступно ролям admin, teacher, rop и student.
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: taxonomy_id
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Сверить программу со справочником
+          content:
+            application/json:
+              schema: &id002
+                type: object
+                properties:
+                  program_id:
+                    type: string
+                    format: uuid
+                  taxonomy_id:
+                    type: string
+                    format: uuid
+                    nullable: true
+                  competencies:
+                    type: integer
+                  matched_competencies:
+                    type: integer
+                  unmatched_competencies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        code:
+                          type: string
+                        title:
+                          type: string
+                  ksa:
+                    type: integer
+                  matched_ksa:
+                    type: integer
+                  unmatched_ksa:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        kind:
+                          type: string
+                        title:
+                          type: string
+                        competency_id:
+                          type: string
+                          format: uuid
+                  taxonomy_items:
+                    type: integer
+                  matched_taxonomy_items:
+                    type: integer
+                  uncovered_taxonomy_items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        code:
+                          type: string
+                        title:
+                          type: string
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /academic/analyze-gap-local:
+    post:
+      tags:
+      - academic
+      operationId: analyzeAcademicGap
+      summary: Сверить программу со справочником
+      description: Доступно ролям admin, teacher и rop.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                program_id:
+                  type: string
+                  format: uuid
+                taxonomy_id:
+                  type: string
+                  format: uuid
+              required:
+              - program_id
+      responses:
+        '200':
+          description: Сверить программу со справочником
+          content:
+            application/json:
+              schema: *id002
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Программа или справочник не найдены
+  /taxonomies:
+    get:
+      tags:
+      - academic
+      operationId: listLocalTaxonomies
+      summary: Перечислить импортированные справочники
+      description: Чтение доступно ролям admin, teacher, rop и student.
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          description: Перечислить импортированные справочники
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocalTaxonomy'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /taxonomies/{id}:
+    get:
+      tags:
+      - academic
+      operationId: getLocalTaxonomy
+      summary: Получить справочник с элементами
+      description: Чтение доступно ролям admin, teacher, rop и student.
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Получить справочник с элементами
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalTaxonomy'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /forecast/observed:
+    get:
+      tags:
+      - market
+      operationId: getObservedSkillChange
+      summary: Измерить изменение частоты навыков
+      description: Для окна из M месяцев нужно M+1 последовательных месячных снимков.
+      parameters:
+      - &id003
+        in: query
+        name: series
+        schema:
+          type: string
+          default: hh_vacancies
+      - &id006
+        in: query
+        name: n
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 25
+      - in: query
+        name: months
+        schema:
+          type: integer
+          enum:
+          - 1
+          - 3
+          - 6
+          - 12
+          default: 3
+      - &id007
+        in: query
+        name: sort
+        schema:
+          type: string
+          enum:
+          - growth
+          - popular
+      - &id004
+        in: query
+        name: min_freq
+        schema:
+          type: number
+          minimum: 0
+      - in: query
+        name: direction
+        schema:
+          type: string
+          enum:
+          - declining
+          - growing
+          - all
+          default: declining
+      responses:
+        '200':
+          description: Измерить изменение частоты навыков
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  series:
+                    type: string
+                  direction:
+                    type: string
+                  n:
+                    type: integer
+                  months:
+                    type: integer
+                  required_points:
+                    type: integer
+                  max_points:
+                    type: integer
+                  forecasts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        skill:
+                          type: string
+                        points:
+                          type: integer
+                        first_month:
+                          type: string
+                          format: date
+                        last_month:
+                          type: string
+                          format: date
+                        first_frequency:
+                          type: number
+                        last_frequency:
+                          type: number
+                        observed_change_pct:
+                          type: number
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /forecast/engine:
+    get:
+      tags:
+      - market
+      operationId: getSkillForecastStatus
+      summary: Проверить наличие истории для прогнозирования
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: Проверить наличие истории для прогнозирования
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  series:
+                    type: string
+                  engine:
+                    type: string
+                  snapshots:
+                    type: integer
+                  ready:
+                    type: boolean
+                  first_month:
+                    type: string
+                    format: date
+                    nullable: true
+                  last_month:
+                    type: string
+                    format: date
+                    nullable: true
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /forecast/all:
+    get:
+      tags:
+      - market
+      operationId: listSkillForecasts
+      summary: Получить линейные прогнозы с пагинацией
+      parameters:
+      - *id003
+      - &id005
+        in: query
+        name: months
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 24
+          default: 12
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          default: 500
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - *id004
+      responses:
+        '200':
+          description: Получить линейные прогнозы с пагинацией
+          content:
+            application/json:
+              schema: &id008
+                type: object
+                properties:
+                  series:
+                    type: string
+                  method:
+                    type: string
+                  months:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  total:
+                    type: integer
+                  direction:
+                    type: string
+                  forecasts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketSkillForecast'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /forecast/top:
+    get:
+      tags:
+      - market
+      operationId: getTopSkillForecasts
+      summary: Получить навыки по росту или падению частоты
+      parameters:
+      - *id003
+      - *id005
+      - *id006
+      - *id004
+      - *id007
+      - in: query
+        name: direction
+        schema:
+          type: string
+          enum:
+          - growing
+          - declining
+      responses:
+        '200':
+          description: Получить навыки по росту или падению частоты
+          content:
+            application/json:
+              schema: *id008
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /forecast/popular:
+    get:
+      tags:
+      - market
+      operationId: getPopularSkillForecasts
+      summary: Получить прогнозы частых навыков
+      parameters:
+      - *id003
+      - *id005
+      - *id006
+      responses:
+        '200':
+          description: Получить прогнозы частых навыков
+          content:
+            application/json:
+              schema: *id008
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /forecast/{skill}:
+    get:
+      tags:
+      - market
+      operationId: getSkillForecast
+      summary: Построить линейный прогноз по навыку
+      description: Горизонт ограничен числом наблюдений. При недостаточной истории
+        выдаётся текущее значение с нулевым горизонтом.
+      parameters:
+      - in: path
+        name: skill
+        required: true
+        schema:
+          type: string
+      - *id003
+      - *id005
+      responses:
+        '200':
+          description: Построить линейный прогноз по навыку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketSkillForecast'
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /subscriptions:
+    get:
+      tags:
+      - subscriptions
+      operationId: listPublicationSubscriptions
+      summary: Перечислить свои подписки на публикации
+      responses:
+        '200':
+          description: Перечислить свои подписки на публикации
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        topic:
+                          type: string
+                        source: &id009
+                          type: string
+                          enum:
+                          - openalex
+                          - arxiv
+                          - openalex+arxiv
+                        email:
+                          type: string
+                          nullable: true
+                        telegram_chat_id:
+                          type: string
+                          nullable: true
+                        is_active:
+                          type: boolean
+                        last_checked_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        created_at:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+    post:
+      tags:
+      - subscriptions
+      operationId: createPublicationSubscription
+      summary: Создать подписку на публикации
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                topic:
+                  type: string
+                  maxLength: 200
+                source: *id009
+                telegram_chat_id:
+                  type: string
+                email:
+                  type: string
+                  format: email
+              required:
+              - topic
+      responses:
+        '200':
+          description: Создать подписку на публикации
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /subscriptions/{id}:
+    delete:
+      tags:
+      - subscriptions
+      operationId: deletePublicationSubscription
+      summary: Удалить подписку
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Удалить подписку
+          content:
+            application/json:
+              schema: &id010
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - ok
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /notifications:
+    get:
+      tags:
+      - subscriptions
+      operationId: listPublicationNotifications
+      summary: Перечислить свои уведомления
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - in: query
+        name: unread_only
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Перечислить свои уведомления
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        subscription_id:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        title:
+                          type: string
+                        body:
+                          type: string
+                        article_url:
+                          type: string
+                          format: uri
+                        article_source: &id011
+                          type: string
+                          enum:
+                          - openalex
+                          - arxiv
+                        severity:
+                          type: string
+                        is_read:
+                          type: boolean
+                        created_at:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /notifications/unread-count:
+    get:
+      tags:
+      - subscriptions
+      operationId: countUnreadPublicationNotifications
+      summary: Посчитать непрочитанные уведомления
+      responses:
+        '200':
+          description: Посчитать непрочитанные уведомления
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unread_count:
+                    type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /notifications/{id}/read:
+    post:
+      tags:
+      - subscriptions
+      operationId: markPublicationNotificationRead
+      summary: Отметить уведомление прочитанным
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Отметить уведомление прочитанным
+          content:
+            application/json:
+              schema: *id010
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Запись не найдена
+  /internal/subscriptions:
+    get:
+      tags:
+      - subscriptions
+      operationId: listPublicationPollingTargets
+      summary: Выдать подписки сборщику публикаций
+      description: Операторский маршрут. Требуется роль admin.
+      parameters:
+      - in: query
+        name: after_id
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      responses:
+        '200':
+          description: Выдать подписки сборщику публикаций
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        topic:
+                          type: string
+                        source: *id009
+                        last_checked_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                  total:
+                    type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+  /webhooks/new-publications:
+    post:
+      tags:
+      - subscriptions
+      operationId: recordPublicationUpdates
+      summary: Принять результаты проверки подписки
+      description: Операторский маршрут. Требуется роль admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscription_id:
+                  type: string
+                  format: uuid
+                articles:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - title
+                    - url
+                    - source
+                    properties:
+                      title:
+                        type: string
+                        maxLength: 500
+                      abstract:
+                        type: string
+                        maxLength: 2000
+                      url:
+                        type: string
+                        format: uri
+                      source: *id011
+                  maxItems: 20
+              required:
+              - subscription_id
+              - articles
+      responses:
+        '200':
+          description: Принять результаты проверки подписки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  created:
+                    type: integer
+        '400':
+          description: Некорректные параметры
+        '401':
+          description: Нужен JWT
+        '403':
+          description: Недостаточно прав
+        '503':
+          description: PostgreSQL недоступна
+        '404':
+          description: Подписка не найдена
   /sources:
     get:
       tags:
@@ -2804,6 +4040,187 @@ components:
             code: GATEWAY_TIMEOUT
             message: upstream timeout
   schemas:
+    MarketVacancy:
+      type: object
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        alternate_url:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        area:
+          type: string
+        employer_id:
+          type: string
+        employer_name:
+          type: string
+        employer_logo:
+          type: string
+        experience_id:
+          type: string
+        experience:
+          type: string
+        salary_from:
+          type: integer
+          nullable: true
+        salary_to:
+          type: integer
+          nullable: true
+        salary_currency:
+          type: string
+        key_skills:
+          type: array
+          items:
+            type: string
+        parsed_skills:
+          type: array
+          items:
+            type: string
+        snippet:
+          type: object
+          properties:
+            requirement:
+              type: string
+            responsibility:
+              type: string
+    NameCount:
+      type: object
+      properties:
+        name:
+          type: string
+        count:
+          type: integer
+    LocalAcademicProgram:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        organization:
+          type: string
+          nullable: true
+        code:
+          type: string
+          nullable: true
+        source_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        competencies:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              code:
+                type: string
+              title:
+                type: string
+              description:
+                type: string
+                nullable: true
+              taxonomy_item_ids:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+              ksa:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    kind:
+                      type: string
+                    title:
+                      type: string
+                    taxonomy_item_ids:
+                      type: array
+                      items:
+                        type: string
+                        format: uuid
+    LocalTaxonomy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: string
+        item_count:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              parent_id:
+                type: string
+                format: uuid
+                nullable: true
+              code:
+                type: string
+              title:
+                type: string
+              description:
+                type: string
+                nullable: true
+    MarketSkillForecast:
+      type: object
+      properties:
+        skill:
+          type: string
+        current_frequency:
+          type: number
+        next_year_frequency:
+          type: number
+        predicted_growth:
+          type: number
+        predicted_change_pct:
+          type: number
+        confidence:
+          type: number
+        forecast_months:
+          type: integer
+        data_points:
+          type: integer
+        method:
+          type: string
+        engine_used:
+          type: string
+        trend_direction:
+          type: string
+        mape:
+          type: number
+          nullable: true
+        uncertainty_lower:
+          type: number
+          nullable: true
+        uncertainty_upper:
+          type: number
+          nullable: true
     HealthResponse:
       type: object
       required:

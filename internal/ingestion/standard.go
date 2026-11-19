@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ledongthuc/pdf"
 )
 
@@ -73,7 +72,7 @@ func ReadStandard(path, format, title string) (result Standard, err error) {
 	return result, nil
 }
 
-func SaveStandard(ctx context.Context, pool *pgxpool.Pool, key string, s Standard) (Counts, error) {
+func SaveStandard(ctx context.Context, pool transactionPool, key string, s Standard) (Counts, error) {
 	var c Counts
 	key = strings.TrimSpace(key)
 	if key == "" || strings.TrimSpace(s.Title) == "" || strings.TrimSpace(s.Content) == "" {

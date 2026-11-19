@@ -8,7 +8,20 @@ if (-not (Test-Path -LiteralPath 'go.mod')) {
 }
 
 $namesToClear = @(
+    'DATABASE_URL',
+    'TEST_DATABASE_URL',
+    'STORE_TEST_DATABASE_URL',
+    'VECTOR_TEST_DATABASE_URL',
+    'OUTBOX_TEST_DATABASE_URL',
     'INGEST_TEST_DATABASE_URL',
+    'DATABASE_LIVE_EVAL_TEST',
+    'HH_ACCESS_TOKEN',
+    'HH_CLIENT_ID',
+    'HH_CLIENT_SECRET',
+    'LLM_API_KEY',
+    'OPENROUTER_API_KEY',
+    'OLLAMA_URL',
+    'OTEL_EXPORTER_OTLP_ENDPOINT',
     'OLLAMA_TEST_URL',
     'OLLAMA_EMBED_MODEL',
     'MODEUS_ACCEPTANCE_EXCLUSIVE'
@@ -20,7 +33,10 @@ foreach ($name in $namesToClear) {
 }
 
 try {
-    $output = & go test -count=1 ./... 2>&1
+    $packages = & go list ./...
+    if ($LASTEXITCODE -ne 0) { throw 'Не удалось определить пакеты Go.' }
+    $unitPackages = @($packages | Where-Object { $_ -ne 'activity-descriptor/tests/database' })
+    $output = & go test -count=1 -skip '^TestOfflineE2E$' $unitPackages 2>&1
     $exitCode = $LASTEXITCODE
 }
 finally {

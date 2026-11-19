@@ -3,6 +3,8 @@ package store_test
 import (
 	"context"
 	"errors"
+	"math"
+	"strings"
 	"testing"
 
 	"activity-descriptor/internal/store"
@@ -234,4 +236,43 @@ func TestSearchHybridUnit(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestSearchRejectsUnsuitableVectorsBeforeVectorQuery(t *testing.T) {
+	const query = "поиск"
+	const model = "embedding-fixture"
+	runID := testUUID(500)
+	for _, tc := range []struct {
+		name   string
+		values int
+		value  float32
+		mode   string
+	}{
+		{"нулевой вектор", 768, 0, "bm25"},
+		{"NaN", 768, float32(math.NaN()), "bm25"},
+		{"положительная бесконечность", 768, float32(math.Inf(1)), "bm25"},
+		{"отрицательная бесконечность", 768, float32(math.Inf(-1)), "bm25"},
+		{"неверная размерность", 3, 1, "bm25"},
+		{"валидный вектор", 768, 1, "vector"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool, s := testStore(t)
+			vector := make([]float32, tc.values)
+			vector[0] = tc.value
+			if tc.mode == "vector" {
+				expected := "[1" + strings.Repeat(",0", 767) + "]"
+				pool.ExpectQuery("find_relevant_fragments").WithArgs(runID, expected, model, 5).WillReturnRows(searchRows())
+			} else {
+				pool.ExpectQuery("find_fragments_bm25").WithArgs(runID, query, 5).WillReturnRows(searchRows())
+			}
+			_, mode, err := s.SearchFragments(context.Background(), runID, query, model, 5,
+				func(context.Context, string) ([]float32, error) { return vector, nil })
+			if err != nil || mode != tc.mode {
+				t.Fatalf("способ поиска: %q, %v", mode, err)
+			}
+			if err := pool.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
