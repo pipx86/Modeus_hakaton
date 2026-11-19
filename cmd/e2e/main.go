@@ -37,9 +37,9 @@ func (f *fakeClient) Chat(_ context.Context, messages []llm.Message) (string, er
 	}
 	system := strings.ToLower(messages[0].Content)
 	switch {
-	case strings.Contains(system, "ты — аналитик"):
+	case strings.Contains(system, "ты — аналитик") || strings.Contains(system, "competency analyst"):
 		return analystJSON, nil
-	case strings.Contains(system, "ты — интервьюер"):
+	case strings.Contains(system, "ты — интервьюер") || strings.Contains(system, "concise interviewer"):
 		level := "role"
 		if m := nextLevelRe.FindStringSubmatch(messages[len(messages)-1].Content); len(m) == 2 {
 			level = m[1]
