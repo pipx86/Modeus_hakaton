@@ -227,13 +227,16 @@ func run(ctx context.Context, c config) error {
 	// survives restarts and an active interview resumes instead of hanging.
 	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
 	chatService.SetSessionStore(store.NewChatSessionStore(pool))
+	var learningPlanner *learningPlannerAdapter
 	if analystClient != nil {
-		chatService.SetFinalizer(newTreeFinalizerWithClients(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
+		learningPlanner = newLearningPlanner(pgStore, vacancyReader, analystClient)
+		treeFinalizer := newTreeFinalizerWithClients(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore))
+		chatService.SetFinalizer(newHybridFinalizer(pgStore, treeFinalizer, learningPlanner))
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
-	if analystClient != nil {
-		app.SetLearningPlanner(newLearningPlanner(pgStore, vacancyReader, analystClient))
+	if learningPlanner != nil {
+		app.SetLearningPlanner(learningPlanner)
 	}
 	startHHVacancyImporter(context.Background(), pool)
 	// Семантическая индексация: источники, созданные через POST /sources и

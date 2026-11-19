@@ -357,25 +357,35 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "план обучения требует PostgreSQL")
 			return
 		}
+		starter, ok := s.chat.(learningChatStarter)
+		if !ok || s.chat == nil {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "интервьюер для плана обучения не настроен")
+			return
+		}
 		if err := pgStore.SetRunType(run.ID, domain.RunTypeLearning); err != nil {
 			logging.Logger.Error("learning_run_type_store_failed", "run_id", run.ID, "error", err)
 			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 			return
 		}
-		if err := s.store.SetStage(run.ID, domain.StageAnalysis); err != nil {
+		if err := s.store.SetStage(run.ID, domain.StageInterview); err != nil {
 			logging.Logger.Error("learning_run_stage_store_failed", "run_id", run.ID, "error", err)
 			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 			return
 		}
-		run.Stage = domain.StageAnalysis
+		run.Stage = domain.StageInterview
+		if err := starter.StartLearning(run.ID, run.Profession); err != nil {
+			_ = s.store.SetStage(run.ID, domain.StageFailed)
+			logging.Logger.Error("learning_chat_start_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusBadGateway, "BAD_GATEWAY", err.Error())
+			return
+		}
 		stageEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
-			"stage":  string(domain.StageAnalysis),
+			"stage":  string(domain.StageInterview),
 			"status": string(domain.RunRunning),
 		})
 		if err := s.eventStore.Append(stageEvent); err != nil {
 			logging.Logger.Error("learning_stage_event_failed", "run_id", run.ID, "error", err)
 		}
-		s.runLearningPlan(run.ID, run.Profession)
 		writeJSON(w, http.StatusCreated, run)
 		return
 	}

@@ -58,6 +58,26 @@ func TestGenerateRejectsMalformedPlan(t *testing.T) {
 	}
 }
 
+func TestGenerateUsesInterviewBackground(t *testing.T) {
+	client := &fakeClient{answer: `{"summary":"x","weeks":8,"stages":[{"title":"Kubernetes","goal":"y","topics":["pods"],"practice":["deploy"]}]}`}
+	plan, err := GenerateWithBackground(
+		context.Background(),
+		client,
+		"DevOps-инженер",
+		nil,
+		"Пользователь уже знает Docker и Git, но не знает Kubernetes.",
+	)
+	if err != nil {
+		t.Fatalf("GenerateWithBackground: %v", err)
+	}
+	if len(plan.Stages) != 1 || plan.Stages[0].Title != "Kubernetes" {
+		t.Fatalf("unexpected plan: %+v", plan)
+	}
+	if !strings.Contains(client.prompt, "Docker") || !strings.Contains(client.prompt, "не знает Kubernetes") {
+		t.Fatalf("background not included in prompt: %q", client.prompt)
+	}
+}
+
 func TestGenerateNeedsClientAndStages(t *testing.T) {
 	if _, err := Generate(context.Background(), nil, "Аналитик", nil); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("nil client: %v", err)

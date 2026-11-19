@@ -99,13 +99,9 @@ export function NewResearch() {
   const canSubmit = !professionError && !submitting
 
   useEffect(() => {
-    if (learningMode) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setEstimate(null)
-      return
-    }
     const value = profession.trim()
     if (value.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEstimate(null)
       return
     }
@@ -114,7 +110,7 @@ export function NewResearch() {
       void (async () => {
         try {
           const { data, error } = await apiClient.GET("/runs/estimate", {
-            params: { query: { profession: value, type: "chat" } },
+            params: { query: { profession: value, type: runType } },
           })
           if (!cancelled) {
             setEstimate(
@@ -130,7 +126,7 @@ export function NewResearch() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [profession, learningMode])
+  }, [profession, runType])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -335,9 +331,11 @@ export function NewResearch() {
                 </p>
               )}
 
-              {estimate && !learningMode && (
+              {estimate && (
                 <div className="space-y-1 rounded-lg border bg-muted/20 p-3 text-xs">
-                  <p className="font-medium text-foreground">Оценка до запуска</p>
+                  <p className="font-medium text-foreground">
+                    {learningMode ? "Оценка до запуска: интервью и план" : "Оценка до запуска"}
+                  </p>
                   <p className="text-muted-foreground">
                     ~{estimate.estimated_tokens.toLocaleString("ru-RU")} токенов · ~
                     {Math.max(1, Math.round(estimate.estimated_duration_seconds / 60))} мин ·{" "}

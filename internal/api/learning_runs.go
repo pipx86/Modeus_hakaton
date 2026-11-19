@@ -1,19 +1,13 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"time"
 
-	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/learning"
-	"activity-descriptor/internal/logging"
 
 	"github.com/jackc/pgx/v5"
 )
-
-const learningPlanTimeout = 2 * time.Minute
 
 // SaveLearningPlan stores the generated plan for a learning run.
 func (p *PGStore) SaveLearningPlan(runID string, plan learning.Plan) error {
@@ -49,35 +43,4 @@ func (p *PGStore) GetLearningPlan(runID string) (learning.Plan, error) {
 		return learning.Plan{}, err
 	}
 	return plan, nil
-}
-
-// runLearningPlan generates and persists one learning run in the background.
-func (s *Server) runLearningPlan(runID, profession string) {
-	if s.learningPlan == nil {
-		_ = s.store.SetStage(runID, domain.StageFailed)
-		return
-	}
-	pgStore, ok := s.store.(*PGStore)
-	if !ok {
-		_ = s.store.SetStage(runID, domain.StageFailed)
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), learningPlanTimeout)
-		defer cancel()
-		plan, err := s.learningPlan.Plan(ctx, profession)
-		if err != nil {
-			logging.Logger.Error("learning_plan_failed", "run_id", runID, "error", err)
-			_ = s.store.SetStage(runID, domain.StageFailed)
-			return
-		}
-		if err := pgStore.SaveLearningPlan(runID, plan); err != nil {
-			logging.Logger.Error("learning_plan_save_failed", "run_id", runID, "error", err)
-			_ = s.store.SetStage(runID, domain.StageFailed)
-			return
-		}
-		if err := s.store.SetStage(runID, domain.StageDone); err != nil {
-			logging.Logger.Error("learning_plan_stage_failed", "run_id", runID, "error", err)
-		}
-	}()
 }

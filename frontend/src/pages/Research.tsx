@@ -1714,7 +1714,18 @@ export function Research() {
         )}
       </div>
       {run?.type === "learning" ? (
-        <LearningPlanView runId={id} status={run.status} />
+        run.status === "done" || run.status === "failed" ? (
+          <LearningPlanView runId={id} status={run.status} />
+        ) : (
+          <ChatTab
+            runId={id}
+            active={!loading && !error}
+            runStatus={run?.status}
+            stage={run?.stage}
+            focus={chatFocus}
+            readOnly={chatReadOnly}
+          />
+        )
       ) : (
       <Tabs value={tab} onValueChange={setTab} className="flex-col">
         <TabsList className="h-9 items-center" data-print-hide>

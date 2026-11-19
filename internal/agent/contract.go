@@ -108,6 +108,9 @@ type InterviewerInput struct {
 	NextLevel         domain.QuestionLevel `json:"next_level"`
 	NeedClarification bool                 `json:"need_clarification,omitempty"`
 	MaxQuestions      int                  `json:"max_questions,omitempty"`
+	// Learning switches the interviewer from an expert activity interview to
+	// a beginner learning interview: first find out what the person can do.
+	Learning bool `json:"learning,omitempty"`
 }
 
 // InterviewerOutput is the next question plus its reasoning. The question level

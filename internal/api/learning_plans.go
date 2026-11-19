@@ -15,6 +15,11 @@ type LearningPlanner interface {
 	Plan(ctx context.Context, profession string) (learning.Plan, error)
 }
 
+// learningChatStarter is implemented by chat.Service for the learning flow.
+type learningChatStarter interface {
+	StartLearning(runID, profession string) error
+}
+
 // handleGetLearningPlan returns the persisted plan of a learning run.
 func (s *Server) handleGetLearningPlan(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser, auth.RoleSpecialist) {

@@ -92,6 +92,7 @@ type Finalizer func(ctx context.Context, runID, profession string, session domai
 type SourceContextLoader func(runID, profession string) string
 
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
+const learningWelcomeMessage = "Здравствуйте! Я помогу составить план обучения. Сначала задам несколько вопросов о вашем текущем опыте и знаниях, чтобы не повторять то, что вы уже умеете."
 
 // resumeMode records what the dialog still owes when a session was restored
 // from the database: either the next question or the post-interview pipeline.
@@ -136,6 +137,7 @@ type session struct {
 	asking      bool
 	finalizing  bool
 	finished    bool
+	learning    bool
 	resume      resumeMode
 	subscribers map[chan Event]struct{}
 }
@@ -247,7 +249,18 @@ func (s *Service) newAgent(version string) (*interviewer.Agent, error) {
 }
 
 // Start creates the interview session and asks the first question.
+// Start creates the interview session and asks the first question.
 func (s *Service) Start(runID, profession string) error {
+	return s.start(runID, profession, false)
+}
+
+// StartLearning starts the beginner-oriented interview and asks about the
+// skills the person already has before the learning plan is generated.
+func (s *Service) StartLearning(runID, profession string) error {
+	return s.start(runID, profession, true)
+}
+
+func (s *Service) start(runID, profession string, learning bool) error {
 	if runID == "" {
 		return fmt.Errorf("chat: run id is required")
 	}
@@ -266,6 +279,7 @@ func (s *Service) Start(runID, profession string) error {
 	if err != nil {
 		return fmt.Errorf("chat: session: %w", err)
 	}
+	interview.SetLearning(learning)
 	interview.SetSourceContext(s.sourceContextFor(runID, profession))
 
 	s.mu.Lock()
@@ -278,6 +292,7 @@ func (s *Service) Start(runID, profession string) error {
 		profession:    profession,
 		promptVersion: promptVersion,
 		session:       interview,
+		learning:      learning,
 		subscribers:   make(map[chan Event]struct{}),
 	}
 	s.sessions[runID] = sess
@@ -286,7 +301,11 @@ func (s *Service) Start(runID, profession string) error {
 	// The greeting is persisted together with the initial snapshot: after a
 	// restart the dialog history and the session cursor are never out of sync.
 	sess.mu.Lock()
-	message := newMessage(runID, 1, "agent", welcomeMessage)
+	greeting := welcomeMessage
+	if learning {
+		greeting = learningWelcomeMessage
+	}
+	message := newMessage(runID, 1, "agent", greeting)
 	if err := s.persistStep(sess, s.snapshotLocked(sess, SessionActive, ""), []Message{message}); err != nil {
 		sess.mu.Unlock()
 		s.mu.Lock()

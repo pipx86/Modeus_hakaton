@@ -35,6 +35,12 @@ type Stage struct {
 // answer with strict JSON; malformed answers are rejected instead of being
 // rendered as a half-broken plan.
 func Generate(ctx context.Context, client llm.ChatClient, profession string, sources []domain.Source) (Plan, error) {
+	return GenerateWithBackground(ctx, client, profession, sources, "")
+}
+
+// GenerateWithBackground also uses the user's interview answers, so the plan
+// starts from what the person already knows instead of repeating the basics.
+func GenerateWithBackground(ctx context.Context, client llm.ChatClient, profession string, sources []domain.Source, background string) (Plan, error) {
 	if client == nil {
 		return Plan{}, ErrUnavailable
 	}
@@ -42,7 +48,7 @@ func Generate(ctx context.Context, client llm.ChatClient, profession string, sou
 	if profession == "" {
 		return Plan{}, errors.New("profession is empty")
 	}
-	prompt := buildPrompt(profession, sources)
+	prompt := buildPrompt(profession, sources, background)
 	answer, err := client.Chat(ctx, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 	if err != nil {
 		return Plan{}, fmt.Errorf("learning plan llm: %w", err)
@@ -59,7 +65,7 @@ func Generate(ctx context.Context, client llm.ChatClient, profession string, sou
 	return plan, nil
 }
 
-func buildPrompt(profession string, sources []domain.Source) string {
+func buildPrompt(profession string, sources []domain.Source, background string) string {
 	var contextBuilder strings.Builder
 	for index, source := range sources {
 		if index >= 8 {
@@ -77,10 +83,22 @@ func buildPrompt(profession string, sources []domain.Source) string {
 	if contextBuilder.Len() == 0 {
 		contextBuilder.WriteString("Источники не переданы. Опирайся на актуальные требования рынка и здравый смысл.")
 	}
-	return fmt.Sprintf(`Ты карьерный методист. Составь актуальный план обучения профессии «%s» для новичка без опыта.
+	background = strings.TrimSpace(background)
+	if len([]rune(background)) > 5000 {
+		background = string([]rune(background)[:5000]) + "…"
+	}
+	if background == "" {
+		background = "Пользователь не сообщил предыдущий опыт. Считай, что он начинает с нуля."
+	}
+	return fmt.Sprintf(`Ты карьерный методист. Составь актуальный план обучения профессии «%s» для новичка.
+
+Что пользователь уже умеет и какой опыт указал в интервью:
+%s
 
 Требования:
 - опирайся на требования из вакансий и материалов ниже;
+- не повторяй темы, которые пользователь уже уверенно знает; начни с ближайшего пробела;
+- если опыта мало, начни с базы; если опыта больше, сократи вводные этапы;
 - план должен быть практическим: что изучить, что сделать руками и в каком порядке;
 - 4-6 этапов, в каждом 3-5 тем и 2-4 практических задания;
 - без воды, без мотивационных лозунгов, без выдуманных ссылок;
@@ -88,7 +106,7 @@ func buildPrompt(profession string, sources []domain.Source) string {
 - верни строго JSON без markdown и пояснений:
 {"summary":"краткое описание пути","weeks":12,"stages":[{"title":"этап","goal":"цель этапа","topics":["тема"],"practice":["задание"]}]}
 
-Источники:%s`, profession, contextBuilder.String())
+Источники:%s`, profession, background, contextBuilder.String())
 }
 
 func normalize(plan *Plan) {
