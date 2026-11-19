@@ -229,6 +229,10 @@ n8n was byte-identical to `.secrets/smtp.env`, which proved the transport was
 fine and the app password itself was the problem. Keep this in mind when 535
 appears; no secrets are recorded here.
 
+To route mail through a local Postfix relay instead of talking to Gmail from
+n8n directly, see [Local SMTP relay + Cloudflare webhook](#local-smtp-relay--cloudflare-webhook-verified)
+below.
+
 When Gmail returns 535 `BadCredentials`:
 
 * confirm the App Password was created while signed in to the **same** account
@@ -280,6 +284,101 @@ Security caveats for a quick tunnel (read before repeating this):
 * the quick-tunnel hostname changes on every run. A Notion automation that
   keeps a stale URL fails and Notion pauses it, so a stable HTTPS hostname is
   required for production.
+
+### Local SMTP relay + Cloudflare webhook (verified)
+
+Production-shaped path that keeps SMTP local and never exposes it to the
+internet:
+
+```
+external POST (JSON)
+   │ HTTPS
+   ▼
+Cloudflare quick tunnel  ── webhook only: Cloudflare does NOT proxy SMTP
+   │ HTTPS -> localhost:5678
+   ▼
+n8n 1.63.4 (Docker project `n8ngmail`)
+   │ plain SMTP :587, no inbound AUTH (compose network only)
+   ▼
+local Postfix relay (deploy/n8n/docker-compose.smtp-relay.yml, no host ports)
+   │ smtp.gmail.com:587, STARTTLS + SASL AUTH (Gmail App Password)
+   ▼
+recipient mailbox
+```
+
+The relay is defined in a separate compose file so the root
+`docker-compose.yml` stays untouched; it joins the same Docker project/network
+(`name: n8ngmail`), publishes **no** host ports, accepts plain SMTP only from
+the compose network, allows only senders from `ALLOWED_SENDER_DOMAINS`
+(default `gmail.com`) and authenticates to Gmail as `SMTP_USER` with
+`SMTP_PASS`. Both values are injected from the git-ignored
+`.secrets/smtp.env`; never commit them.
+
+```bash
+# start / inspect the relay (bash)
+set -a; . ./.secrets/smtp.env; set +a
+docker compose -f deploy/n8n/docker-compose.smtp-relay.yml up -d postfix
+docker compose -f deploy/n8n/docker-compose.smtp-relay.yml logs -f postfix
+
+# Windows PowerShell
+Get-Content .secrets\smtp.env | ForEach-Object {
+  if ($_ -match '^(?<k>[A-Za-z_][A-Za-z0-9_]*)=(?<v>.*)$') { Set-Item "env:$($Matches.k)" $Matches.v }
+}
+docker compose -f deploy/n8n/docker-compose.smtp-relay.yml up -d postfix
+```
+
+Point n8n at the relay — credential `REPLACE_WITH_SMTP_CREDENTIAL_ID`
+(`host: postfix`, `port: 587`, `secure: false`, `disableStartTls: true`, empty
+user/password) and recreate the n8n container with:
+
+| Variable | Value |
+| -------- | ----- |
+| `SMTP_HOST` / `SMTP_PORT` | `postfix` / `587` |
+| `SMTP_USER` / `SMTP_PASS` | any non-empty placeholder — the *Normalize payload* pre-flight check requires the six `SMTP_*` names, but the actual transport is the SMTP credential and the local relay has no inbound auth |
+| `MAIL_FROM` | the Gmail account (must match the relay auth user / allowed sender domain) |
+| `MAIL_TO` | recipient mailbox |
+| `N8N_WEBHOOK_URL` | public tunnel URL |
+
+```bash
+docker compose -p n8ngmail --profile automation up -d n8n   # recreate with new env
+```
+
+Verified on 2026-11-19 with the committed workflow imported unchanged:
+
+| Check | Observed result |
+| ----- | --------------- |
+| public `POST /webhook/notion-notify` | HTTP `200 accepted` via the Cloudflare edge |
+| n8n execution | `id=5`, `status: success`, path `Webhook → Normalize payload → Config missing? → Send email via SMTP → Summary: email sent` |
+| n8n SMTP response (local relay) | `250 2.0.0 Ok: queued as 6FCA773A1D` (postfix accepted, no AUTH needed) |
+| Postfix log | `6FCA773A1D: to=<opik@sfedu.ru>, relay=smtp.gmail.com[173.194.73.108]:587, delay=1.6, dsn=2.0.0, status=sent (250 2.0.0 OK … - gsmtp)` |
+| mailbox check (IMAP) | message present in Sent Mail + All Mail: From `opikmaks06@gmail.com` → To `opik@sfedu.ru`, subject `[Notion] page.updated: Local relay final E2E 2026-11-19T08:45:58Z` |
+| exposure | relay publishes **no host ports** (`docker port` empty); it listens on 25/587 only inside the compose network; `postqueue -p` empty after delivery |
+
+Limitations and caveats:
+
+* **Cloudflare is only the webhook transport.** Cloudflare quick tunnel
+  terminates HTTPS and forwards the POST to n8n; it does not, and cannot,
+  proxy SMTP. The Postfix relay talks to Gmail directly from the Docker host.
+* A local machine (Windows/home network) cannot be a public internet-facing
+  SMTP server: direct MX delivery needs a public IP with **port 25**, a
+  matching **PTR**, and SPF/DKIM — that requires a VPS or an SMTP relay
+  provider, not Cloudflare. That is exactly why the relay uses the Gmail
+  smarthost: no inbound SMTP exposure, Gmail signs/delivers.
+* The relay trusts its Docker network and has no inbound auth/TLS. Never
+  publish `25`/`587` on the host, never tunnel them, and add firewall +
+  SASL if it must be shared. The app password is visible to `docker inspect`
+  on the host — keep host access controlled and restart needs the env export
+  again.
+* With the relay, n8n's `250` means "Postfix queued it"; final delivery
+  confirmation is the Postfix log line with Gmail's `250 … status=sent`.
+  Direct-Gmail mode (section above) returns Gmail's `250` synchronously.
+* Gmail limits apply (personal account: ~500 recipients/day, `From` must match
+  the authenticated account, App Password + 2FA). See the 535 troubleshooting
+  in the Gmail section above.
+* `MAIL_FROM`/`MAIL_TO` are read from the n8n container environment — edit
+  `.secrets/smtp.env` and recreate n8n to apply.
+* Avoid `--remove-orphans` on the root compose file while the relay runs: the
+  relay is an "orphan" for that file by design and would be removed.
 
 ### Notion automation (not created: no workspace/token)
 

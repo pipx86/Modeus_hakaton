@@ -1,0 +1,53 @@
+# Local SMTP relay (Postfix smarthost) for the n8n automation stack.
+#
+#   external POST -> Cloudflare quick tunnel -> n8n webhook (localhost:5678)
+#     -> postfix:587   (this service, Docker network `n8ngmail_default` only)
+#     -> smtp.gmail.com:587  (STARTTLS + SASL AUTH with a Gmail App Password)
+#     -> recipient mailbox
+#
+# Cloudflare terminates only the public HTTPS webhook request; it does not and
+# cannot proxy SMTP. The relay itself is not published on the host: it is
+# reachable only from the compose network (no `ports:` mapping below).
+#
+# The Gmail App Password is injected from the local, git-ignored
+# `.secrets/smtp.env` via the environment; never commit it here.
+#
+# Usage (same Docker project/network as n8n + postgres):
+#
+#   set -a; . ./.secrets/smtp.env; set +a          # bash / zsh
+#   docker compose -f deploy/n8n/docker-compose.smtp-relay.yml up -d postfix
+#   docker compose -f deploy/n8n/docker-compose.smtp-relay.yml logs -f postfix
+#
+# Windows PowerShell equivalent:
+#   Get-Content .secrets\smtp.env | ForEach-Object {
+#     if ($_ -match '^(?<k>[A-Za-z_][A-Za-z0-9_]*)=(?<v>.*)$') {
+#       Set-Item -Path "env:$($Matches.k)" -Value $Matches.v
+#     }
+#   }
+#   docker compose -f deploy/n8n/docker-compose.smtp-relay.yml up -d postfix
+#
+# n8n then uses SMTP host `postfix`, port 587, STARTTLS disabled, no auth: the
+# relay accepts mail only from the Docker network and authenticates to Gmail
+# itself. See docs/N8N.md ("Local SMTP relay + Cloudflare webhook").
+
+name: n8ngmail
+
+services:
+  postfix:
+    image: boky/postfix:v5.2.1
+    restart: unless-stopped
+    environment:
+      # Relay everything to Gmail submission; Postfix authenticates with the
+      # app password and negotiates STARTTLS (`encrypt` = require TLS).
+      RELAYHOST: "smtp.gmail.com:587"
+      RELAYHOST_USERNAME: "${SMTP_USER:?export SMTP_USER from .secrets/smtp.env}"
+      RELAYHOST_PASSWORD: "${SMTP_PASS:?export SMTP_PASS from .secrets/smtp.env}"
+      POSTFIX_smtp_tls_security_level: "encrypt"
+      POSTFIX_myhostname: "n8n-postfix-relay"
+      # Only mail from this sender domain may be relayed (must match MAIL_FROM).
+      ALLOWED_SENDER_DOMAINS: "${RELAY_SENDER_DOMAIN:-gmail.com}"
+      # Inbound side is Docker-network only and speaks plain SMTP to n8n
+      # (n8n credential has `disableStartTls: true`); no STARTTLS is offered.
+      POSTFIX_smtpd_tls_security_level: "none"
+    networks:
+      - default
