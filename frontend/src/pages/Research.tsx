@@ -1336,42 +1336,28 @@ function TreeTab({
               </span>
             )}
           </div>
-          {(cost.by_model.length > 0 || cost.by_agent.length > 0) && (
+          {cost.by_agent.length > 0 && (
             <details className="border-t pt-2" open>
               <summary className="cursor-pointer select-none text-foreground/80">
-                Детализация токенов по моделям и агентам
+                Детализация токенов по агентам
               </summary>
-              <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                {(
-                  [
-                    ["Модели", cost.by_model.map((item) => ({ name: item.model, ...item }))],
-                    ["Агенты", cost.by_agent.map((item) => ({ name: item.agent, ...item }))],
-                  ] as const
-                ).map(([title, items]) => (
-                  <div key={title} className="space-y-1">
-                    <p className="font-medium text-foreground/80">{title}</p>
-                    {items.length === 0 ? (
-                      <p>Нет данных</p>
-                    ) : (
-                      items.map((item) => (
-                        <div key={item.name} className="space-y-0.5">
-                          <div className="flex justify-between gap-2">
-                            <span className="truncate" title={item.name}>
-                              {item.name}
-                            </span>
-                            <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
-                          </div>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{
-                                width: `${cost.total_tokens > 0 ? (item.total_tokens / cost.total_tokens) * 100 : 0}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))
-                    )}
+              <div className="mt-2 space-y-2">
+                {cost.by_agent.map((item) => (
+                  <div key={item.agent} className="space-y-0.5">
+                    <div className="flex justify-between gap-2">
+                      <span className="truncate" title={item.agent}>
+                        {item.agent}
+                      </span>
+                      <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${cost.total_tokens > 0 ? (item.total_tokens / cost.total_tokens) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
