@@ -13,6 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func TestVacancyContentStripsHighlightTags(t *testing.T) {
+	v := Vacancy{ID: "1", Name: "Backend", Description: "Нужен <highlighttext>backend</highlighttext> &amp; SQL"}
+	if got := v.content(); got != "Нужен backend & SQL" {
+		t.Fatalf("content = %q", got)
+	}
+}
+
 func TestФорматыВакансий(t *testing.T) {
 	for _, tc := range []struct{ format, data string }{
 		{"json", `[{"id":"123","name":"Разработчик"}]`},

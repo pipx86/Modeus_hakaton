@@ -86,6 +86,11 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 // after all questions are answered and before the run is marked done.
 type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
 
+// SourceContextLoader builds a compact summary of vacancies and materials
+// relevant to the profession. It is best-effort: an error or empty string just
+// leaves the interviewer without extra context.
+type SourceContextLoader func(runID, profession string) string
+
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
 // resumeMode records what the dialog still owes when a session was restored
@@ -104,6 +109,7 @@ type Service struct {
 	finalizer     Finalizer
 	onFinish      func(runID string, status domain.RunStatus)
 	promptVersion string
+	sourceContext SourceContextLoader
 
 	mu           sync.Mutex
 	sessions     map[string]*session
@@ -209,6 +215,24 @@ func (s *Service) SetPromptVersion(version string) {
 	s.promptVersion = version
 }
 
+// SetSourceContextLoader installs a best-effort provider of vacancy/material
+// context for new and restored interviewer sessions.
+func (s *Service) SetSourceContextLoader(loader SourceContextLoader) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sourceContext = loader
+}
+
+func (s *Service) sourceContextFor(runID, profession string) string {
+	s.mu.Lock()
+	loader := s.sourceContext
+	s.mu.Unlock()
+	if loader == nil {
+		return ""
+	}
+	return loader(runID, profession)
+}
+
 // newAgent builds the interviewer agent for one session.
 func (s *Service) newAgent(version string) (*interviewer.Agent, error) {
 	opts := []interviewer.Option{}
@@ -242,6 +266,7 @@ func (s *Service) Start(runID, profession string) error {
 	if err != nil {
 		return fmt.Errorf("chat: session: %w", err)
 	}
+	interview.SetSourceContext(s.sourceContextFor(runID, profession))
 
 	s.mu.Lock()
 	if _, exists := s.sessions[runID]; exists {
@@ -525,6 +550,7 @@ func (s *Service) restore(runID string, store SessionStore) (*session, error) {
 		s.notifyFinish(runID, domain.RunFailed)
 		return nil, ErrSessionInterrupted
 	}
+	interview.SetSourceContext(s.sourceContextFor(runID, snapshot.Profession))
 	messages, err := store.ListMessages(ctx, runID)
 	if err != nil {
 		return nil, fmt.Errorf("chat: load messages: %w", err)

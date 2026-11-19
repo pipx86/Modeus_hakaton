@@ -38,6 +38,20 @@ type AgentAnalysisStep struct {
 	Client llm.ChatClient
 	// PromptVersion pins the analyst prompt version (empty means the default v1).
 	PromptVersion string
+	// RunSources and GlobalSources are optional best-effort loaders for the
+	// materials that must be visible to the analyst alongside the transcript.
+	RunSources    RunSourceLoader
+	GlobalSources GlobalSourceLoader
+}
+
+// RunSourceLoader returns the sources linked to one run.
+type RunSourceLoader interface {
+	ListRunSourceContents(ctx context.Context, runID string) ([]domain.Source, error)
+}
+
+// GlobalSourceLoader returns admin-uploaded materials shared by all runs.
+type GlobalSourceLoader interface {
+	ListGlobalSources(limit int) ([]domain.Source, error)
 }
 
 // Name implements domain.Step.
@@ -49,9 +63,10 @@ func (s *AgentAnalysisStep) Execute(ctx context.Context, run *domain.Run) error 
 	return s.ExecuteWithData(ctx, run, nil)
 }
 
-// ExecuteWithData implements domain.DataStep. Vacancies are not used: the
-// transcript is the primary source for an interview-backed batch run.
-func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, _ []domain.VacancyRecord) error {
+// ExecuteWithData implements domain.DataStep. The transcript is the primary
+// input; linked run sources, admin materials and profession vacancies are added
+// as supporting evidence when loaders are configured.
+func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, vacancies []domain.VacancyRecord) error {
 	if run == nil {
 		return fmt.Errorf("agent analysis step: run is nil")
 	}
@@ -79,6 +94,7 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 		SessionID:  run.ID,
 		Profession: run.Profession,
 		Transcript: transcript,
+		Sources:    s.analysisSources(ctx, run.ID, vacancies),
 	})
 	if err != nil {
 		return fmt.Errorf("agent analysis step: analyze: %w", err)
@@ -93,6 +109,58 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	}
 	run.Data[DataKeyInterviewNodes] = nodes
 	return nil
+}
+
+// analysisSources merges admin materials, linked run sources and vacancies.
+// Duplicate ids are collapsed; the interview transcript is not repeated because
+// the analyst receives it in a dedicated field.
+func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID string, vacancies []domain.VacancyRecord) []domain.Source {
+	sources := make([]domain.Source, 0, len(vacancies)+8)
+	if s.GlobalSources != nil {
+		if global, err := s.GlobalSources.ListGlobalSources(5); err == nil {
+			sources = append(sources, global...)
+		}
+	}
+	if s.RunSources != nil {
+		if linked, err := s.RunSources.ListRunSourceContents(ctx, runID); err == nil {
+			sources = append(sources, linked...)
+		}
+	}
+	for _, vacancy := range vacancies {
+		if strings.TrimSpace(vacancy.SourceID) == "" || strings.TrimSpace(vacancy.Description) == "" {
+			continue
+		}
+		if s.RunSources == nil && s.GlobalSources == nil {
+			// A bare step without source loaders keeps the historical
+			// transcript-only behaviour used by direct callers and tests.
+			break
+		}
+		sources = append(sources, domain.Source{
+			ID:        vacancy.SourceID,
+			Type:      domain.SourceVacancy,
+			Title:     vacancy.Title,
+			Content:   vacancy.Description,
+			SourceURL: vacancy.SourceURL,
+		})
+	}
+
+	unique := make([]domain.Source, 0, len(sources))
+	seen := make(map[string]bool, len(sources))
+	for _, source := range sources {
+		if source.Type == domain.SourceInterview || strings.TrimSpace(source.Content) == "" {
+			continue
+		}
+		key := source.ID
+		if key == "" {
+			key = source.Title + "\x00" + source.Content
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		unique = append(unique, source)
+	}
+	return unique
 }
 
 // AgentSynthesisStep merges interview nodes into one tree and stores the result

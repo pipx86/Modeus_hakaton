@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,11 +50,17 @@ type Counts struct {
 	Skipped  int `json:"skipped"`
 }
 
+var vacancyTagPattern = regexp.MustCompile(`<[^>]+>`)
+
+func cleanVacancyText(value string) string {
+	return strings.TrimSpace(html.UnescapeString(vacancyTagPattern.ReplaceAllString(value, "")))
+}
+
 func (v Vacancy) content() string {
-	if v.Description != "" {
-		return v.Description
+	if description := cleanVacancyText(v.Description); description != "" {
+		return description
 	}
-	return strings.TrimSpace(strings.Join([]string{v.Snippet.Requirement, v.Snippet.Responsibility}, "\n"))
+	return cleanVacancyText(strings.Join([]string{v.Snippet.Requirement, v.Snippet.Responsibility}, "\n"))
 }
 
 func (v Vacancy) publicationTime() (pgtype.Timestamptz, error) {

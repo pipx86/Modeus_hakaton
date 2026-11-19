@@ -170,6 +170,8 @@ func run(ctx context.Context, c config) error {
 		"synthesizer_prompt_version", synthesizerVersion,
 		"ai_step_timeout", batchPlan.AITimeout,
 		"vacancy_step_timeout", batchPlan.FallbackTimeout)
+	st := store.New(pool)
+	vacancyReader := store.NewVacancyAdapter(st)
 	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
 		metricsRegistry.ObserveRun(string(status), 0)
 		if err := pgStore.SetStatus(runID, status); err != nil {
@@ -183,6 +185,7 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
+	chatService.SetSourceContextLoader(newInterviewSourceContext(pgStore, vacancyReader))
 	// Persist the dialog and the interviewer session cursor, so chat history
 	// survives restarts and an active interview resumes instead of hanging.
 	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
@@ -192,6 +195,7 @@ func run(ctx context.Context, c config) error {
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
+	startHHVacancyImporter(context.Background(), pool)
 	// Семантическая индексация: источники, созданные через POST /sources и
 	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).
 	// Уже существующие источники догоняет cmd/index-sources (README.md).
@@ -232,9 +236,7 @@ func run(ctx context.Context, c config) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
 
-	st := store.New(pool)
-	reader := store.NewVacancyAdapter(st)
-	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
+	resumer := api.NewResumeProcessor(pgStore, pgStore, vacancyReader)
 	resumer.SetBatchPlan(batchPlan)
 	app.BindResumeProcessor(resumer)
 	// A restart may have interrupted a chat run between two durable steps:

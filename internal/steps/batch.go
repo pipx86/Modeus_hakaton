@@ -89,9 +89,16 @@ func AISteps(analystClient llm.ChatClient, synth Synthesizer, store AITreeStore,
 	if analystClient == nil || synth == nil || store == nil {
 		return nil
 	}
+	analysisStep := &AgentAnalysisStep{Client: analystClient, PromptVersion: analystPromptVersion}
+	if loader, ok := store.(RunSourceLoader); ok {
+		analysisStep.RunSources = loader
+	}
+	if loader, ok := store.(GlobalSourceLoader); ok {
+		analysisStep.GlobalSources = loader
+	}
 	return []domain.Step{
 		&InterviewStep{},
-		&AgentAnalysisStep{Client: analystClient, PromptVersion: analystPromptVersion},
+		analysisStep,
 		&AgentSynthesisStep{Synthesizer: synth},
 		&SaveAITreeStep{Store: store},
 	}

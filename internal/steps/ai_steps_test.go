@@ -148,9 +148,12 @@ func (s *fakeAITreeStore) Saved(runID string) []domain.Node {
 }
 
 // fakeVacancyReader provides deterministic vacancy data for the fallback chain.
-type fakeVacancyReader struct{}
+type fakeVacancyReader struct{ empty bool }
 
-func (fakeVacancyReader) ByProfession(_ context.Context, _ string, _ int) ([]domain.VacancyRecord, error) {
+func (r fakeVacancyReader) ByProfession(_ context.Context, _ string, _ int) ([]domain.VacancyRecord, error) {
+	if r.empty {
+		return nil, nil
+	}
 	return []domain.VacancyRecord{{
 		ID:          "v1",
 		SourceID:    "11111111-1111-4111-8111-111111111111",
@@ -166,6 +169,44 @@ func newRealSynthesizer(t *testing.T) Synthesizer {
 		t.Fatalf("synthesizer.New: %v", err)
 	}
 	return agentInstance
+}
+
+type staticSourceLoader struct {
+	sources []domain.Source
+}
+
+func (l staticSourceLoader) ListRunSourceContents(context.Context, string) ([]domain.Source, error) {
+	return l.sources, nil
+}
+
+func (l staticSourceLoader) ListGlobalSources(int) ([]domain.Source, error) {
+	return l.sources, nil
+}
+
+func TestAnalysisSourcesMergesMaterialsRunSourcesAndVacancies(t *testing.T) {
+	step := &AgentAnalysisStep{
+		GlobalSources: staticSourceLoader{sources: []domain.Source{
+			{ID: "doc-1", Type: domain.SourceDocument, Title: "Материал", Content: "Практика"},
+			{ID: "interview-1", Type: domain.SourceInterview, Content: "дубль транскрипта"},
+		}},
+		RunSources: staticSourceLoader{sources: []domain.Source{
+			{ID: "doc-1", Type: domain.SourceDocument, Title: "Материал", Content: "Практика"},
+			{ID: "std-1", Type: domain.SourceStandard, Title: "Стандарт", Content: "Требования"},
+		}},
+	}
+	sources := step.analysisSources(context.Background(), "run-1", []domain.VacancyRecord{{
+		ID: "v1", SourceID: "vac-1", Title: "Backend", Description: "Go и SQL",
+	}})
+	if len(sources) != 3 {
+		t.Fatalf("sources = %#v, want 3", sources)
+	}
+	ids := map[string]bool{}
+	for _, source := range sources {
+		ids[source.ID] = true
+	}
+	if !ids["doc-1"] || !ids["std-1"] || !ids["vac-1"] {
+		t.Fatalf("missing source ids: %#v", ids)
+	}
 }
 
 func TestAgentAnalysisAndSynthesisSteps(t *testing.T) {
