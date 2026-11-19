@@ -437,3 +437,34 @@ Still missing / requires a real environment:
    `cloudflared tunnel --url http://localhost:5678` for a temporary test, or a
    stable reverse proxy/named tunnel for real use — and point the Notion
    automation at `https://<host>/webhook/notion-notify` (steps above).
+
+## Run-completed email notifications (verified)
+
+The backend enqueues a `run.completed` outbox event; a separate worker delivers it to n8n, which sends the email through the local Postfix relay.
+
+```
+run completed -> agent_messages(run.completed) -> cmd/webhook-worker
+  -> POST /webhook/run-completed -> n8n -> local Postfix -> Gmail smarthost -> MAIL_TO
+```
+
+Start the worker (secrets only from local files):
+
+```powershell
+$env:DATABASE_URL = '<database url>'
+$env:WEBHOOK_URL = 'https://<public-host>/webhook/run-completed'
+$env:WEBHOOK_SECRET = '<shared secret>'
+go run ./cmd/webhook-worker
+```
+
+Import/activate `deploy/n8n/workflows/run_completed_email.json` with the same credential id as the other workflow (`REPLACE_WITH_SMTP_CREDENTIAL_ID`).
+
+Verified on 2026-11-19:
+
+| Check | Result |
+|---|---|
+| outbox worker | `run.completed event delivered`, row `status=sent` |
+| n8n execution | `id=10`, `status=success`, branch `Summary: email sent` (not error/skip) |
+| local Postfix | accepted `250 Ok: queued`, relay `smtp.gmail.com`, `status=sent` |
+| recipient | `opik@sfedu.ru`, subject `[Activity Descriptor] Анализ завершён: Data Analyst` |
+
+The worker is at-least-once; the n8n workflow deduplicates by `run_id` for 7 days. Do not expose `/webhook/run-completed` without auth for production.
