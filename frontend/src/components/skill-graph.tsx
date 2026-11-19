@@ -9,13 +9,14 @@ const RADIUS = 152
 const LABEL_RADIUS = RADIUS + 38
 
 const TYPE_STYLE: Record<string, { color: string; label: string }> = {
+  role: { color: "#a78bfa", label: "Роли" },
   function: { color: "#38bdf8", label: "Функции" },
   task: { color: "#f59e0b", label: "Задачи" },
   action: { color: "#34d399", label: "Действия" },
 }
 
 type Node = SkillGraphResponse["nodes"][number]
-type Filter = "all" | "function" | "task" | "action"
+type Filter = "all" | "role" | "function" | "task" | "action"
 
 interface Slice {
   node: Node
@@ -53,19 +54,31 @@ function buildSlices(nodes: Node[]): Slice[] {
   const available = Math.PI * 2 - gap * nodes.length
   const total = Math.max(
     1,
-    nodes.reduce((sum, node) => sum + node.count, 0),
+    nodes.reduce((sum, node) => sum + Math.max(1, node.count), 0),
   )
   let cursor = -Math.PI / 2
   return nodes.map((node) => {
-    const span = (available * node.count) / total
+    const span = (available * Math.max(1, node.count)) / total
     const slice = { node, start: cursor, end: cursor + span, mid: cursor + span / 2 }
     cursor += span + gap
     return slice
   })
 }
 
-/** Хордовая диаграмма связей: дуги по типам, хорды по совместной встречаемости. */
-export function SkillGraph({ data }: { data: SkillGraphResponse }) {
+/** Хордовая диаграмма связей: дуги по типам, хорды по связям узлов. */
+export function SkillGraph({
+  data,
+  sampleLabel = "Исследований",
+  nodeUnit = "иссл.",
+  edgeUnit = "Совместная встречаемость",
+  description,
+}: {
+  data: SkillGraphResponse
+  sampleLabel?: string
+  nodeUnit?: string
+  edgeUnit?: string
+  description?: string
+}) {
   const glowID = useId().replace(/:/g, "")
   const [hovered, setHovered] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>("all")
@@ -157,7 +170,9 @@ export function SkillGraph({ data }: { data: SkillGraphResponse }) {
             </button>
           )
         })}
-        <span className="ml-auto">Исследований: {data.sample_size}</span>
+        <span className="ml-auto">
+          {sampleLabel}: {data.sample_size}
+        </span>
       </div>
 
       <svg
@@ -217,7 +232,7 @@ export function SkillGraph({ data }: { data: SkillGraphResponse }) {
                 strokeLinecap="round"
                 pointerEvents="none"
               >
-                <title>{`Совместная встречаемость: ${edge.weight}`}</title>
+                <title>{`${edgeUnit}: ${edge.weight}`}</title>
               </path>
             </g>
           )
@@ -279,15 +294,15 @@ export function SkillGraph({ data }: { data: SkillGraphResponse }) {
                 className="fill-muted-foreground text-[9px]"
                 pointerEvents="none"
               >
-                {slice.node.count} иссл.
+                {slice.node.count} {nodeUnit}
               </text>
             </g>
           )
         })}
       </svg>
       <p className="text-xs text-muted-foreground">
-        Дуги - компетенции, хорды - совместная встречаемость. Наведите на дугу, чтобы выделить её
-        связи; переключайте типы узлов сверху. Размер дуги зависит от частоты.
+        {description ??
+          "Дуги - компетенции, хорды - совместная встречаемость. Наведите на дугу, чтобы выделить её связи; переключайте типы узлов сверху. Размер дуги зависит от частоты."}
       </p>
     </div>
   )

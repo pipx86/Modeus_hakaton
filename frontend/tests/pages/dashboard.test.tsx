@@ -57,19 +57,6 @@ describe("Dashboard", () => {
           },
         }
       }
-      if (url.endsWith("/api/v1/dashboard/skills")) {
-        return {
-          status: 200,
-          body: {
-            sample_size: 3,
-            nodes: [
-              { id: "n1", label: "Тестирование", type: "task", count: 3 },
-              { id: "n2", label: "Аналитика", type: "function", count: 2 },
-            ],
-            edges: [{ source: "n1", target: "n2", weight: 2 }],
-          },
-        }
-      }
       return {
         status: 200,
         body: [{ id: "1", profession: "Data Scientist", status: "done" }],
@@ -81,8 +68,6 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Карта корреляции")).toBeInTheDocument()
     expect(screen.getAllByText("Длительность, мин").length).toBeGreaterThan(0)
     expect(screen.getAllByText("0.50").length).toBeGreaterThan(0)
-    expect(await screen.findByText("Карта связей компетенций")).toBeInTheDocument()
-    expect(screen.getByText("Тестирование")).toBeInTheDocument()
   })
 
   it("считает количество исследований и активных", async () => {

@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
+import { SkillGraph } from "@/components/skill-graph"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
@@ -53,6 +54,7 @@ import {
 import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
+import { buildTreeChord } from "@/lib/tree-chord"
 import {
   CheckIcon,
   EyeIcon,
@@ -1082,12 +1084,14 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
+  const [view, setView] = useState<"list" | "map">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
     { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
   >([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const treeChord = useMemo(() => buildTreeChord(nodes), [nodes])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1466,7 +1470,43 @@ function TreeTab({
           </ul>
         )}
       </div>
-      <ActivityTree
+      <div className="mb-3 inline-flex rounded-lg border p-1" data-print-hide>
+        <Button
+          type="button"
+          size="sm"
+          variant={view === "list" ? "secondary" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setView("list")}
+        >
+          Список
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={view === "map" ? "secondary" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setView("map")}
+        >
+          Карта связей
+        </Button>
+      </div>
+      {view === "map" ? (
+        <div className="space-y-2">
+          <SkillGraph
+            data={treeChord.data}
+            sampleLabel="Узлов"
+            nodeUnit="цитат"
+            edgeUnit="Связь узлов"
+            description="Дуги - узлы дерева, хорды - связи «родитель → дочерний». Наведите на дугу, чтобы выделить ветку."
+          />
+          {treeChord.truncated > 0 && (
+            <p className="text-xs text-muted-foreground">
+              На карте первые {treeChord.data.nodes.length} узлов; ещё {treeChord.truncated} скрыто.
+            </p>
+          )}
+        </div>
+      ) : (
+        <ActivityTree
         nodes={nodes}
         approvedIds={approvedIds}
         statuses={statuses}
@@ -1480,6 +1520,7 @@ function TreeTab({
         insights={insights}
         readOnly={readOnly}
       />
+      )}
       <NodeEditDialog
         key={editing?.id ?? "closed"}
         node={editing}

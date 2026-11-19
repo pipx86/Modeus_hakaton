@@ -21,8 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { Donut, StackedBars } from "@/components/charts"
 import { CorrelationMap } from "@/components/correlation-map"
-import { SkillGraph } from "@/components/skill-graph"
-import { apiClient, type CorrelationResponse, type Run, type SkillGraphResponse } from "@/lib/api/client"
+import { apiClient, type CorrelationResponse, type Run } from "@/lib/api/client"
 import { getCurrentRole, getCurrentUserID } from "@/lib/auth"
 
 const DAYS = 14
@@ -80,8 +79,6 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [correlation, setCorrelation] = useState<CorrelationResponse | null>(null)
   const [correlationLoading, setCorrelationLoading] = useState(true)
-  const [skills, setSkills] = useState<SkillGraphResponse | null>(null)
-  const [skillsLoading, setSkillsLoading] = useState(true)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
   const canCreate = true
@@ -133,25 +130,6 @@ export function Dashboard() {
         // Карта необязательна: остальные виджеты дашборда должны остаться доступны.
       } finally {
         if (!cancelled) setCorrelationLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const { data } = await apiClient.GET("/dashboard/skills")
-        if (!cancelled && data && !Array.isArray(data) && "nodes" in data) {
-          setSkills(data)
-        }
-      } catch {
-        // Граф необязателен: остальные виджеты дашборда должны остаться доступны.
-      } finally {
-        if (!cancelled) setSkillsLoading(false)
       }
     })()
     return () => {
@@ -410,25 +388,6 @@ export function Dashboard() {
               ) : (
                 <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                   Не удалось загрузить карту корреляции. Остальные данные дашборда доступны.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Карта связей компетенций</CardTitle>
-              <CardDescription>
-                Функции, задачи и действия, которые встречаются в деревьях вместе.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {skillsLoading ? (
-                <Skeleton className="h-56 w-full" />
-              ) : skills ? (
-                <SkillGraph data={skills} />
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  Не удалось загрузить граф компетенций.
                 </p>
               )}
             </CardContent>
