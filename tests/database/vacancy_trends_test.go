@@ -45,7 +45,7 @@ func TestТрендПубликацийВакансий(t *testing.T) {
 	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	until := from.AddDate(0, 2, 0)
 	trend, err := ingestion.VacancyPublicationTrend(ctx, pool, title, from, until)
-	expected := []ingestion.VacancyMonth{{"2026-01", "hh", 1}, {"2026-02", "hh", 1}}
+	expected := []ingestion.VacancyMonth{{Month: "2026-01", Provider: "hh", Count: 1}, {Month: "2026-02", Provider: "hh", Count: 1}}
 	if err != nil || !reflect.DeepEqual(trend.ObservedMonthly, expected) || trend.WithoutDate != 1 {
 		t.Fatalf("тренд: %+v, %v", trend, err)
 	}
