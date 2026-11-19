@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"activity-descriptor/internal/ingestion"
 
@@ -21,15 +20,6 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) >= 2 && os.Args[1] == "export-vacancies" {
-		return runVacancyArchive(os.Args[2:], os.Stdout)
-	}
-	if len(os.Args) >= 2 && os.Args[1] == "skill-history" {
-		return runSkillHistory(os.Args[2:], os.Stdout)
-	}
-	if len(os.Args) >= 2 && os.Args[1] == "forecast-audit" {
-		return runForecastAudit(os.Args[2:], os.Stdout)
-	}
 	if len(os.Args) >= 2 && os.Args[1] == "vacancy-trends" {
 		return runVacancyTrends(os.Args[2:], os.Stdout)
 	}
@@ -65,17 +55,17 @@ func run() error {
 	if *file != "" {
 		items, err = ingestion.ReadVacancyFile(*file, *format)
 	} else {
-		accessToken := strings.TrimSpace(os.Getenv("HH_ACCESS_TOKEN"))
-		if accessToken == "" {
-			clientID := strings.TrimSpace(os.Getenv("HH_CLIENT_ID"))
-			clientSecret := strings.TrimSpace(os.Getenv("HH_CLIENT_SECRET"))
-			if clientID != "" && clientSecret != "" {
-				token, tokenErr := ingestion.FetchHHApplicationToken(ctx, ingestion.DefaultHTTPClient(), os.Getenv("HH_TOKEN_URL"), clientID, clientSecret, os.Getenv("HH_USER_AGENT"))
-				if tokenErr != nil {
-					return tokenErr
-				}
-				accessToken = token.AccessToken
-			}
+		tokenSrc := ingestion.NewHHTokenSource(
+			ingestion.DefaultHTTPClient(),
+			os.Getenv("HH_TOKEN_URL"),
+			os.Getenv("HH_CLIENT_ID"),
+			os.Getenv("HH_CLIENT_SECRET"),
+			os.Getenv("HH_USER_AGENT"),
+			os.Getenv("HH_ACCESS_TOKEN"),
+		)
+		accessToken, tokenErr := tokenSrc.Token(ctx)
+		if tokenErr != nil {
+			return tokenErr
 		}
 		items, err = ingestion.FetchHH(ctx, ingestion.DefaultHTTPClient(), "https://api.hh.ru/vacancies", *query, os.Getenv("HH_USER_AGENT"), accessToken, *pages)
 	}
