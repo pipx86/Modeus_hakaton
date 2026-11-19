@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { Research } from "@/pages/Research"
+import { clearToken, storeToken } from "@/lib/auth"
 
 function renderPage(runId = "7", search = "") {
   return render(
@@ -13,6 +14,16 @@ function renderPage(runId = "7", search = "") {
       </Routes>
     </MemoryRouter>,
   )
+}
+
+function makeUserToken(): string {
+  const encode = (value: unknown) =>
+    window.btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
+    sub: "user-1",
+    role: "user",
+    exp: 4102444800,
+  })}.signature`
 }
 
 function stubRun(
@@ -652,7 +663,7 @@ describe("Research", () => {
   it("в режиме просмотра показывает баннер и не даёт менять данные", async () => {
     stubRun()
 
-    renderPage("7", "?view=guest")
+    renderPage("7", "?view=readonly")
 
     expect(
       await screen.findByText("Режим просмотра: дерево и цитаты доступны без изменений."),
@@ -672,7 +683,7 @@ describe("Research", () => {
     fireEvent.click(screen.getByRole("button", { name: "Поделиться ссылкой" }))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
-    expect(writeText.mock.calls[0][0]).toContain("/research/7?view=guest")
+    expect(writeText.mock.calls[0][0]).toContain("/research/7?view=readonly")
   })
 
   it("вызывает печать страницы", async () => {
@@ -714,41 +725,6 @@ describe("Research", () => {
     })
 
     expect(await screen.findByText("Дерево недоступно")).toBeInTheDocument()
-  })
-
-  it("скачивает дерево в Markdown и JSON", async () => {
-    stubRun({
-      tree: [{ id: "r", type: "role", title: "Data Scientist", evidence: [] }],
-    })
-    const createObjectURL = vi.fn(() => "blob:tree")
-    const revokeObjectURL = vi.fn()
-    Object.assign(URL, { createObjectURL, revokeObjectURL })
-    const downloads: string[] = []
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        downloads.push(this.download)
-      })
-
-    renderPage()
-    await screen.findByRole("heading", { name: "Data Scientist" })
-    act(() => {
-      screen.getByRole("tab", { name: "Дерево" }).focus()
-    })
-    await screen.findByRole("button", { name: "Markdown" })
-
-    fireEvent.click(screen.getByRole("button", { name: "Markdown" }))
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }))
-
-    await waitFor(() => expect(downloads).toEqual(["run.md", "run.json"]))
-    expect(createObjectURL).toHaveBeenCalledTimes(2)
-    expect(
-      fetchCalls().some((call) => call.url.includes("/runs/7/export?format=md")),
-    ).toBe(true)
-    expect(
-      fetchCalls().some((call) => call.url.includes("/runs/7/export?format=json")),
-    ).toBe(true)
-    click.mockRestore()
   })
 
   it("печатает дерево из вкладки", async () => {
@@ -966,5 +942,18 @@ describe("Research", () => {
     expect(
       fetchCalls().some((call) => call.url.includes("/runs/7/conflicts")),
     ).toBe(true)
+  })
+
+  it("скрывает админские вкладки покрытия и конфликтов для пользователя", async () => {
+    storeToken(makeUserToken())
+    stubRun()
+    try {
+      renderPage()
+      expect(await screen.findByRole("tab", { name: "Дерево" })).toBeInTheDocument()
+      expect(screen.queryByRole("tab", { name: "Покрытие" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("tab", { name: "Конфликты" })).not.toBeInTheDocument()
+    } finally {
+      clearToken()
+    }
   })
 })

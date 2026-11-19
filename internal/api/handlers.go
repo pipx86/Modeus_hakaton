@@ -39,6 +39,10 @@ type Server struct {
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 	batchPlan    steps.BatchPlan
+	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
+	// nil означает, что автоиндексация не включена (in-memory store, demo API
+	// или явно отключённая настройка SOURCE_AUTO_INDEX).
+	indexSource sourceIndexFunc
 }
 
 func NewServer(store Store) *Server {
@@ -150,6 +154,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
+	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
+	mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 	mux.HandleFunc("POST /api/v1/sources/upload", s.handleUploadSource)
 	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
@@ -165,6 +171,8 @@ func (s *Server) Routes() http.Handler {
 	root.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	root.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
+	root.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 
 	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
 	root.Handle("/", auth.MiddlewareWithWhitelist(protected, []string{"/swagger"}))
@@ -234,7 +242,7 @@ func mapStoreError(w http.ResponseWriter, err error) bool {
 // @Router       /api/v1/runs [post]
 
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 
@@ -272,7 +280,13 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run, err := s.store.CreateRun(req.Profession)
+	var run *domain.Run
+	var err error
+	if creator, ok := s.store.(runOwnerCreator); ok {
+		run, err = creator.CreateRunForUser(req.Profession, auth.Subject(r.Context()))
+	} else {
+		run, err = s.store.CreateRun(req.Profession)
+	}
 	if err != nil {
 		logging.Logger.Error("create_run_store_error", "error", err)
 		if mapStoreError(w, err) {
@@ -391,7 +405,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id} [get]
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	id := r.PathValue("id")
@@ -423,7 +437,7 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/tree [put]
 func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	id := r.PathValue("id")
@@ -485,7 +499,7 @@ type TreeResponse struct {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/tree [get]
 func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	id := r.PathValue("id")
@@ -535,7 +549,7 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/answers [get]
 func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	id := r.PathValue("id")
@@ -568,7 +582,7 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/{id}/approve [post]
 func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	id := r.PathValue("id")
@@ -604,7 +618,7 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/{id}/reject [post]
 func (s *Server) handleRejectEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	id := r.PathValue("id")
@@ -674,7 +688,7 @@ func (s *Server) DemoSetStatus(id string, status domain.RunStatus) error {
 // @Security     BearerAuth
 // @Router       /api/v1/nodes/{id} [patch]
 func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	nodeID := r.PathValue("id")
@@ -725,7 +739,7 @@ type bulkApproveResponse struct {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/bulk-approve [post]
 func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 
@@ -788,10 +802,26 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id} [delete]
 func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	runID := r.PathValue("id")
+	run, err := s.store.GetRun(runID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	if role, _ := auth.FromContext(r.Context()); role != auth.RoleAdmin {
+		owner := auth.Subject(r.Context())
+		if !ownerlessRunAllowed(run) && run.CreatedBy != owner {
+			writeErr(w, http.StatusForbidden, "FORBIDDEN", "можно удалить только своё исследование")
+			return
+		}
+	}
 
 	if err := s.store.DeleteRun(runID); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -815,7 +845,7 @@ func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs [get]
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 
@@ -847,7 +877,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/sources [post]
 func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 
@@ -874,6 +904,12 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		logging.Logger.Error("create_source_internal_error", "title", src.Title, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
+	}
+	// Индексируем в фоне так же, как загрузку файла: семантический поиск должен
+	// работать для источника, созданного через API, без отдельного вызова
+	// POST /sources/{id}/index.
+	if created != nil {
+		s.indexSourceAsync(created.ID)
 	}
 
 	writeJSON(w, http.StatusCreated, created)

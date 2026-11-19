@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/metrics"
 	"activity-descriptor/internal/observability"
+	"activity-descriptor/internal/search"
 	"activity-descriptor/internal/steps"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
 
@@ -44,6 +46,22 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("DATABASE_URL and JWT_SECRET are required")
 	}
 	return c, nil
+}
+
+// sourceAutoIndexEnabled reports whether new sources should be indexed in the
+// background. Enabled by default; SOURCE_AUTO_INDEX=false disables the
+// background embedding calls (for example on a server without Ollama).
+func sourceAutoIndexEnabled() bool {
+	raw := strings.TrimSpace(os.Getenv("SOURCE_AUTO_INDEX"))
+	if raw == "" {
+		return true
+	}
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		logging.Logger.Warn("source_auto_index_setting_invalid", "value", raw, "fallback", true)
+		return true
+	}
+	return enabled
 }
 
 func run(ctx context.Context, c config) error {
@@ -71,8 +89,8 @@ func run(ctx context.Context, c config) error {
 		return errors.New("cannot connect to PostgreSQL")
 	}
 	var schemaReady bool
-	if err = pool.QueryRow(connectCtx, "SELECT (SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped) AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('evidence') AND attname='ref_id' AND NOT attisdropped) AND to_regclass('run_sse_events') IS NOT NULL AND to_regclass('run_chat_messages') IS NOT NULL").Scan(&schemaReady); err != nil || !schemaReady {
-		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000002_sse_events.sql и 20261118030000_run_chat_messages.sql")
+	if err = pool.QueryRow(connectCtx, "SELECT (SELECT count(*)=2 FROM pg_attribute WHERE attrelid=to_regclass('runs') AND attname IN ('stage','type') AND NOT attisdropped) AND EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('evidence') AND attname='ref_id' AND NOT attisdropped) AND to_regclass('run_sse_events') IS NOT NULL AND to_regclass('run_chat_messages') IS NOT NULL AND to_regclass('run_chat_sessions') IS NOT NULL").Scan(&schemaReady); err != nil || !schemaReady {
+		return errors.New("база не подготовлена: примените основные миграции, включая 20261112000002_sse_events.sql, 20261118030000_run_chat_messages.sql и 20261119010000_run_chat_sessions.sql")
 	}
 
 	listener, err := net.Listen("tcp", c.address)
@@ -165,14 +183,30 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
-	// Persist the dialog so chat history survives restarts; the in-memory
-	// session still serves live SSE events for the active interview.
-	chatService.SetMessageStore(store.NewChatMessageStore(pool))
+	// Persist the dialog and the interviewer session cursor, so chat history
+	// survives restarts and an active interview resumes instead of hanging.
+	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
+	chatService.SetSessionStore(store.NewChatSessionStore(pool))
 	if analystClient != nil {
 		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
+	// Семантическая индексация: источники, созданные через POST /sources и
+	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).
+	// Уже существующие источники догоняет cmd/index-sources (docs/EMBEDDINGS.md).
+	if sourceAutoIndexEnabled() {
+		if app.EnableSourceAutoIndex() {
+			embedConfig := search.ConfigFromEnv()
+			logging.Logger.Info("source_auto_index_enabled",
+				"ollama_url", embedConfig.OllamaURL,
+				"embed_model", embedConfig.EmbedModel)
+		} else {
+			logging.Logger.Warn("source_auto_index_unavailable", "reason", "PostgreSQL store is required")
+		}
+	} else {
+		logging.Logger.Info("source_auto_index_disabled", "reason", "SOURCE_AUTO_INDEX=false")
+	}
 	app.SetImportFiles(ingestion.ImportFiles{
 		Vacancies:      os.Getenv("INGEST_VACANCIES_FILE"),
 		VacancyFormat:  os.Getenv("INGEST_VACANCIES_FORMAT"),
@@ -203,6 +237,10 @@ func run(ctx context.Context, c config) error {
 	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
 	resumer.SetBatchPlan(batchPlan)
 	app.BindResumeProcessor(resumer)
+	// A restart may have interrupted a chat run between two durable steps:
+	// resume finalizing sessions, reconcile run statuses and mark legacy chat
+	// runs that cannot be restored as failed (SESSION_INTERRUPTED).
+	go chatService.RecoverSessions(context.Background())
 	go func() {
 		bgCtx := context.Background()
 		if err := resumer.ProcessIncompleteRuns(bgCtx); err != nil {

@@ -9,7 +9,7 @@ import (
 	"activity-descriptor/internal/auth"
 )
 
-func TestRunJSONOutputsAdminAndGuest(t *testing.T) {
+func TestRunJSONOutputsAdminAndUser(t *testing.T) {
 	auth.SetSecretForTests("test-secret-for-ci")
 
 	var stdout, stderr bytes.Buffer
@@ -34,7 +34,7 @@ func TestRunJSONOutputsAdminAndGuest(t *testing.T) {
 		readOnly bool
 	}{
 		{subject: "demo-admin", role: "admin"},
-		{subject: "demo-guest", role: "guest", readOnly: true},
+		{subject: "demo-user", role: "user"},
 	}
 	for i, expected := range want {
 		user := got.Users[i]
@@ -65,13 +65,12 @@ func TestRunHumanOutputHasViteAPITokenAndRoles(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"subject=demo-admin",
-		"subject=demo-guest",
+		"subject=demo-user",
 		"role=admin",
-		"role=guest",
+		"role=user",
 		"VITE_API_TOKEN",
 		"$env:VITE_API_TOKEN",
 		"export VITE_API_TOKEN",
-		"только чтение",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("в человекочитаемом выводе нет %q:\n%s", want, out)

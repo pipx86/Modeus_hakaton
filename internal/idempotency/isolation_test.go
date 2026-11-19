@@ -18,8 +18,8 @@ func TestКлючИзолированПоПользователюИМаршру�
 		w.Header().Set("X-Result", "ok")
 		w.WriteHeader(204)
 	})))
-	token1 := auth.TokenFor("first", auth.RoleTeacher)
-	token2 := auth.TokenFor("second", auth.RoleTeacher)
+	token1 := auth.TokenFor("first", auth.RoleAdmin)
+	token2 := auth.TokenFor("second", auth.RoleAdmin)
 	request := func(token, path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", path, strings.NewReader("{}"))
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -66,7 +66,7 @@ func TestРазныеПараллельныеЗапросыНеСмешиваю�
 func TestРазныеРолиОдногоПользователяНеРазделяютОтвет(t *testing.T) {
 	auth.SetSecretForTests("test-only")
 	h := auth.Middleware(Middleware(NewMemStore(time.Minute), time.Minute, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !auth.RequireRole(w, r, auth.RoleTeacher) {
+		if !auth.RequireRole(w, r, auth.RoleAdmin) {
 			return
 		}
 		w.WriteHeader(204)
@@ -79,10 +79,10 @@ func TestРазныеРолиОдногоПользователяНеРазде�
 		h.ServeHTTP(rec, req)
 		return rec.Code
 	}
-	if code := request(auth.RoleTeacher); code != 204 {
+	if code := request(auth.RoleAdmin); code != 204 {
 		t.Fatal(code)
 	}
-	if code := request(auth.RoleStudent); code != 403 {
+	if code := request(auth.RoleUser); code != 403 {
 		t.Fatalf("ограничение роли обойдено: %d", code)
 	}
 }

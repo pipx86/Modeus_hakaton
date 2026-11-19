@@ -51,7 +51,7 @@ func TestLoadAgainstPostgresAPI(t *testing.T) {
 	defer pool.Exec(ctx, `DELETE FROM runs WHERE id=$1`, run)
 	server := httptest.NewServer(api.NewServer(api.NewPGStore(pool)).Routes())
 	defer server.Close()
-	token := auth.TokenFor("нагрузочный-тест", auth.RoleTeacher)
+	token := auth.TokenFor("нагрузочный-тест", auth.RoleAdmin)
 	report, err := measure(ctx, &http.Client{Timeout: 5 * time.Second}, server.URL+"/api/v1/runs/"+run, token, 100, 5)
 	if err != nil || report.Errors != 0 || report.Success != 100 {
 		t.Fatalf("%+v %v", report, err)

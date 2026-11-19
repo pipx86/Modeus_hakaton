@@ -93,6 +93,24 @@ func TestCreateRunAllowsStudent(t *testing.T) {
 	}
 }
 
+func TestCreateRunRecordsOwner(t *testing.T) {
+	h := NewServer(newMemStore()).Routes()
+	query := httptest.NewRequest(http.MethodPost, "/api/v1/runs", strings.NewReader(`{"profession":"cook"}`))
+	query.Header.Set("Authorization", "Bearer "+auth.TokenFor("owner-user", auth.RoleUser))
+	recorder := httptest.NewRecorder()
+	h.ServeHTTP(recorder, query)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", recorder.Code, recorder.Body.String())
+	}
+	var run domain.Run
+	if err := json.Unmarshal(recorder.Body.Bytes(), &run); err != nil {
+		t.Fatal(err)
+	}
+	if run.CreatedBy != "owner-user" {
+		t.Fatalf("created_by = %q, want owner-user", run.CreatedBy)
+	}
+}
+
 func TestGetRun(t *testing.T) {
 	m := newMemStore()
 	m.seedRun(domain.Run{ID: "r1", Status: domain.RunPending, Profession: "cook", Stage: domain.StageCreated})
@@ -280,7 +298,7 @@ func TestIdempotentCreateRunRace(t *testing.T) {
 			<-start
 
 			req := httptest.NewRequest("POST", "/api/v1/runs", strings.NewReader(`{"profession":"cook"}`))
-			req.Header.Set("Authorization", "Bearer "+auth.TokenFor("u-race", auth.RoleTeacher))
+			req.Header.Set("Authorization", "Bearer "+auth.TokenFor("u-race", auth.RoleAdmin))
 			req.Header.Set("Idempotency-Key", "race-key-123")
 
 			rr := httptest.NewRecorder()

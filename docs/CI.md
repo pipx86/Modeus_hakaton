@@ -17,9 +17,9 @@ matching `go.mod` and the Dockerfile builder (`golang:1.26.10-bookworm`).
 | `test` | `go build ./...` and `go test -race -count=1 ./...` (no DB/LLM required on this branch) |
 | `e2e` | offline `cmd/e2e` pipeline (fake deterministic model, no network, no DB) produces `e2e-output.json`; artifact uploaded |
 | `db-integration` | Postgres 16 + pgvector service, best-effort checkout of the DB migrations branch (`feature/rustam/goose-migrations`), `goose up`, schema assertion, then tests with `DATABASE_URL` |
-| `deploy-config` | `scripts/check_deploy.py` (Dockerfile/compose/Grafana/Prometheus/n8n/docs/secrets), `docker compose config --quiet` for default + profiles, required deliverables |
-| `frontend` | runs only if `frontend/package.json` exists (none on this branch → auto-skip with a notice) |
-| `docker` | builds the image, asserts **< 100 MB**, runs the container and curls `/health`, `/metrics`, `/api/v1/health`, the self-healthcheck and the JWT chat flow via `/local-token` |
+| `deploy-config` | `scripts/check_deploy.py` (Dockerfile/stages incl. the frontend + nginx web target, compose incl. the `migrate-vector`/`web-server` chain, the three Prometheus scrape modes, both Grafana dashboards cross-checked against the Go metrics sources with no `run_id` label, vector migrations, n8n, docs/secrets), `docker compose config --quiet` for default + `server` + `monitoring` + `automation` profiles, required deliverables |
+| `frontend` | runs only if `frontend/package.json` exists; `npm ci`, lint, typecheck, tests and `npm run build` — the same steps the Docker `frontend-build` stage runs for the `web` image |
+| `docker` | builds the default image, asserts **< 100 MB**, runs the container and curls `/health`, `/metrics`, `/api/v1/health`, the self-healthcheck and the JWT chat flow via `/local-token` |
 
 ## Migrations in CI
 
@@ -59,16 +59,22 @@ make lint
 
 The CI `docker` job is the authoritative Docker evidence: image size assertion,
 container healthcheck and the JWT chat smoke test. It builds the **default**
-image target without `--target`, which stays the demo `api` image.
+image target without `--target`, which stays the demo `api` image. The
+`server` profile's `server`, `migrate` and `web` targets are **not** built by
+this job (they would add a PostgreSQL service plus a Node build to every run);
+they are covered locally and documented in [DOCKER_SERVER.md](DOCKER_SERVER.md).
 
 Locally (2026-11-19, Docker Desktop reachable) the default image was built and
-smoke-tested (27.0 MB, `/health`, `/metrics`, `/api/v1/health`, self-healthcheck,
-JWT chat flow), and the full `cmd/server` backend was verified through the new
-`server` compose profile: goose migrations on an empty PostgreSQL, healthcheck,
-Swagger UI, JWT-protected run and a migration-failure gate (the backend is not
-started when migrations fail). Details:
+smoke-tested (27.1 MB, `/health`, `/metrics`, `/api/v1/health`, self-healthcheck,
+JWT chat flow), and the full `cmd/server` stack was verified end-to-end through
+the `server` compose profile on an isolated project: both goose groups
+(main + optional vector with a separate version table), pgvector tables and HNSW
+index, server healthcheck, Swagger UI, JWT-protected run, the SPA/nginx
+single-origin entry point, a migration-failure gate and Prometheus scraping
+`server:8080` with the dashboards' HTTP/agent/LLM families. Details:
 [DOCKER_SERVER.md](DOCKER_SERVER.md). `scripts/check_deploy.py` also validates
-`docker compose --profile server config`.
+`docker compose --profile server config`, the nginx full-stack config, the
+`prometheus.server.yml` scrape mode and the vector migration chain.
 
 ## Limitations
 
@@ -77,5 +83,11 @@ started when migrations fail). Details:
 * The `db-integration` job does not replace `backend-acceptance.yml`; it is a
   lightweight smoke check that stays green while migrations are in another
   branch.
-* No browser/e2e HTTP test of the static web placeholder; its HTML is validated
-  statically by `scripts/check_deploy.py`.
+* No browser/e2e HTTP test of the frontend: the `frontend` job runs
+  lint/typecheck/tests/build and the SPA + nginx proxy path was smoke-tested
+  locally (single origin: `/`, `/api/v1/health`, `/swagger/`, `/metrics`), but
+  CI does not run a browser. The static demo placeholder HTML is still validated
+  by `scripts/check_deploy.py`.
+* The `docker` job does not build the `server`/`migrate`/`web` targets or start a
+  PostgreSQL service; the full `server` profile is verified locally (see
+  [DOCKER_SERVER.md](DOCKER_SERVER.md)) and statically by `check_deploy.py`.

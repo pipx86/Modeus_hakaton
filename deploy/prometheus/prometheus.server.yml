@@ -1,0 +1,52 @@
+# Prometheus configuration: full backend inside the compose network (server
+# profile).
+#
+# Use this file when the `server` profile runs cmd/server (the production-shaped
+# backend with PostgreSQL, JWT, Swagger and the LLM/agent runtime):
+#
+#   # 1) start the full stack (CLI, API, Swagger and /metrics: one origin)
+#   docker compose --profile server up -d --build server web-server
+#   # 2) start the monitoring stack against it; --no-deps matters: without it
+#   #    prometheus' depends_on would start the demo `api`, which wants host
+#   #    port 8080 (owned by the host backend in the local demo).
+#   PROMETHEUS_CONFIG=prometheus.server.yml \
+#     docker compose --profile monitoring up -d --no-deps prometheus grafana jaeger
+#
+# The scrape target is the compose `server` service's INTERNAL port 8080 (the
+# host mapping, SERVER_PORT/8082 by default, is irrelevant inside the network).
+# The job name deliberately matches `activity-descriptor-api.*` so the existing
+# dashboards and alert rules (deploy/prometheus/alerts.yml, deploy/grafana/
+# dashboards/activity-descriptor*.json) keep working unchanged for the full
+# backend; the `deployment="compose-server"` label distinguishes the source.
+#
+# cmd/server exposes on GET /metrics:
+#   * HTTP metrics from internal/metrics (activity_descriptor_http_*,
+#     activity_descriptor_runs_*, ...);
+#   * agent/LLM metrics from internal/llm/metrics
+#     (activity_descriptor_agent_calls_total, _errors_total, _tokens_total,
+#     _latency_seconds, _reasoning_total) when an LLM provider is configured.
+#   Neither source uses run-level identifiers as metric labels (see the
+#   "no run identifiers" assertions in internal/metrics/metrics_test.go and
+#   internal/llm/metrics/metrics_test.go).
+#
+# The other configs are unchanged: prometheus.yml scrapes the demo compose `api`
+# and prometheus.host.yml scrapes a backend on the Docker host.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # The compose `server` service (cmd/server, internal port 8080).
+  - job_name: activity-descriptor-api-server
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["server:8080"]
+        labels:
+          deployment: compose-server
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

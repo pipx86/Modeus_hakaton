@@ -21,13 +21,14 @@ e2e-output.json
 node_modules
 frontend/node_modules
 frontend/dist
+frontend/coverage
 frontend/logs
 frontend/.env.local
-# Docker build assets are under deploy/docker (healthcheck probe); the rest of
-# deploy is runtime configuration mounted by compose, not image content.
+# Docker build assets are under deploy/docker (healthcheck probe) and
+# deploy/nginx (baked into the `web` image); the rest of deploy is runtime
+# configuration mounted by compose, not image content.
 deploy/grafana
 deploy/n8n
-deploy/nginx
 deploy/prometheus
 docs
 web

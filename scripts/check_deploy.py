@@ -41,6 +41,8 @@ YAML_FILES = [
     "docker-compose.yml",
     ".golangci.yml",
     "deploy/prometheus/prometheus.yml",
+    "deploy/prometheus/prometheus.host.yml",
+    "deploy/prometheus/prometheus.server.yml",
     "deploy/grafana/provisioning/datasources/prometheus.yml",
     "deploy/grafana/provisioning/dashboards/dashboards.yml",
     ".github/workflows/ci.yml",
@@ -57,15 +59,23 @@ REQUIRED_FILES = [
     "cmd/api/main.go",
     "internal/metrics/metrics.go",
     "internal/metrics/metrics_test.go",
+    "internal/llm/metrics/metrics.go",
     "web/index.html",
     "deploy/nginx/default.conf",
+    "deploy/nginx/server.conf",
     "deploy/prometheus/prometheus.yml",
+    "deploy/prometheus/prometheus.host.yml",
+    "deploy/prometheus/prometheus.server.yml",
     "deploy/grafana/provisioning/datasources/prometheus.yml",
     "deploy/grafana/provisioning/dashboards/dashboards.yml",
     "deploy/grafana/dashboards/activity-descriptor.json",
+    "deploy/grafana/dashboards/activity-descriptor-business.json",
     "deploy/n8n/workflows/README.md",
     "deploy/n8n/workflows/nightly_ingestion.json",
     "deploy/n8n/workflows/notion_email_notifications.json",
+    "migrations_optional/vector/20261109010000_vector_retrieval.sql",
+    "migrations_optional/vector/20261109010001_lexical_fallback.sql",
+    "migrations_optional/vector/VECTOR_STORAGE_GUIDE.md",
     "docs/DOCKER.md",
     "docs/DOCKER_SERVER.md",
     "docs/GRAFANA.md",
@@ -187,7 +197,7 @@ def check_dockerfile() -> None:
     # Full backend targets and the default-image contract (CI builds without
     # --target, so the last stage must stay the demo api image).
     stages = re.findall(r"(?mi)^FROM\s+\S+\s+AS\s+(\S+)", dockerfile)
-    for stage in ("build", "server-build", "goose-build", "server", "migrate", "api"):
+    for stage in ("build", "server-build", "goose-build", "frontend-build", "server", "migrate", "web", "api"):
         if stage not in stages:
             raise SystemExit(f"FAIL: Dockerfile is missing the {stage!r} build stage")
     if stages[-1] != "api":
@@ -195,7 +205,15 @@ def check_dockerfile() -> None:
     for marker in ("./cmd/server", "goose@v3.29.0", "api-docs", "/app/healthcheck"):
         if marker not in dockerfile:
             raise SystemExit(f"FAIL: Dockerfile must include {marker!r}")
-    print("dockerfile ok: multi-stage, pinned Go 1.26.10, distroless, non-root, healthcheck, server/migrate targets")
+    # Full-stack web target: the SPA is built inside the image and served by
+    # nginx with the same-origin proxy config.
+    for marker in ("node:22.20", "npm ci", "npm run build", "nginx:1.27-alpine", "deploy/nginx/server.conf"):
+        if marker not in dockerfile:
+            raise SystemExit(f"FAIL: Dockerfile web target must include {marker!r}")
+    print(
+        "dockerfile ok: multi-stage, pinned Go 1.26.10/Node 22.20, distroless server/migrate, "
+        "nginx web target, non-root, healthchecks"
+    )
 
 
 def check_compose() -> None:
@@ -254,12 +272,53 @@ def check_compose() -> None:
     if "JWT_SECRET" in str(server.get("environment") or {}):
         raise SystemExit("FAIL: server must not hard-code JWT_SECRET; use optional env_file/.env")
 
+    # Optional vector migrations: a second one-shot goose run with its own
+    # version table (goose_vector_versions), gated after the main migrations and
+    # before the backend, so a fresh DB gets both groups automatically.
+    migrate_vector = services.get("migrate-vector")
+    if not migrate_vector:
+        raise SystemExit("FAIL: docker-compose.yml must define the 'migrate-vector' goose service")
+    if (migrate_vector.get("build") or {}).get("target") != "migrate":
+        raise SystemExit("FAIL: compose migrate-vector service must build Dockerfile target 'migrate'")
+    if "server" not in (migrate_vector.get("profiles") or []):
+        raise SystemExit("FAIL: migrate-vector service must be behind the 'server' profile")
+    vector_command = " ".join(str(part) for part in migrate_vector.get("command") or [])
+    for flag in ("-table goose_vector_versions", "-dir /migrations_optional/vector", "up"):
+        if flag not in vector_command:
+            raise SystemExit(f"FAIL: migrate-vector command must contain {flag!r}")
+    vector_deps = migrate_vector.get("depends_on") or {}
+    if (vector_deps.get("postgres") or {}).get("condition") != "service_healthy":
+        raise SystemExit("FAIL: migrate-vector must depend on a healthy postgres")
+    if (vector_deps.get("migrate") or {}).get("condition") != "service_completed_successfully":
+        raise SystemExit("FAIL: migrate-vector must wait for the main migrate run")
+    if (server_deps.get("migrate-vector") or {}).get("condition") != "service_completed_successfully":
+        raise SystemExit("FAIL: server must wait for migrate-vector (condition: service_completed_successfully)")
+
+    # Full-stack web entry point: built SPA + nginx reverse proxy for the
+    # `server` profile, one public port, no second origin/CORS.
+    web_server = services.get("web-server")
+    if not web_server:
+        raise SystemExit("FAIL: docker-compose.yml must define the 'web-server' full-stack UI service")
+    if (web_server.get("build") or {}).get("target") != "web":
+        raise SystemExit("FAIL: compose web-server service must build Dockerfile target 'web'")
+    if "server" not in (web_server.get("profiles") or []):
+        raise SystemExit("FAIL: web-server service must be behind the 'server' profile")
+    web_ports = " ".join(str(port) for port in web_server.get("ports") or [])
+    if "${SERVER_WEB_PORT" not in web_ports or ":80" not in web_ports:
+        raise SystemExit("FAIL: web-server must map configurable ${SERVER_WEB_PORT:-...}:80")
+    web_deps = web_server.get("depends_on") or {}
+    if (web_deps.get("server") or {}).get("condition") != "service_healthy":
+        raise SystemExit("FAIL: web-server must wait for a healthy server")
+    if not (web_server.get("healthcheck") or {}).get("test"):
+        raise SystemExit("FAIL: web-server service must define a healthcheck")
+
     docker = shutil.which("docker")
     if docker:
         for args in (
             ["compose", "-f", "docker-compose.yml", "config", "--quiet"],
             ["compose", "-f", "docker-compose.yml", "--profile", "monitoring", "--profile", "automation", "config", "--quiet"],
             ["compose", "-f", "docker-compose.yml", "--profile", "server", "config", "--quiet"],
+            ["compose", "-f", "docker-compose.yml", "--profile", "server", "--profile", "monitoring", "config", "--quiet"],
         ):
             result = subprocess.run([docker, *args], cwd=ROOT, capture_output=True, text=True, check=False)
             if result.returncode != 0:
@@ -269,46 +328,198 @@ def check_compose() -> None:
         print("compose ok (docker CLI not found; daemon-level config check skipped)")
 
 
-def check_dashboard() -> None:
-    dashboard = json.loads(read("deploy/grafana/dashboards/activity-descriptor.json"))
-    if dashboard.get("uid") != "activity-descriptor":
-        raise SystemExit("FAIL: dashboard uid must be activity-descriptor")
-    panels = dashboard.get("panels") or []
-    if len(panels) < 8:
-        raise SystemExit(f"FAIL: dashboard has {len(panels)} panels, expected >= 8")
-    titles = " ".join(panel.get("title", "") for panel in panels).lower()
-    for required in ("latency", "error", "route", "in-flight"):
-        if required not in titles:
-            raise SystemExit(f"FAIL: dashboard is missing a {required!r} panel")
-
-    metrics_source = read("internal/metrics/metrics.go")
-    documented = set(re.findall(r'newVec\("([a-z_]+)"', metrics_source))
-    known = {f"activity_descriptor_{name}" for name in documented}
-    referenced: set[str] = set()
-    for panel in panels:
-        targets = panel.get("targets") or []
-        if not targets:
-            raise SystemExit(f"FAIL: dashboard panel {panel.get('title')!r} has no queries")
-        for target in targets:
-            expr = target.get("expr", "")
-            if not expr:
-                raise SystemExit(f"FAIL: panel {panel.get('title')!r} has an empty query")
-            if "run_id" in expr:
-                raise SystemExit(f"FAIL: panel {panel.get('title')!r} queries a run identifier label")
-            referenced.update(re.findall(r"activity_descriptor_[a-z_]+", expr))
-    # Histogram exposition adds _bucket/_sum/_count suffixes to the family name.
-    families = {re.sub(r"_(?:bucket|sum|count)$", "", name) for name in referenced}
-    unknown = sorted(families - known)
-    if unknown:
-        raise SystemExit(f"FAIL: dashboard queries undefined metrics: {unknown}")
-    for important in (
-        "activity_descriptor_http_requests_total",
-        "activity_descriptor_http_request_duration_seconds",
-        "activity_descriptor_http_in_flight_requests",
+def check_nginx() -> None:
+    """Validate the demo placeholder proxy and the full-stack `web` image config."""
+    demo = read("deploy/nginx/default.conf")
+    for marker in (
+        "location /api/",
+        "proxy_pass http://api:8080",
+        "try_files $uri $uri/ /index.html",
     ):
-        if important not in families:
-            raise SystemExit(f"FAIL: dashboard must query {important}")
-    print(f"dashboard ok: {len(panels)} panels, {len(referenced)} metric families referenced")
+        if marker not in demo:
+            raise SystemExit(f"FAIL: deploy/nginx/default.conf must contain {marker!r}")
+    full = read("deploy/nginx/server.conf")
+    for marker in (
+        "location /api/",
+        "proxy_pass http://server:8080",
+        "location /swagger/",
+        "location = /metrics",
+        "try_files $uri $uri/ /index.html",
+        "proxy_buffering off",
+    ):
+        if marker not in full:
+            raise SystemExit(f"FAIL: deploy/nginx/server.conf must contain {marker!r}")
+    if "api:8080" in full:
+        raise SystemExit("FAIL: deploy/nginx/server.conf must proxy the full backend (server:8080), not api:8080")
+    print("nginx ok: demo api proxy + full-stack SPA/API/Swagger/metrics single-origin proxy")
+
+
+def check_prometheus() -> None:
+    """Validate the three scrape modes and their target/job contract."""
+    expected_targets = {
+        "deploy/prometheus/prometheus.yml": "api:8080",
+        "deploy/prometheus/prometheus.host.yml": "host.docker.internal:8080",
+        "deploy/prometheus/prometheus.server.yml": "server:8080",
+    }
+    jobs_by_config: dict[str, list[tuple[str, list[str]]]] = {}
+    for rel in expected_targets:
+        config = yaml.safe_load(read(rel))
+        if not any("alerts.yml" in str(rule) for rule in config.get("rule_files") or []):
+            raise SystemExit(f"FAIL: {rel} must load deploy/prometheus/alerts.yml")
+        jobs = []
+        for job in config.get("scrape_configs") or []:
+            targets = [target for cfg in job.get("static_configs") or [] for target in cfg.get("targets") or []]
+            if not targets:
+                raise SystemExit(f"FAIL: {rel} job {job.get('job_name')!r} has no static targets")
+            jobs.append((job.get("job_name", ""), targets))
+        jobs_by_config[rel] = jobs
+        all_targets = [target for _, targets in jobs for target in targets]
+        if expected_targets[rel] not in all_targets:
+            raise SystemExit(f"FAIL: {rel} must scrape {expected_targets[rel]!r}, got {all_targets}")
+        if "run_id" in read(rel):
+            raise SystemExit(f"FAIL: {rel} references a run identifier")
+    # The full-backend job must keep the `activity-descriptor-api.*` prefix so
+    # the existing dashboards/alerts work without modification.
+    server_jobs = jobs_by_config["deploy/prometheus/prometheus.server.yml"]
+    if not any(job.startswith("activity-descriptor-api") for job, _ in server_jobs):
+        raise SystemExit(
+            "FAIL: prometheus.server.yml job must match the activity-descriptor-api.* "
+            "pattern used by the dashboards/alerts"
+        )
+    # Each config must not scrape a target that belongs to another mode.
+    foreign = {
+        "deploy/prometheus/prometheus.server.yml": ("api:8080", "host.docker.internal:8080"),
+        "deploy/prometheus/prometheus.host.yml": ("api:8080", "server:8080"),
+        "deploy/prometheus/prometheus.yml": ("server:8080", "host.docker.internal:8080"),
+    }
+    for rel, forbidden in foreign.items():
+        targets = [target for _, targets in jobs_by_config[rel] for target in targets]
+        for target in forbidden:
+            if target in targets:
+                raise SystemExit(f"FAIL: {rel} must not scrape the foreign target {target!r}")
+    if "run_id" in read("deploy/prometheus/alerts.yml"):
+        raise SystemExit("FAIL: deploy/prometheus/alerts.yml references a run identifier")
+    print("prometheus ok: three scrape modes (api/host/server), alerts loaded, no run_id label")
+
+
+def iter_exprs(node: object):
+    """Yield every ``expr`` value from a (possibly nested) dashboard panel tree."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "expr" and isinstance(value, str):
+                yield value
+            else:
+                yield from iter_exprs(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from iter_exprs(item)
+
+
+def metric_families(source: str) -> set[str]:
+    """Collect the activity_descriptor_* families defined by a metrics package."""
+    names = {f"activity_descriptor_{name}" for name in re.findall(r'newVec\("([a-z_]+)"', source)}
+    names.update(re.findall(r"activity_descriptor_([a-z_]+)", source))
+    names = {f"activity_descriptor_{name}" if not name.startswith("activity_descriptor_") else name for name in names}
+    return {re.sub(r"_(?:bucket|sum|count)$", "", name) for name in names}
+
+
+def check_dashboard() -> None:
+    # Known families: HTTP/run metrics from internal/metrics plus the LLM/agent
+    # metrics from internal/llm/metrics exposed by cmd/server on /metrics.
+    known = metric_families(read("internal/metrics/metrics.go"))
+    known |= metric_families(read("internal/llm/metrics/metrics.go"))
+
+    dashboards = {
+        "deploy/grafana/dashboards/activity-descriptor.json": (
+            "activity-descriptor",
+            (
+                "activity_descriptor_http_requests_total",
+                "activity_descriptor_http_request_duration_seconds",
+                "activity_descriptor_http_in_flight_requests",
+            ),
+            (),
+            ("latency", "error", "route", "in-flight"),
+        ),
+        "deploy/grafana/dashboards/activity-descriptor-business.json": (
+            "activity-descriptor-business",
+            (
+                "activity_descriptor_http_requests_total",
+                "activity_descriptor_http_request_duration_seconds",
+            ),
+            (
+                "activity_descriptor_agent_calls_total",
+                "activity_descriptor_agent_latency_seconds",
+                "activity_descriptor_agent_tokens_total",
+            ),
+            ("http", "llm"),
+        ),
+    }
+
+    total_panels = 0
+    for rel, (uid, required_http, required_llm, required_titles) in dashboards.items():
+        dashboard = json.loads(read(rel))
+        if dashboard.get("uid") != uid:
+            raise SystemExit(f"FAIL: {rel} uid must be {uid}")
+        panels = dashboard.get("panels") or []
+        if len(panels) < 8:
+            raise SystemExit(f"FAIL: {rel} has {len(panels)} panels, expected >= 8")
+        titles = " ".join(panel.get("title", "") for panel in panels).lower()
+        for required in required_titles:
+            if required not in titles:
+                raise SystemExit(f"FAIL: {rel} is missing a {required!r} panel")
+        if not any(panel.get("targets") for panel in panels):
+            raise SystemExit(f"FAIL: {rel} has no panel queries")
+        referenced: set[str] = set()
+        for expr in iter_exprs(dashboard):
+            if "run_id" in expr:
+                raise SystemExit(f"FAIL: {rel} queries a run identifier label")
+            referenced.update(re.findall(r"activity_descriptor_[a-z_]+", expr))
+        # Histogram exposition adds _bucket/_sum/_count suffixes to the family.
+        families = {re.sub(r"_(?:bucket|sum|count)$", "", name) for name in referenced}
+        unknown = sorted(families - known)
+        if unknown:
+            raise SystemExit(f"FAIL: {rel} queries undefined metrics: {unknown}")
+        for important in required_http:
+            if important not in families:
+                raise SystemExit(f"FAIL: {rel} must query {important}")
+        for important in required_llm:
+            if important not in families:
+                raise SystemExit(f"FAIL: {rel} must query {important}")
+        total_panels += len(panels)
+    print(
+        f"dashboards ok: {len(dashboards)} dashboards, {total_panels} panels; "
+        "HTTP + agent/LLM families cross-checked against the Go metrics sources, no run_id label"
+    )
+
+
+def check_metrics_labels() -> None:
+    """The /metrics exposition must never use run-level identifiers as labels."""
+    for rel in ("internal/metrics/metrics.go", "internal/llm/metrics/metrics.go"):
+        if re.search(r"run_id", read(rel)):
+            raise SystemExit(f"FAIL: {rel} uses run_id in metric labels")
+    labeled = read("internal/metrics/metrics.go")
+    if "run_id" in "".join(re.findall(r"newVec\([^)]*\)", labeled)):
+        raise SystemExit("FAIL: internal/metrics registers a run_id label")
+    print("metrics labels ok: no run_id label in the Go metrics sources")
+
+
+def check_vector_migrations() -> None:
+    """The optional vector group must stay a separate, goose-managed history."""
+    directory = os.path.join(ROOT, "migrations_optional/vector")
+    files = sorted(name for name in os.listdir(directory) if name.endswith(".sql"))
+    if len(files) < 2:
+        raise SystemExit(f"FAIL: migrations_optional/vector has {len(files)} SQL migrations, expected >= 2")
+    retrieval = read("migrations_optional/vector/20261109010000_vector_retrieval.sql")
+    for marker in (
+        "+goose Up",
+        "CREATE EXTENSION IF NOT EXISTS vector",
+        "CREATE TABLE source_fragments",
+        "CREATE TABLE fragment_embeddings",
+        "USING hnsw (embedding vector_cosine_ops)",
+    ):
+        if marker not in retrieval:
+            raise SystemExit(f"FAIL: vector migration is missing {marker!r}")
+    print(f"vector migrations ok: {len(files)} SQL files, pgvector tables + HNSW index")
 
 
 def check_web() -> None:
@@ -449,7 +660,11 @@ def main() -> int:
     check_yaml()
     check_dockerfile()
     check_compose()
+    check_nginx()
+    check_prometheus()
     check_dashboard()
+    check_metrics_labels()
+    check_vector_migrations()
     check_web()
     check_workflows()
     check_required_files()

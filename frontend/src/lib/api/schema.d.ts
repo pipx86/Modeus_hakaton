@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Запустить импорт настроенных файлов
+         * @description Требуется роль admin. Имена файлов задаются на сервере.
+         */
+        post: operations["ingestConfiguredFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -217,7 +237,7 @@ export interface paths {
         };
         /**
          * Expert review queue for disputed evidence
-         * @description Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url, ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`, never `null`. Only the expert roles admin, teacher and rop may call this operation; student and guest receive 403.
+         * @description Returns evidence that still needs expert review: `status=pending` (default) or `status=rejected`. Approved evidence is intentionally never returned. Each row carries run_id, node_id/node_title, source_id/source_title/source_url, ref_id and the quote so an expert can decide without extra lookups. The order is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default 50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`, never `null`. Only the expert roles admin and admin may call this operation; user and user receive 403.
          */
         get: operations["listReviewQueue"];
         put?: never;
@@ -240,6 +260,46 @@ export interface paths {
          * @description Returns how many evidence rows are pending, approved and rejected. Without `run_id` the counters are global across all runs; with `run_id` they are scoped to that run. `total` always equals `pending + approved + rejected`. Status is read from `evidence.status` with legacy records treated as `pending`. Used by the review progress counter and the keyboard review mode; expert roles only.
          */
         get: operations["getReviewProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/correlation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Correlation matrix for completed runs
+         * @description Deterministic Pearson correlation between run duration, tree structure and evidence volume across completed runs. Available to admin and user.
+         */
+        get: operations["getDashboardCorrelation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Co-occurrence graph of tree competencies
+         * @description Deterministic graph of function/task/action titles that appear together in completed run trees. Available to admin and user.
+         */
+        get: operations["getDashboardSkills"];
         put?: never;
         post?: never;
         delete?: never;
@@ -302,7 +362,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a research run
-         * @description Deletes the run together with its tree, evidences and messages (cascade).
+         * @description Deletes the run together with its tree, evidences and messages (cascade). Admin can delete any run; a regular user can delete only a run they created. Legacy runs without created_by are removable by a regular user.
          */
         delete: operations["deleteRun"];
         options?: never;
@@ -324,7 +384,7 @@ export interface paths {
         get: operations["getRunTree"];
         /**
          * Save a new activity tree in one transaction
-         * @description Requires the admin, teacher or rop role. Validates the flat node list and saves it atomically. An existing tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.
+         * @description Requires the admin or admin role. Validates the flat node list and saves it atomically. An existing tree is never replaced; saving again is rejected with 409. Tree writes require the PostgreSQL store.
          */
         put: operations["saveRunTree"];
         post?: never;
@@ -368,7 +428,7 @@ export interface paths {
          * @description Creates a standard/vacancy source and links it to the run through
          *     `run_sources`, so the analyst can quote it and the synthesizer can
          *     detect cross-source conflicts. The source is available to finalization
-         *     immediately. Admin and teacher only.
+         *     immediately. Admin and admin only.
          */
         post: operations["attachRunSource"];
         delete?: never;
@@ -426,7 +486,7 @@ export interface paths {
         };
         /**
          * Source-type coverage matrix for a run
-         * @description Returns the coverage matrix of role/function/task rows by source-type evidence counts. JSON is the default; any `format` value other than `csv` (compared case-insensitively and trimmed) also selects JSON. `format=csv` returns the same matrix as a text/csv attachment with the header `node_id,title,type,interview,standard,vacancy,document`. Every column is always present (cells are 0 when no source of that type is linked) and action nodes are excluded from the rows. Requires PostgreSQL; the in-memory demo store returns 501.
+         * @description Returns the coverage matrix of role/function/task rows by source-type evidence counts. Admin only. JSON is the default; any `format` value other than `csv` (compared case-insensitively and trimmed) also selects JSON. `format=csv` returns the same matrix as a text/csv attachment with the header `node_id,title,type,interview,standard,vacancy,document`. Every column is always present (cells are 0 when no source of that type is linked) and action nodes are excluded from the rows. Requires PostgreSQL; the in-memory demo store returns 501.
          */
         get: operations["getRunCoverage"];
         put?: never;
@@ -446,7 +506,7 @@ export interface paths {
         };
         /**
          * Compare two research runs
-         * @description Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. Guest may read.
+         * @description Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. user may read.
          */
         get: operations["compareRuns"];
         put?: never;
@@ -545,8 +605,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export a completed run as Markdown or JSON
-         * @description Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, teacher, rop, student and guest; conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.
+         * Export a completed run as Markdown, JSON or CSV
+         * @description Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, user. CSV returns one row per evidence quote or per node without evidence. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.
          */
         get: operations["exportRun"];
         put?: never;
@@ -592,7 +652,7 @@ export interface paths {
         put?: never;
         /**
          * Send a user message to the interviewer
-         * @description Records the respondent answer and schedules the next question. Guest role cannot post messages.
+         * @description Records the respondent answer and schedules the next question. user role cannot post messages.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -610,7 +670,7 @@ export interface paths {
         };
         /**
          * Resolved synthesizer conflicts for a run
-         * @description Returns title/description conflicts detected and deterministically resolved by the synthesizer during finalization. Every conflict keeps the competing values and the winner (interview > standard > vacancy > document). The list is empty when the run has no stored conflicts.
+         * @description Returns title/description conflicts detected and deterministically resolved by the synthesizer during finalization. Every conflict keeps the competing values and the winner (interview > standard > vacancy > document). Admin only. The list is empty when the run has no stored conflicts.
          */
         get: operations["getRunConflicts"];
         put?: never;
@@ -755,6 +815,46 @@ export interface paths {
         patch: operations["patchNode"];
         trace?: never;
     };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a user
+         * @description Creates an account with email and password. The first registered user becomes admin, all following users get the user role. Returns a 24-hour JWT.
+         */
+        post: operations["registerUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log in with email and password
+         * @description Returns a 24-hour JWT for an existing account.
+         */
+        post: operations["loginUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -763,8 +863,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List demo users
-         * @description List of demo accounts and their roles; available to the admin role only.
+         * List registered users
+         * @description Registered accounts with email, display name and role; available to the admin role only.
          */
         get: operations["listUsers"];
         put?: never;
@@ -951,6 +1051,8 @@ export interface components {
             finished_at?: string;
             /** @enum {string} */
             stage?: "created" | "interview" | "analysis" | "synthesis" | "review" | "done" | "failed";
+            /** @description Account id that created the run; empty for legacy runs. */
+            created_by?: string;
         };
         Snapshot: {
             /** Format: uuid */
@@ -1079,11 +1181,54 @@ export interface components {
             message?: components["schemas"]["ChatMessage"];
             status?: components["schemas"]["RunStatus"];
         };
-        DemoUser: {
-            subject: string;
+        RegisterRequest: {
+            /** Format: email */
+            email: string;
+            display_name: string;
+            password: string;
+        };
+        LoginRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+        };
+        AuthUser: {
+            id: string;
+            /** Format: email */
+            email: string;
+            display_name: string;
             /** @enum {string} */
-            role: "admin" | "teacher" | "rop" | "student" | "guest";
-            read_only?: boolean;
+            role: "admin" | "user";
+        };
+        AuthResponse: {
+            token: string;
+            user: components["schemas"]["AuthUser"];
+        };
+        CorrelationMetric: {
+            key: string;
+            label: string;
+        };
+        CorrelationResponse: {
+            sample_size: number;
+            metrics: components["schemas"]["CorrelationMetric"][];
+            /** @description Symmetric matrix of Pearson coefficients in the range [-1, 1]. */
+            matrix: number[][];
+        };
+        SkillGraphNode: {
+            id: string;
+            label: string;
+            type: string;
+            count: number;
+        };
+        SkillGraphEdge: {
+            source: string;
+            target: string;
+            weight: number;
+        };
+        SkillGraphResponse: {
+            sample_size: number;
+            nodes: components["schemas"]["SkillGraphNode"][];
+            edges: components["schemas"]["SkillGraphEdge"][];
         };
         /** @description JSON body of GET /runs/estimate (pre-run cost and time estimate). */
         RunEstimate: {
@@ -1598,6 +1743,73 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ingestConfiguredFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sources: ("vacancies" | "standards")[];
+                };
+            };
+        };
+        responses: {
+            /** @description Число вставленных и обновлённых записей. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "ok";
+                        ingested: number;
+                        vacancies: number;
+                        standards: number;
+                    };
+                };
+            };
+            /** @description Некорректный список источников */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Сбой загрузки настроенных файлов */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Файлы или PostgreSQL не настроены */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -2211,6 +2423,52 @@ export interface operations {
             501: components["responses"]["NotImplemented"];
         };
     };
+    getDashboardCorrelation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Correlation matrix and the number of runs used. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrelationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDashboardSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Competency graph and the number of runs used. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillGraphResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     listRuns: {
         parameters: {
             query?: never;
@@ -2562,7 +2820,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Admin/teacher role required */
+            /** @description Admin/admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3431,8 +3689,8 @@ export interface operations {
     exportRun: {
         parameters: {
             query?: {
-                /** @description Export format: `md`, `json`, or omitted for the legacy bare node array. Any other value returns 400 BAD_REQUEST. Case and surrounding whitespace are normalized. */
-                format?: "md" | "json";
+                /** @description Export format: `md`, `json`, `csv`, or omitted for the legacy bare node array. Any other value returns 400 BAD_REQUEST. Case and surrounding whitespace are normalized. */
+                format?: "md" | "json" | "csv";
             };
             header?: never;
             path: {
@@ -3443,10 +3701,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Legacy bare node array by default; structured JSON or Markdown when requested. */
+            /** @description Legacy bare node array by default; CSV, structured JSON or Markdown when requested. */
             200: {
                 headers: {
-                    /** @description `attachment; filename="run-<sanitized-id>.md"` or `.json`; the id is reduced to ASCII letters, digits, `-` and `_`. */
+                    /** @description `attachment; filename="run-<sanitized-id>.md"`, `.json` or `.csv`; the id is reduced to ASCII letters, digits, `-` and `_`. */
                     "Content-Disposition"?: string;
                     [name: string]: unknown;
                 };
@@ -3475,6 +3733,7 @@ export interface operations {
                      */
                     "text/markdown": string;
                     "application/json": components["schemas"]["ExportRun"];
+                    "text/csv": string;
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -3814,6 +4073,11 @@ export interface operations {
                             source_id?: string;
                             quote?: string;
                             score?: number;
+                            /**
+                             * Format: uuid
+                             * @description Tree node matched by the quote when it can be resolved.
+                             */
+                            node_id?: string;
                         }[];
                     };
                 };
@@ -4063,6 +4327,68 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    registerUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Account created and token issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Email is already registered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    loginUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Authenticated; token and user profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     listUsers: {
         parameters: {
             query?: never;
@@ -4072,7 +4398,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Demo users. */
+            /** @description Registered users. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4081,17 +4407,14 @@ export interface operations {
                     /**
                      * @example [
                      *       {
-                     *         "subject": "demo-admin",
+                     *         "id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
+                     *         "email": "admin@example.com",
+                     *         "display_name": "Администратор",
                      *         "role": "admin"
-                     *       },
-                     *       {
-                     *         "subject": "demo-guest",
-                     *         "role": "guest",
-                     *         "read_only": true
                      *       }
                      *     ]
                      */
-                    "application/json": components["schemas"]["DemoUser"][];
+                    "application/json": components["schemas"]["AuthUser"][];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -13,7 +13,7 @@ const STATUS_CONFIG: Record<RunStatus, { label: string; className: string }> = {
     className: "border-transparent bg-muted text-muted-foreground",
   },
   running: {
-    label: "В работе",
+    label: "Интервью",
     className: "border-transparent bg-warning/15 text-warning",
   },
   done: {

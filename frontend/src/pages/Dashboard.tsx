@@ -20,8 +20,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { Donut, StackedBars } from "@/components/charts"
-import { apiClient, type Run } from "@/lib/api/client"
-import { getCurrentRole } from "@/lib/auth"
+import { CorrelationMap } from "@/components/correlation-map"
+import { apiClient, type CorrelationResponse, type Run } from "@/lib/api/client"
+import { getCurrentRole, getCurrentUserID } from "@/lib/auth"
 
 const DAYS = 14
 
@@ -76,14 +77,15 @@ export function Dashboard() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [correlation, setCorrelation] = useState<CorrelationResponse | null>(null)
+  const [correlationLoading, setCorrelationLoading] = useState(true)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const canCreate = getCurrentRole() !== "guest"
-  const canDelete =
-    getCurrentRole() === null ||
-    getCurrentRole() === "admin" ||
-    getCurrentRole() === "teacher" ||
-    getCurrentRole() === "rop"
+  const canCreate = true
+  const currentUserID = getCurrentUserID()
+  const isAdmin = getCurrentRole() === null || getCurrentRole() === "admin"
+  const canDeleteRun = (run: Run) =>
+    isAdmin || !run.created_by || run.created_by === currentUserID
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -115,6 +117,25 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/dashboard/correlation")
+        if (!cancelled && data && !Array.isArray(data) && "matrix" in data) {
+          setCorrelation(data)
+        }
+      } catch {
+        // Карта необязательна: остальные виджеты дашборда должны остаться доступны.
+      } finally {
+        if (!cancelled) setCorrelationLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const active = runs.filter((run) => run.status === "running").length
   const demoRun = runs.find((run) => run.status === "done")
@@ -225,7 +246,7 @@ export function Dashboard() {
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
           <p className="text-sm text-muted-foreground">
-            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} в работе`}
+            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} интервью`}
           </p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -297,7 +318,7 @@ export function Dashboard() {
                     <span className="size-2 rounded-full bg-emerald-500" /> успешные
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="size-2 rounded-full bg-warning" /> в работе
+                    <span className="size-2 rounded-full bg-warning" /> интервью
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-destructive" /> с ошибкой
@@ -348,6 +369,27 @@ export function Dashboard() {
                   </div>
                 )
               })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Карта корреляции</CardTitle>
+              <CardDescription>
+                Связи между длительностью, структурой дерева и объёмом цитат по завершённым
+                исследованиям. −1 - обратная связь, +1 - прямая.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {correlationLoading ? (
+                <Skeleton className="h-48 w-full" />
+              ) : correlation ? (
+                <CorrelationMap data={correlation} />
+              ) : (
+                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Не удалось загрузить карту корреляции. Остальные данные дашборда доступны.
+                </p>
+              )}
             </CardContent>
           </Card>
         </>
@@ -412,7 +454,7 @@ export function Dashboard() {
                   <StatusBadge status={run.status} />
                   <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
-                {canDelete && (
+                {canDeleteRun(run) && (
                 <Button
                   variant="ghost"
                   size="icon"

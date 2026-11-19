@@ -276,7 +276,7 @@ type RunCostResponse struct {
 // silently replaced by defaults on a storage error, because that would hide an
 // outage).
 func (s *Server) handleRunEstimate(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 
@@ -308,12 +308,12 @@ func (s *Server) handleRunEstimate(w http.ResponseWriter, r *http.Request) {
 
 // handleRunCost implements GET /api/v1/runs/{id}/cost.
 //
-// The read roles match GET /api/v1/runs/{id}: admin, teacher, rop, student and
-// guest may read a run, so they may read its cost as well.
+// The read roles match GET /api/v1/runs/{id}: admin and user may read a run,
+// so they may read its cost as well.
 //
 // Errors: 404 for an unknown run; 500 when the run or its usage cannot be read.
 func (s *Server) handleRunCost(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	runID := r.PathValue("id")

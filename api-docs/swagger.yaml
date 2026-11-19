@@ -6,11 +6,11 @@ info:
     18, 19, 20). This file is the source of truth; the copies served by the API from
     `api-docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated
     from it. All endpoints are relative to the `/api/v1` server and, except for `GET
-    /health` and `GET /ready`, require a JWT bearer token. Successful responses are
-    JSON, except the run export which serves Markdown by default (`?format=md`) and
-    JSON on request (`?format=json`); run progress is streamed by `GET /runs/{id}/events`
-    as `text/event-stream`. Error responses carry a stable machine-readable `code`
-    and a human-readable `message`.
+    /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`, require
+    a JWT bearer token. Successful responses are JSON, except the run export which
+    serves Markdown by default (`?format=md`) and JSON on request (`?format=json`);
+    run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error
+    responses carry a stable machine-readable `code` and a human-readable `message`.
 servers:
 - url: /api/v1
   description: API prefix used by cmd/api and cmd/server.
@@ -405,7 +405,7 @@ paths:
       - academic
       operationId: listAcademicPrograms
       summary: Найти импортированные учебные программы
-      description: Чтение доступно ролям admin, teacher, rop и student.
+      description: Чтение доступно ролям admin и user.
       parameters:
       - in: query
         name: search
@@ -456,7 +456,7 @@ paths:
       - academic
       operationId: getAcademicProgram
       summary: Получить программу с компетенциями и ЗУН
-      description: Чтение доступно ролям admin, teacher, rop и student.
+      description: Чтение доступно ролям admin и user.
       parameters:
       - in: path
         name: id
@@ -487,7 +487,7 @@ paths:
       - academic
       operationId: getAcademicProgramSummary
       summary: Сверить программу со справочником
-      description: Чтение доступно ролям admin, teacher, rop и student.
+      description: Чтение доступно ролям admin и user.
       parameters:
       - in: path
         name: id
@@ -582,7 +582,7 @@ paths:
       - academic
       operationId: analyzeAcademicGap
       summary: Сверить программу со справочником
-      description: Доступно ролям admin, teacher и rop.
+      description: Требуется роль admin.
       requestBody:
         required: true
         content:
@@ -620,7 +620,7 @@ paths:
       - academic
       operationId: listLocalTaxonomies
       summary: Перечислить импортированные справочники
-      description: Чтение доступно ролям admin, teacher, rop и student.
+      description: Чтение доступно ролям admin и user.
       parameters:
       - in: query
         name: limit
@@ -658,7 +658,7 @@ paths:
       - academic
       operationId: getLocalTaxonomy
       summary: Получить справочник с элементами
-      description: Чтение доступно ролям admin, teacher, rop и student.
+      description: Чтение доступно ролям admin и user.
       parameters:
       - in: path
         name: id
@@ -1844,8 +1844,8 @@ paths:
         ref_id and the quote so an expert can decide without extra lookups. The order
         is stable (`created_at`, then `id`), so pagination with `limit` (1..200, default
         50) and `offset` (>= 0, default 0) is deterministic. An empty page is `[]`,
-        never `null`. Only the expert roles admin, teacher and rop may call this operation;
-        student and guest receive 403.'
+        never `null`. Only the expert roles admin and admin may call this operation;
+        user and user receive 403.'
       operationId: listReviewQueue
       parameters:
       - name: status
@@ -1996,6 +1996,52 @@ paths:
           $ref: '#/components/responses/InternalError'
         '501':
           $ref: '#/components/responses/NotImplemented'
+  /dashboard/correlation:
+    get:
+      tags:
+      - dashboard
+      summary: Correlation matrix for completed runs
+      description: Deterministic Pearson correlation between run duration, tree structure
+        and evidence volume across completed runs. Available to admin and user.
+      operationId: getDashboardCorrelation
+      responses:
+        '200':
+          description: Correlation matrix and the number of runs used.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrelationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+      - bearerAuth: []
+  /dashboard/skills:
+    get:
+      tags:
+      - dashboard
+      summary: Co-occurrence graph of tree competencies
+      description: Deterministic graph of function/task/action titles that appear
+        together in completed run trees. Available to admin and user.
+      operationId: getDashboardSkills
+      responses:
+        '200':
+          description: Competency graph and the number of runs used.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillGraphResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+      - bearerAuth: []
   /runs:
     get:
       tags:
@@ -2196,7 +2242,8 @@ paths:
       - runs
       summary: Delete a research run
       description: Deletes the run together with its tree, evidences and messages
-        (cascade).
+        (cascade). Admin can delete any run; a regular user can delete only a run
+        they created. Legacy runs without created_by are removable by a regular user.
       operationId: deleteRun
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -2246,8 +2293,8 @@ paths:
       tags:
       - runs
       summary: Save a new activity tree in one transaction
-      description: Requires the admin, teacher or rop role. Validates the flat node
-        list and saves it atomically. An existing tree is never replaced; saving again
+      description: Requires the admin or admin role. Validates the flat node list
+        and saves it atomically. An existing tree is never replaced; saving again
         is rejected with 409. Tree writes require the PostgreSQL store.
       operationId: saveRunTree
       parameters:
@@ -2327,7 +2374,7 @@ paths:
 
         detect cross-source conflicts. The source is available to finalization
 
-        immediately. Admin and teacher only.
+        immediately. Admin and admin only.
 
         '
       operationId: attachRunSource
@@ -2370,7 +2417,7 @@ paths:
         '401':
           description: Missing or invalid token
         '403':
-          description: Admin/teacher role required
+          description: Admin/admin role required
         '404':
           description: Run not found
         '422':
@@ -2618,8 +2665,8 @@ paths:
       - runs
       summary: Source-type coverage matrix for a run
       description: Returns the coverage matrix of role/function/task rows by source-type
-        evidence counts. JSON is the default; any `format` value other than `csv`
-        (compared case-insensitively and trimmed) also selects JSON. `format=csv`
+        evidence counts. Admin only. JSON is the default; any `format` value other
+        than `csv` (compared case-insensitively and trimmed) also selects JSON. `format=csv`
         returns the same matrix as a text/csv attachment with the header `node_id,title,type,interview,standard,vacancy,document`.
         Every column is always present (cells are 0 when no source of that type is
         linked) and action nodes are excluded from the rows. Requires PostgreSQL;
@@ -2695,7 +2742,7 @@ paths:
         and `parent_id` by the normalized ancestor path. Both runs must have a saved
         tree; the run status does not block the comparison. `story` is a deterministic
         Russian human-readable summary that always agrees with `summary`. Read-only.
-        Guest may read.
+        user may read.
       operationId: compareRuns
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3162,12 +3209,11 @@ paths:
         id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status),
         resolved conflicts, the final recommendations/courses chat message when available
         and the generation timestamp. `format=json` returns the same data as a structured
-        document (`schema=run-export/v1`). Roles: admin, teacher, rop, student and
-        guest. CSV returns one row per evidence quote or per node without evidence.
-        Conflicts and source metadata are auxiliary and are read best-effort: if they
-        cannot be loaded the export still succeeds without them. The response is served
-        with `Content-Disposition: attachment` and a filename built from a sanitized
-        run id.'
+        document (`schema=run-export/v1`). Roles: admin, user. CSV returns one row
+        per evidence quote or per node without evidence. Conflicts and source metadata
+        are auxiliary and are read best-effort: if they cannot be loaded the export
+        still succeeds without them. The response is served with `Content-Disposition:
+        attachment` and a filename built from a sanitized run id.'
       operationId: exportRun
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3324,7 +3370,7 @@ paths:
       - chat
       summary: Send a user message to the interviewer
       description: Records the respondent answer and schedules the next question.
-        Guest role cannot post messages.
+        user role cannot post messages.
       operationId: sendMessage
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3399,7 +3445,7 @@ paths:
       description: Returns title/description conflicts detected and deterministically
         resolved by the synthesizer during finalization. Every conflict keeps the
         competing values and the winner (interview > standard > vacancy > document).
-        The list is empty when the run has no stored conflicts.
+        Admin only. The list is empty when the run has no stored conflicts.
       operationId: getRunConflicts
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3556,6 +3602,11 @@ paths:
                           type: string
                         score:
                           type: number
+                        node_id:
+                          type: string
+                          format: uuid
+                          description: Tree node matched by the quote when it can
+                            be resolved.
         '400':
           description: Invalid query, strategy, limit or a failed search request.
           content:
@@ -3870,29 +3921,86 @@ paths:
           $ref: '#/components/responses/UnprocessableTree'
         '500':
           $ref: '#/components/responses/InternalError'
+  /auth/register:
+    post:
+      tags:
+      - auth
+      summary: Register a user
+      description: Creates an account with email and password. The first registered
+        user becomes admin, all following users get the user role. Returns a 24-hour
+        JWT.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created and token issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/login:
+    post:
+      tags:
+      - auth
+      summary: Log in with email and password
+      description: Returns a 24-hour JWT for an existing account.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated; token and user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /users:
     get:
       tags:
       - users
-      summary: List demo users
-      description: List of demo accounts and their roles; available to the admin role
-        only.
+      summary: List registered users
+      description: Registered accounts with email, display name and role; available
+        to the admin role only.
       operationId: listUsers
       responses:
         '200':
-          description: Demo users.
+          description: Registered users.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/DemoUser'
+                  $ref: '#/components/schemas/AuthUser'
               example:
-              - subject: demo-admin
+              - id: 4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f
+                email: admin@example.com
+                display_name: Администратор
                 role: admin
-              - subject: demo-guest
-                role: guest
-                read_only: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3903,8 +4011,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT with `sub` and `role` claims; roles are admin, teacher, rop,
-        student and guest.
+      description: JWT with `sub` and `role` claims; roles are admin and user.
   parameters:
     RunId:
       name: id
@@ -4601,6 +4708,9 @@ components:
           - review
           - done
           - failed
+        created_by:
+          type: string
+          description: Account id that created the run; empty for legacy runs.
     Snapshot:
       type: object
       required:
@@ -4932,25 +5042,158 @@ components:
           $ref: '#/components/schemas/ChatMessage'
         status:
           $ref: '#/components/schemas/RunStatus'
-    DemoUser:
+    RegisterRequest:
       type: object
       required:
-      - subject
+      - email
+      - display_name
+      - password
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        password:
+          type: string
+          minLength: 8
+          maxLength: 200
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+    AuthUser:
+      type: object
+      required:
+      - id
+      - email
+      - display_name
       - role
       additionalProperties: false
       properties:
-        subject:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        display_name:
           type: string
         role:
           type: string
           enum:
           - admin
-          - teacher
-          - rop
-          - student
-          - guest
-        read_only:
-          type: boolean
+          - user
+    AuthResponse:
+      type: object
+      required:
+      - token
+      - user
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/AuthUser'
+    CorrelationMetric:
+      type: object
+      required:
+      - key
+      - label
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+    CorrelationResponse:
+      type: object
+      required:
+      - sample_size
+      - metrics
+      - matrix
+      additionalProperties: false
+      properties:
+        sample_size:
+          type: integer
+          minimum: 0
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/CorrelationMetric'
+        matrix:
+          type: array
+          description: Symmetric matrix of Pearson coefficients in the range [-1,
+            1].
+          items:
+            type: array
+            items:
+              type: number
+              minimum: -1
+              maximum: 1
+    SkillGraphNode:
+      type: object
+      required:
+      - id
+      - label
+      - type
+      - count
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+    SkillGraphEdge:
+      type: object
+      required:
+      - source
+      - target
+      - weight
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        weight:
+          type: integer
+          minimum: 1
+    SkillGraphResponse:
+      type: object
+      required:
+      - sample_size
+      - nodes
+      - edges
+      additionalProperties: false
+      properties:
+        sample_size:
+          type: integer
+          minimum: 0
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillGraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillGraphEdge'
     RunEstimate:
       type: object
       description: JSON body of GET /runs/estimate (pre-run cost and time estimate).

@@ -49,7 +49,7 @@ func TestPostgresSynthesisReviewReplacesAndReadsEntries(t *testing.T) {
 			t.Fatalf("атомарная замена результатов: %v", err)
 		}
 	}
-	authToken := testToken(t, auth.RoleTeacher)
+	authToken := testToken(t, auth.RoleAdmin)
 	h := api.NewServer(pg).Routes()
 	path := "/api/v1/runs/" + dbRun
 	expectRead := func(kind string, payload []byte) {

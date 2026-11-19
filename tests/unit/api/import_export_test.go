@@ -33,7 +33,7 @@ func (s treeExportStore) GetRun(id string) (*domain.Run, error) {
 func (s treeExportStore) GetTree(string) ([]domain.Node, error) { return s.nodes, nil }
 
 func TestRunExportFormatsOnHTTP(t *testing.T) {
-	token := testToken(t, auth.RoleStudent)
+	token := testToken(t, auth.RoleUser)
 	s := treeExportStore{Store: api.NewMemoryStore(), status: domain.RunDone, nodes: []domain.Node{
 		{ID: "r", Type: domain.NodeType("role"), Title: "  =2026", Evidence: []domain.Evidence{
 			{ID: "e1", Quote: exactAnswer, SourceID: "source"},
@@ -81,7 +81,7 @@ func TestRunExportFormatsOnHTTP(t *testing.T) {
 
 func TestFileImportHTTPRequiresAdminAndValidBody(t *testing.T) {
 	admin := testToken(t, auth.RoleAdmin)
-	teacher := testToken(t, auth.RoleTeacher)
+	user := testToken(t, auth.RoleUser)
 	memory := api.NewServer(api.NewMemoryStore()).Routes()
 	pgWithoutFiles := api.NewServer(api.NewPGStore(nil)).Routes()
 	for _, tc := range []struct {
@@ -92,7 +92,7 @@ func TestFileImportHTTPRequiresAdminAndValidBody(t *testing.T) {
 		status  int
 	}{
 		{"без JWT", memory, "", `{"sources":["vacancies"]}`, 401},
-		{"роль преподавателя", pgWithoutFiles, teacher, `{"sources":["vacancies"]}`, 403},
+		{"роль пользователя", pgWithoutFiles, user, `{"sources":["vacancies"]}`, 403},
 		{"демонстрационный сервер", memory, admin, `{"sources":["vacancies"]}`, 503},
 		{"файлы не настроены", pgWithoutFiles, admin, `{"sources":["standards"]}`, 503},
 		{"два JSON-объекта", memory, admin, `{"sources":["vacancies"]}{}`, 400},
@@ -110,8 +110,8 @@ func TestFileImportHTTPRequiresAdminAndValidBody(t *testing.T) {
 }
 
 func TestSearchHTTPRejectsInvalidParametersBeforeQuery(t *testing.T) {
-	teacher := testToken(t, auth.RoleTeacher)
-	student := testToken(t, auth.RoleStudent)
+	teacher := testToken(t, auth.RoleAdmin)
+	student := testToken(t, auth.RoleUser)
 	const uuid = "e198b30a-8cbd-4eb9-a4a6-893238c7f954"
 	s := treeExportStore{Store: api.NewMemoryStore(), id: uuid}
 	handler := api.NewServer(s).Routes()

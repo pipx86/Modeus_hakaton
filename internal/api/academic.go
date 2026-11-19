@@ -52,7 +52,7 @@ func academicUUID(w http.ResponseWriter, value, field string, optional bool) (pg
 }
 
 func (s *Server) handleAcademicPrograms(w http.ResponseWriter, r *http.Request) {
-	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent)
+	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleUser)
 	if !ok {
 		return
 	}
@@ -81,7 +81,7 @@ func (s *Server) handleAcademicPrograms(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleAcademicProgram(w http.ResponseWriter, r *http.Request) {
-	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent)
+	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleUser)
 	if !ok {
 		return
 	}
@@ -102,7 +102,7 @@ func (s *Server) handleAcademicSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLocalAcademicGap(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	var request struct {
@@ -119,7 +119,7 @@ func (s *Server) handleLocalAcademicGap(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) writeAcademicGap(w http.ResponseWriter, r *http.Request, program, taxonomy string) {
-	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent)
+	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleUser)
 	if !ok {
 		return
 	}
@@ -142,7 +142,7 @@ func (s *Server) writeAcademicGap(w http.ResponseWriter, r *http.Request, progra
 }
 
 func (s *Server) handleLocalTaxonomies(w http.ResponseWriter, r *http.Request) {
-	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent)
+	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleUser)
 	if !ok {
 		return
 	}
@@ -162,7 +162,7 @@ func (s *Server) handleLocalTaxonomies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLocalTaxonomy(w http.ResponseWriter, r *http.Request) {
-	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent)
+	queries, ok := s.academicQueries(w, r, auth.RoleAdmin, auth.RoleUser)
 	if !ok {
 		return
 	}

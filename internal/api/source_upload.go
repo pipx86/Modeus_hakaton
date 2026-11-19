@@ -1,26 +1,21 @@
 package api
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/ingestion"
-	"activity-descriptor/internal/logging"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // handleUploadSource принимает файл, извлекает из него текст и создаёт глобальный источник.
 //
 // Поддерживаются PDF, DOCX и текстовые форматы; содержимое не нужно вставлять вручную.
 func (s *Server) handleUploadSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, ingestion.MaxDocumentSize+(1<<20))
@@ -86,21 +81,6 @@ func (s *Server) handleUploadSource(w http.ResponseWriter, r *http.Request) {
 	}
 	// Индексируем в фоне: построение фрагментов и векторов может занять время,
 	// а загрузка файла не должна ждать эмбеддинги.
-	if service, ok := s.searchService(); ok {
-		sourceID := created.ID
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			defer cancel()
-			var id pgtype.UUID
-			if err := id.Scan(sourceID); err != nil {
-				return
-			}
-			if err := service.IndexSource(ctx, id); err != nil {
-				logging.Logger.Warn("source_auto_index_failed", "source_id", sourceID, "error", err)
-				return
-			}
-			logging.Logger.Info("source_auto_indexed", "source_id", sourceID)
-		}()
-	}
+	s.indexSourceAsync(created.ID)
 	writeJSON(w, http.StatusCreated, created)
 }

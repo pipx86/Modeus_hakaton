@@ -148,67 +148,71 @@ function EvidenceList({
         return (
           <li
             key={item.id}
-            className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+            className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm"
           >
-            {source && (
-              <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-                <span className="rounded-full bg-background/70 px-1.5 py-0.5">
-                  {SOURCE_TYPE_LABEL[source.type] ?? source.type}
+            <div className="flex flex-wrap items-center gap-2">
+              {source && (
+                <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                  <span className="rounded-full bg-background/70 px-1.5 py-0.5">
+                    {SOURCE_TYPE_LABEL[source.type] ?? source.type}
+                  </span>
+                  <span className="max-w-40 truncate" title={source.title}>
+                    {source.title}
+                  </span>
+                  <span>· {SOURCE_PRIORITY[source.type]}</span>
                 </span>
-                <span className="max-w-40 truncate" title={source.title}>
-                  {source.title}
+              )}
+              {typeof confidence === "number" && (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceTone(confidence)}`}
+                >
+                  {Math.round(confidence * 100)}%
                 </span>
-                <span>· {SOURCE_PRIORITY[source.type]}</span>
-              </span>
-            )}
-            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">{item.quote}</span>
-            {typeof confidence === "number" && (
+              )}
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${confidenceTone(confidence)}`}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[status]}`}
               >
-                {Math.round(confidence * 100)}%
+                {STATUS_LABEL[status]}
               </span>
-            )}
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[status]}`}
-            >
-              {STATUS_LABEL[status]}
-            </span>
-            {onShowTranscript && source?.type === "interview" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 gap-1 px-2 text-xs"
-                onClick={() => onShowTranscript(item, source)}
-              >
-                <MessageSquareIcon className="size-3" />
-                В интервью
-              </Button>
-            )}
-            {status !== "approved" && !readOnly && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 gap-1 px-2 text-xs"
-                onClick={() => onApprove(item.id)}
-                aria-label="Подтвердить цитату"
-              >
-                <CheckIcon className="size-3" />
-                Подтвердить
-              </Button>
-            )}
-            {status !== "rejected" && onReject && !readOnly && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 gap-1 px-2 text-xs"
-                onClick={() => onReject(item.id)}
-                aria-label="Отклонить цитату"
-              >
-                <XIcon className="size-3" />
-                Отклонить
-              </Button>
-            )}
+              {onShowTranscript && source?.type === "interview" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 shrink-0 gap-1 px-2 text-xs"
+                  onClick={() => onShowTranscript(item, source)}
+                >
+                  <MessageSquareIcon className="size-3" />
+                  В интервью
+                </Button>
+              )}
+              {status !== "approved" && !readOnly && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 shrink-0 gap-1 px-2 text-xs"
+                  onClick={() => onApprove(item.id)}
+                  aria-label="Подтвердить цитату"
+                >
+                  <CheckIcon className="size-3" />
+                  Подтвердить
+                </Button>
+              )}
+              {status !== "rejected" && onReject && !readOnly && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 shrink-0 gap-1 px-2 text-xs"
+                  onClick={() => onReject(item.id)}
+                  aria-label="Отклонить цитату"
+                >
+                  <XIcon className="size-3" />
+                  Отклонить
+                </Button>
+              )}
+            </div>
+            <p className="whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
+              {item.quote}
+            </p>
           </li>
         )
       })}
@@ -429,7 +433,7 @@ export interface ActivityTreeProps {
   onShowTranscript?: (item: Evidence, source?: Source) => void
   /** Серверные инсайты: здоровье дерева, провенанс, флаги, рынок и объяснения узлов. */
   insights?: Insights | null
-  /** Просмотр без изменений (guest/student или режим ?view=guest). */
+  /** Просмотр без изменений (режим ?view=readonly). */
   readOnly?: boolean
 }
 
@@ -766,19 +770,21 @@ export function ActivityTree({
         >
           С ЗУН
         </Button>
-        <Button
-          variant={onlyProblem ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={onlyProblem}
-          onClick={() => setOnlyProblem((value) => !value)}
-          className="h-7 gap-1 px-2.5 text-xs"
-          title="Показать узлы с замечаниями качества"
-        >
-          <AlertTriangleIcon className="size-3.5" />
-          Проблемные
-          {flagsTotal > 0 && <span className="text-muted-foreground">{flagsTotal}</span>}
-        </Button>
-        {insights && (
+        {!readOnly && (
+          <Button
+            variant={onlyProblem ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={onlyProblem}
+            onClick={() => setOnlyProblem((value) => !value)}
+            className="h-7 gap-1 px-2.5 text-xs"
+            title="Показать узлы с замечаниями качества"
+          >
+            <AlertTriangleIcon className="size-3.5" />
+            Проблемные
+            {flagsTotal > 0 && <span className="text-muted-foreground">{flagsTotal}</span>}
+          </Button>
+        )}
+        {insights && !readOnly && (
           <Button
             variant="outline"
             size="sm"
@@ -796,7 +802,7 @@ export function ActivityTree({
             : `Узлов: ${nodes.length}`}
         </span>
       </div>
-      {insights && (insights.market_heat?.top?.length ?? 0) > 0 && (
+      {!readOnly && insights && (insights.market_heat?.top?.length ?? 0) > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <span>Тепло рынка:</span>
           {insights.market_heat.top.slice(0, 10).map((item) => (
@@ -874,9 +880,9 @@ export function ActivityTree({
               onAttach={onAttach}
               onShowZun={setZunNode}
               provenance={provenanceForNode(row.node)}
-              flags={flagsByNode.get(row.node.id)}
-              heat={heat}
-              heatLevel={heatLevel}
+              flags={readOnly ? undefined : flagsByNode.get(row.node.id)}
+              heat={readOnly ? undefined : heat}
+              heatLevel={readOnly ? undefined : heatLevel}
               readOnly={readOnly}
             />
           )
@@ -886,7 +892,7 @@ export function ActivityTree({
         )}
       </div>
       <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{selected?.title ?? ""}</DialogTitle>
             <DialogDescription>
@@ -897,11 +903,13 @@ export function ActivityTree({
           </DialogHeader>
           {selected && (
             <div className="space-y-3">
-              <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-                {insights?.node_explanations?.[selected.id]?.summary ??
-                  explainNode(selected.title, selected.evidence, sourcesById)}
-              </p>
-              {(flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
+              {!readOnly && (
+                <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
+                  {insights?.node_explanations?.[selected.id]?.summary ??
+                    explainNode(selected.title, selected.evidence, sourcesById)}
+                </p>
+              )}
+              {!readOnly && (flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
                 <ul className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-xs">
                   {flagsByNode.get(selected.id)!.map((flag) => (
                     <li key={flag.code}>

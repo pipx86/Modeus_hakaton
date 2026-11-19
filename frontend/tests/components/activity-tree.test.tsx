@@ -426,11 +426,14 @@ describe("ActivityTree", () => {
     expect(
       screen.queryByRole("button", { name: /Добавить обоснование к узлу/ }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Проблемные/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Здоровье дерева/ })).not.toBeInTheDocument()
 
     fireEvent.click(
       screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
     )
     expect(screen.queryByRole("button", { name: "Подтвердить цитату" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/включён в дерево по подтверждениям/)).not.toBeInTheDocument()
   })
 
   it("переходит к цитате в интервью", () => {    const onShowTranscript = vi.fn()

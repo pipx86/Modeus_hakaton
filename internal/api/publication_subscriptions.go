@@ -15,7 +15,7 @@ import (
 )
 
 func (s *Server) subscriptionQueries(w http.ResponseWriter, r *http.Request) (*db.Queries, string, bool) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return nil, "", false
 	}
 	subject := auth.Subject(r.Context())

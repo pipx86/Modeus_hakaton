@@ -24,7 +24,7 @@ e2e/batch-каркас. Финализатор подключается толь
 
 ## Поток HTTP-чата
 
-1. `POST /api/v1/runs {profession}` (admin/teacher/rop) создаёт run, ставит
+1. `POST /api/v1/runs {profession}` (admin/user) создаёт run, ставит
    `type=chat`, `stage=interview` и вызывает `chat.Start` → приветствие,
    событие `agent_thinking`, фоновая генерация первого вопроса.
 2. `GET /runs/{id}/messages` и `GET /runs/{id}/events` (SSE) отдают историю и
@@ -147,10 +147,14 @@ sequenceDiagram
 `cmd/server/finalize.go: newRAGRetriever` — поиск по источникам **в рамках
 run**: embeddings через Ollama (`OLLAMA_URL`, `OLLAMA_EMBED_MODEL`, по
 умолчанию `nomic-embed-text`, 768 измерений; при недоступности — BM25-фолбэк),
-top-8 фрагментов с группировкой по источникам. Запрос = профессия + первые
-2 000 рун транскрипта; ошибка ретрива означает «источники не переданы» без
-деградации статуса. Индексация — `POST /api/v1/sources/{id}/index`, нужны
-опциональные vector-миграции.
+`RAG_SEARCH_STRATEGY=vector|hybrid` (hybrid — RRF BM25 и векторов) и
+`RAG_SEARCH_LIMIT` (по умолчанию 8 фрагментов с группировкой по источникам).
+Запрос = профессия + первые 2 000 рун транскрипта; ошибка ретрива означает
+«источники не переданы» без деградации статуса. Источники индексируются
+автоматически при создании/загрузке (`SOURCE_AUTO_INDEX`) и вручную через
+`POST /api/v1/sources/{id}/index`; уже существующие догоняет
+`go run ./cmd/index-sources`. Нужны опциональные vector-миграции и Ollama,
+подробности и логи — [docs/EMBEDDINGS.md](../EMBEDDINGS.md).
 
 ## Деградация и ошибки
 

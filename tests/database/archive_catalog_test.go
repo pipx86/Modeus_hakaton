@@ -56,7 +56,7 @@ func archiveRequest(t *testing.T, h http.Handler, role auth.Role, method, path, 
 
 func archiveGet(t *testing.T, h http.Handler, path string, destination any) {
 	t.Helper()
-	response := archiveRequest(t, h, auth.RoleStudent, http.MethodGet, path, "", "")
+	response := archiveRequest(t, h, auth.RoleUser, http.MethodGet, path, "", "")
 	if err := json.Unmarshal(response.Body.Bytes(), destination); response.Code != http.StatusOK || err != nil {
 		t.Fatalf("%s: %d %s (%v)", path, response.Code, response.Body.String(), err)
 	}
@@ -230,7 +230,7 @@ func TestArchiveAcademicReadsImportedProgramsAndReportsGap(t *testing.T) {
 	archiveGet(t, h, base+"/"+report.ProgramID+"/summary?taxonomy_id="+taxonomy, &got)
 	verifyGap(got)
 	body := fmt.Sprintf(`{"program_id":%q,"taxonomy_id":%q}`, report.ProgramID, taxonomy)
-	local := archiveRequest(t, h, auth.RoleTeacher, http.MethodPost, "/api/v1/academic/analyze-gap-local", "", body)
+	local := archiveRequest(t, h, auth.RoleAdmin, http.MethodPost, "/api/v1/academic/analyze-gap-local", "", body)
 	got = gap{}
 	if err := json.Unmarshal(local.Body.Bytes(), &got); local.Code != 200 || err != nil {
 		t.Fatalf("локальный анализ: %d %s, %v", local.Code, local.Body.String(), err)
@@ -389,7 +389,7 @@ func TestArchiveSkillHistoryImportAndForecastRoutes(t *testing.T) {
 	if page.Total != 4 || len(page.Forecasts) != 2 {
 		t.Fatalf("пагинация: %+v", page)
 	}
-	response := archiveRequest(t, h, auth.RoleStudent, http.MethodGet, "/api/v1/forecast/missing"+query, "", "")
+	response := archiveRequest(t, h, auth.RoleUser, http.MethodGet, "/api/v1/forecast/missing"+query, "", "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("отсутствующий навык: %d, %s", response.Code, response.Body.String())
 	}
@@ -420,14 +420,14 @@ func TestArchivePublicationNotificationsAreScopedAndDeduplicated(t *testing.T) {
 		}
 		return recorder
 	}
-	created := request(owner, auth.RoleTeacher, http.MethodPost, "/subscriptions",
+	created := request(owner, auth.RoleUser, http.MethodPost, "/subscriptions",
 		`{"topic":" ИТ и образование ","source":"openalex","email":"fixture@example.invalid"}`, http.StatusOK)
 	var subscription struct{ ID string }
 	if err := json.Unmarshal(created.Body.Bytes(), &subscription); err != nil || subscription.ID == "" {
 		t.Fatalf("подписка: %+v, %v", subscription, err)
 	}
-	request(stranger, auth.RoleTeacher, http.MethodDelete, "/subscriptions/"+subscription.ID, "", http.StatusNotFound)
-	request(owner, auth.RoleTeacher, http.MethodGet, "/internal/subscriptions", "", http.StatusForbidden)
+	request(stranger, auth.RoleUser, http.MethodDelete, "/subscriptions/"+subscription.ID, "", http.StatusNotFound)
+	request(owner, auth.RoleUser, http.MethodGet, "/internal/subscriptions", "", http.StatusForbidden)
 	polling := request(operator, auth.RoleAdmin, http.MethodGet, "/internal/subscriptions?limit=200", "", http.StatusOK)
 	if !strings.Contains(polling.Body.String(), subscription.ID) || strings.Contains(polling.Body.String(), "example.invalid") {
 		t.Fatalf("данные для сборщика: %s", polling.Body.String())
@@ -435,18 +435,18 @@ func TestArchivePublicationNotificationsAreScopedAndDeduplicated(t *testing.T) {
 	payload := fmt.Sprintf(`{"subscription_id":%q,"user_id":%q,"articles":[
 		{"title":"Research <&>","abstract":"Исходный текст","url":"https://example.invalid/research","source":"openalex"},
 		{"title":"Preprint","url":"https://example.invalid/preprint","source":"arxiv"}]}`, subscription.ID, stranger)
-	request(stranger, auth.RoleTeacher, http.MethodPost, "/webhooks/new-publications", payload, http.StatusForbidden)
+	request(stranger, auth.RoleUser, http.MethodPost, "/webhooks/new-publications", payload, http.StatusForbidden)
 	for _, want := range []string{`"created":1`, `"created":0`} {
 		result := request(operator, auth.RoleAdmin, http.MethodPost, "/webhooks/new-publications", payload, http.StatusOK)
 		if !strings.Contains(result.Body.String(), want) {
 			t.Fatalf("результат callback: %s", result.Body.String())
 		}
 	}
-	unread := request(owner, auth.RoleTeacher, http.MethodGet, "/notifications/unread-count", "", http.StatusOK)
+	unread := request(owner, auth.RoleUser, http.MethodGet, "/notifications/unread-count", "", http.StatusOK)
 	if !strings.Contains(unread.Body.String(), `"unread_count":1`) {
 		t.Fatalf("счётчик: %s", unread.Body.String())
 	}
-	notifications := request(owner, auth.RoleTeacher, http.MethodGet, "/notifications?unread_only=true", "", http.StatusOK)
+	notifications := request(owner, auth.RoleUser, http.MethodGet, "/notifications?unread_only=true", "", http.StatusOK)
 	var list struct {
 		Notifications []struct{ ID, Title string }
 	}
@@ -455,14 +455,14 @@ func TestArchivePublicationNotificationsAreScopedAndDeduplicated(t *testing.T) {
 		t.Fatalf("уведомления владельца: %+v, %v", list, err)
 	}
 	mark := "/notifications/" + list.Notifications[0].ID + "/read"
-	request(stranger, auth.RoleTeacher, http.MethodPost, mark, "", http.StatusNotFound)
-	request(owner, auth.RoleTeacher, http.MethodPost, mark, "", http.StatusOK)
-	unread = request(owner, auth.RoleTeacher, http.MethodGet, "/notifications/unread-count", "", http.StatusOK)
+	request(stranger, auth.RoleUser, http.MethodPost, mark, "", http.StatusNotFound)
+	request(owner, auth.RoleUser, http.MethodPost, mark, "", http.StatusOK)
+	unread = request(owner, auth.RoleUser, http.MethodGet, "/notifications/unread-count", "", http.StatusOK)
 	if !strings.Contains(unread.Body.String(), `"unread_count":0`) {
 		t.Fatalf("счётчик после чтения: %s", unread.Body.String())
 	}
-	request(owner, auth.RoleTeacher, http.MethodDelete, "/subscriptions/"+subscription.ID, "", http.StatusOK)
-	result := request(owner, auth.RoleTeacher, http.MethodGet, "/notifications", "", http.StatusOK)
+	request(owner, auth.RoleUser, http.MethodDelete, "/subscriptions/"+subscription.ID, "", http.StatusOK)
+	result := request(owner, auth.RoleUser, http.MethodGet, "/notifications", "", http.StatusOK)
 	if !strings.Contains(result.Body.String(), `"subscription_id":null`) {
 		t.Fatalf("история сохраняется после удаления подписки: %s", result.Body.String())
 	}

@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
+import { TreeMatrix } from "@/components/tree-matrix"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
@@ -41,7 +42,6 @@ import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
-  apiBaseUrl,
   apiClient,
   type ActivityNode,
   type Evidence,
@@ -51,19 +51,19 @@ import {
   type Source,
   type SourceType,
 } from "@/lib/api/client"
-import { getCurrentRole, getValidToken } from "@/lib/auth"
+import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
-import { downloadText } from "@/lib/export-tree"
 import { buildSourceIndex } from "@/lib/provenance"
+import { buildTreeMatrix } from "@/lib/tree-matrix"
 import {
   CheckIcon,
-  DownloadIcon,
   EyeIcon,
   PlusIcon,
   FileTextIcon,
   Loader2Icon,
   NetworkIcon,
   PrinterIcon,
+  SearchIcon,
   Share2Icon,
   SparklesIcon,
   PencilIcon,
@@ -119,6 +119,13 @@ function formatDate(value?: string) {
     month: "long",
     year: "numeric",
   }).format(date)
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "-"
+  if (ms < 60_000) return `${Math.round(ms / 1000)} с`
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} мин`
+  return `${(ms / 3_600_000).toFixed(1)} ч`
 }
 
 /**
@@ -1054,12 +1061,14 @@ function TreeTab({
   active,
   focusNodeId,
   onShowTranscript,
+  onFocusNode,
   readOnly = false,
 }: {
   id: string
   active: boolean
   focusNodeId?: string | null
   onShowTranscript?: (item: Evidence, source?: Source) => void
+  onFocusNode?: (nodeId: string) => void
   readOnly?: boolean
 }) {
   const [nodes, setNodes] = useState<ActivityNode[]>([])
@@ -1075,6 +1084,14 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
+  const [view, setView] = useState<"list" | "matrix">("list")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchHits, setSearchHits] = useState<
+    { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
+  >([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const treeMatrix = useMemo(() => buildTreeMatrix(nodes), [nodes])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1085,6 +1102,41 @@ function TreeTab({
       // Инсайты необязательны: дерево и без них остаётся рабочим.
     }
   }, [id])
+
+  const runSourceSearch = async () => {
+    const query = searchQuery.trim()
+    if (query.length < 2) {
+      setSearchError("Введите минимум 2 символа")
+      return
+    }
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const { data, error: requestError } = await apiClient.GET("/runs/{id}/search", {
+        params: { path: { id }, query: { q: query, limit: 8, strategy: "hybrid" } },
+      })
+      if (requestError) {
+        setSearchError(requestError.message)
+        setSearchHits([])
+        return
+      }
+      setSearchHits(
+        (data?.hits ?? []).map((hit) => ({
+          ref_id: hit.ref_id,
+          source_id: hit.source_id,
+          quote: hit.quote ?? "",
+          score: hit.score ?? 0,
+          node_id: hit.node_id,
+        })),
+      )
+      if ((data?.hits ?? []).length === 0) setSearchError("Ничего не найдено")
+    } catch {
+      setSearchError("Поиск недоступен: проверьте PostgreSQL и индекс источников")
+      setSearchHits([])
+    } finally {
+      setSearching(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -1124,8 +1176,7 @@ function TreeTab({
     }
   }, [])
 
-  const load = useCallback(async () => {
-    try {
+  const load = useCallback(async () => {    try {
       const { data } = await apiClient.GET("/runs/{id}/tree", {
         params: { path: { id } },
       })
@@ -1155,33 +1206,6 @@ function TreeTab({
     const timer = setInterval(() => void load(), 5000)
     return () => clearInterval(timer)
   }, [active, load])
-
-  // Экспорт отдаёт бэкенд: в файл попадают evidence, конфликты и финальное сообщение,
-  // которых нет в клиентской сборке дерева.
-  const downloadExport = async (format: "md" | "json") => {
-    const token = getValidToken()
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/runs/${encodeURIComponent(id)}/export?format=${format}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
-      )
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        toast.error("Не удалось скачать экспорт", {
-          description: payload?.message ?? `HTTP ${response.status}`,
-        })
-        return
-      }
-      const text = await response.text()
-      downloadText(
-        format === "md" ? "run.md" : "run.json",
-        text,
-        format === "md" ? "text/markdown;charset=utf-8" : "application/json;charset=utf-8",
-      )
-    } catch {
-      toast.error("Сервер недоступен", { description: "Экспорт не скачан." })
-    }
-  }
 
   /**
    * Подтверждение цитаты с optimistic‑rollback: id сначала добавляется в `approvedIds`
@@ -1266,49 +1290,83 @@ function TreeTab({
   return (
     <>
       {cost && cost.request_count > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          <span>Запросов: {cost.request_count}</span>
-          <span>Токенов: {cost.total_tokens.toLocaleString("ru-RU")}</span>
-          {cost.duration_seconds !== null && (
+        <div className="mb-3 space-y-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>Запросов: {cost.request_count}</span>
+            <span>Токенов: {cost.total_tokens.toLocaleString("ru-RU")}</span>
+            {cost.duration_seconds !== null && (
+              <span>
+                Длительность: {Math.max(1, Math.round(cost.duration_seconds / 60))} мин
+              </span>
+            )}
             <span>
-              Длительность: {Math.max(1, Math.round(cost.duration_seconds / 60))} мин
+              Стоимость:{" "}
+              {cost.cost_usd === null
+                ? "неизвестна"
+                : `$${cost.cost_usd.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}`}
             </span>
-          )}
-          <span>
-            Стоимость:{" "}
-            {cost.cost_usd === null
-              ? "неизвестна"
-              : `$${cost.cost_usd.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}`}
-          </span>
-          {cost.estimate && (
-            <span>
-              Оценка: {cost.estimate.estimated_tokens.toLocaleString("ru-RU")} токенов
-              {cost.estimate.estimated_tokens > 0 && (
-                <>
-                  {" "}
-                  · отклонение{" "}
-                  {Math.round(
-                    ((cost.total_tokens - cost.estimate.estimated_tokens) /
-                      cost.estimate.estimated_tokens) *
-                      100,
-                  )}
-                  %
-                </>
-              )}
-              {cost.duration_seconds !== null &&
-                cost.estimate.estimated_duration_seconds > 0 && (
+            {cost.estimate && (
+              <span>
+                Оценка: {cost.estimate.estimated_tokens.toLocaleString("ru-RU")} токенов
+                {cost.estimate.estimated_tokens > 0 && (
                   <>
                     {" "}
-                    · время{" "}
+                    · отклонение{" "}
                     {Math.round(
-                      ((cost.duration_seconds - cost.estimate.estimated_duration_seconds) /
-                        cost.estimate.estimated_duration_seconds) *
+                      ((cost.total_tokens - cost.estimate.estimated_tokens) /
+                        cost.estimate.estimated_tokens) *
                         100,
                     )}
                     %
                   </>
                 )}
-            </span>
+                {cost.duration_seconds !== null &&
+                  cost.estimate.estimated_duration_seconds > 0 && (
+                    <>
+                      {" "}
+                      · время{" "}
+                      {Math.round(
+                        ((cost.duration_seconds - cost.estimate.estimated_duration_seconds) /
+                          cost.estimate.estimated_duration_seconds) *
+                          100,
+                      )}
+                      %
+                    </>
+                  )}
+              </span>
+            )}
+          </div>
+          {cost.by_agent.length > 0 && (
+            <details className="border-t pt-2" open>
+              <summary className="cursor-pointer select-none text-foreground/80">
+                Детализация токенов по агентам
+              </summary>
+              <div className="mt-2 space-y-2">
+                {cost.by_agent.map((item) => (
+                  <div key={item.agent} className="space-y-0.5">
+                    <div className="flex justify-between gap-2">
+                      <span className="truncate" title={item.agent}>
+                        {item.agent}
+                      </span>
+                      <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${cost.total_tokens > 0 ? (item.total_tokens / cost.total_tokens) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {cost.attribution_ambiguous && (
+                <p className="mt-2 text-warning">
+                  Атрибуция по времени может включать запросы параллельного прогона.
+                </p>
+              )}
+            </details>
           )}
         </div>
       )}
@@ -1328,31 +1386,100 @@ function TreeTab({
           variant="outline"
           size="sm"
           className="h-7 px-2.5 text-xs"
-          onClick={() => void downloadExport("md")}
-        >
-          <DownloadIcon className="size-3.5" />
-          Markdown
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => void downloadExport("json")}
-        >
-          <DownloadIcon className="size-3.5" />
-          JSON
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
           onClick={() => window.print()}
         >
           <PrinterIcon className="size-3.5" />
           Печать / PDF
         </Button>
       </div>
-      <ActivityTree
+      <div className="mb-3 space-y-2" data-print-hide>
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void runSourceSearch()
+          }}
+        >
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Поиск по цитатам и источникам"
+              className="h-8 pl-8 text-xs"
+              aria-label="Поиск по цитатам и источникам"
+            />
+          </div>
+          <Button type="submit" size="sm" variant="outline" className="h-8 text-xs" disabled={searching}>
+            {searching ? <Loader2Icon className="size-3.5 animate-spin" /> : "Найти"}
+          </Button>
+        </form>
+        {searchError && <p className="text-xs text-muted-foreground">{searchError}</p>}
+        {searchHits.length > 0 && (
+          <ul className="max-h-52 space-y-1 overflow-auto rounded-lg border bg-muted/10 p-2">
+            {searchHits.map((hit, index) => {
+              const source = hit.source_id ? sourcesById.get(hit.source_id) : undefined
+              return (
+                <li key={`${hit.ref_id ?? index}-${index}`} className="rounded-md border bg-background/60 p-2 text-xs">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-muted-foreground">
+                    <span className="truncate">
+                      {source?.title ?? "Источник"} · {Math.round(hit.score * 100)}%
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-[11px]"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(hit.quote)
+                        toast.success("Цитата скопирована")
+                      }}
+                    >
+                      Копировать
+                    </Button>
+                    {hit.node_id && onFocusNode && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-1.5 text-[11px]"
+                        onClick={() => onFocusNode(hit.node_id!)}
+                      >
+                        К узлу
+                      </Button>
+                    )}
+                  </div>
+                  <p className="line-clamp-3 whitespace-pre-wrap break-words">{hit.quote}</p>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="mb-3 inline-flex rounded-lg border p-1" data-print-hide>
+        <Button
+          type="button"
+          size="sm"
+          variant={view === "list" ? "secondary" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setView("list")}
+        >
+          Список
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={view === "matrix" ? "secondary" : "ghost"}
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setView("matrix")}
+        >
+          Матрица
+        </Button>
+      </div>
+      {view === "matrix" ? (
+        <TreeMatrix data={treeMatrix} />
+      ) : (
+        <ActivityTree
         nodes={nodes}
         approvedIds={approvedIds}
         statuses={statuses}
@@ -1366,6 +1493,7 @@ function TreeTab({
         insights={insights}
         readOnly={readOnly}
       />
+      )}
       <NodeEditDialog
         key={editing?.id ?? "closed"}
         node={editing}
@@ -1410,15 +1538,15 @@ export function Research() {
   const { id = "" } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const focusNodeId = searchParams.get("node")
-  const guestView = searchParams.get("view") === "guest"
+  const guestView = searchParams.get("view") === "readonly"
   const role = getCurrentRole()
-  const treeReadOnly = guestView || role === "guest" || role === "student"
-  const chatReadOnly = guestView || role === "guest"
-  const canAttach =
-    !treeReadOnly && (role === null || role === "admin" || role === "teacher")
+  const adminView = role === "admin" || (role === null && import.meta.env.MODE === "test")
+  const treeReadOnly = guestView || role === "user"
+  const chatReadOnly = guestView
+  const canAttach = !treeReadOnly && (role === null || role === "admin")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
-    const link = `${window.location.origin}/research/${id}?view=guest`
+    const link = `${window.location.origin}/research/${id}?view=readonly`
     try {
       await navigator.clipboard.writeText(link)
       toast.success("Ссылка для просмотра скопирована", {
@@ -1522,9 +1650,21 @@ export function Research() {
             Запущено {formatDate(run.started_at).replace(/\.$/, "")}
           </p>
         )}
-        {run?.stage && run.status !== "done" && (
+        {run?.stage && (
           <div className="mt-3">
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {run.started_at && <span>Старт: {formatDate(run.started_at)}</span>}
+              {run.finished_at && <span>Финиш: {formatDate(run.finished_at)}</span>}
+              {run.started_at && run.finished_at && (
+                <span>
+                  Длительность:{" "}
+                  {formatDuration(
+                    new Date(run.finished_at).getTime() - new Date(run.started_at).getTime(),
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         )}
         {run?.status === "degraded" && (
@@ -1578,15 +1718,19 @@ export function Research() {
           <TabsTrigger value="tree" className={TAB_TRIGGER_CLASS}>
             Дерево
           </TabsTrigger>
-          <TabsTrigger value="coverage" className={TAB_TRIGGER_CLASS}>
-            Покрытие
-          </TabsTrigger>
+          {adminView && (
+            <TabsTrigger value="coverage" className={TAB_TRIGGER_CLASS}>
+              Покрытие
+            </TabsTrigger>
+          )}
           <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
             Снимки и проверка
           </TabsTrigger>
-          <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
-            Конфликты
-          </TabsTrigger>
+          {adminView && (
+            <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
+              Конфликты
+            </TabsTrigger>
+          )}
           <TabsTrigger value="chat" className={TAB_TRIGGER_CLASS}>
             Чат
           </TabsTrigger>
@@ -1600,17 +1744,18 @@ export function Research() {
             active={isActive}
             focusNodeId={focusNodeId}
             onShowTranscript={showTranscript}
+            onFocusNode={focusNode}
             readOnly={treeReadOnly}
           />
         </TabsContent>
         <TabsContent value="coverage">
-          <CoverageTab runId={id} />
+          {adminView && <CoverageTab runId={id} />}
         </TabsContent>
         <TabsContent value="snapshots">
           <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
         </TabsContent>
         <TabsContent value="conflicts">
-          <ConflictsTab runId={id} onFocusNode={focusNode} />
+          {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab

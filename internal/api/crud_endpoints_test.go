@@ -55,7 +55,7 @@ func TestListRunsEmpty(t *testing.T) {
 func TestCreateSourceSuccess(t *testing.T) {
 	_, ts := setupCRUDEndpointTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	payload := map[string]any{
 		"type":    "vacancy",
@@ -91,7 +91,7 @@ func TestCreateSourceSuccess(t *testing.T) {
 func TestCreateSourceBadRequest(t *testing.T) {
 	_, ts := setupCRUDEndpointTest(t)
 	auth.EnsureTestSecret()
-	tok, _ := auth.Issue("teacher-user", auth.RoleTeacher, time.Hour)
+	tok, _ := auth.Issue("teacher-user", auth.RoleAdmin, time.Hour)
 
 	payload := map[string]any{
 		"type": "vacancy",

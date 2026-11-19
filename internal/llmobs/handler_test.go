@@ -82,7 +82,7 @@ func TestHandlerListsRequests(t *testing.T) {
 	srv := testServer(t, store)
 	defer srv.Close()
 
-	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/requests?agent=analyst", auth.TokenFor("u1", auth.RoleTeacher), "")
+	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/requests?agent=analyst", auth.TokenFor("u1", auth.RoleAdmin), "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -97,7 +97,7 @@ func TestHandlerGetsRequest(t *testing.T) {
 	srv := testServer(t, store)
 	defer srv.Close()
 
-	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/requests/r1", auth.TokenFor("u1", auth.RoleStudent), "")
+	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/requests/r1", auth.TokenFor("u1", auth.RoleAdmin), "")
 	if resp.StatusCode != http.StatusOK || body["id"] != "r1" {
 		t.Fatalf("status = %d body=%#v", resp.StatusCode, body)
 	}
@@ -109,7 +109,7 @@ func TestHandlerActivatesPromptAsTeacher(t *testing.T) {
 	defer srv.Close()
 
 	resp, _ := request(t, srv, http.MethodPost, "/api/v1/llm/prompt-versions/activate",
-		auth.TokenFor("teacher-1", auth.RoleTeacher), `{"id":"v1","reason":"test"}`)
+		auth.TokenFor("teacher-1", auth.RoleAdmin), `{"id":"v1","reason":"test"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -122,7 +122,7 @@ func TestHandlerRejectsStudentActivation(t *testing.T) {
 	srv := testServer(t, &fakeStore{})
 	defer srv.Close()
 	resp, _ := request(t, srv, http.MethodPost, "/api/v1/llm/prompt-versions/activate",
-		auth.TokenFor("student-1", auth.RoleStudent), `{}`)
+		auth.TokenFor("student-1", auth.RoleUser), `{}`)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
@@ -139,7 +139,7 @@ func TestHandlerUsageByModel(t *testing.T) {
 	srv := testServer(t, store)
 	defer srv.Close()
 
-	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/usage?since=24h", auth.TokenFor("u1", auth.RoleTeacher), "")
+	resp, body := request(t, srv, http.MethodGet, "/api/v1/llm/usage?since=24h", auth.TokenFor("u1", auth.RoleAdmin), "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -157,7 +157,7 @@ func TestHandlerUsageForbiddenForGuest(t *testing.T) {
 	srv := testServer(t, &fakeStore{})
 	defer srv.Close()
 
-	resp, _ := request(t, srv, http.MethodGet, "/api/v1/llm/usage", auth.TokenFor("guest-1", auth.RoleGuest), "")
+	resp, _ := request(t, srv, http.MethodGet, "/api/v1/llm/usage", auth.TokenFor("guest-1", auth.RoleUser), "")
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}

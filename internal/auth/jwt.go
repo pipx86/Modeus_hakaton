@@ -11,17 +11,27 @@ import (
 type Role string
 
 const (
-	RoleAdmin   Role = "admin"
-	RoleTeacher Role = "teacher"
-	RoleROP     Role = "rop"
-	RoleStudent Role = "student"
-	// RoleGuest — гостевой доступ к демонстрационному стенду: только чтение.
-	RoleGuest Role = "guest"
+	RoleAdmin Role = "admin"
+	RoleUser  Role = "user"
 )
+
+// NormalizeRole maps the legacy demo roles to the two supported roles. Tokens
+// are always issued with admin or user; old strings are accepted only when
+// parsing/signing in tests and local tools.
+func NormalizeRole(value Role) Role {
+	switch string(value) {
+	case "admin", "teacher", "rop", "interviewer":
+		return RoleAdmin
+	case "user", "student", "guest":
+		return RoleUser
+	default:
+		return value
+	}
+}
 
 func ValidRole(s string) bool {
 	switch Role(s) {
-	case RoleAdmin, RoleTeacher, RoleROP, RoleStudent, RoleGuest:
+	case RoleAdmin, RoleUser:
 		return true
 	}
 	return false
@@ -52,6 +62,7 @@ func Issue(sub string, role Role, ttl time.Duration) (string, error) {
 	if signingKey == nil {
 		return "", errors.New("JWT_SECRET is not set")
 	}
+	role = NormalizeRole(role)
 	if !ValidRole(string(role)) {
 		return "", errors.New("unknown role")
 	}

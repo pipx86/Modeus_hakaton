@@ -155,6 +155,15 @@ func (n Node) Validate() error {
 	return nil
 }
 
+// User — учётная запись с паролем; role всегда admin или user.
+type User struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	DisplayName  string `json:"display_name"`
+	Role         string `json:"role"`
+	PasswordHash string `json:"-"`
+}
+
 type Source struct {
 	ID        string     `json:"id"`
 	Type      SourceType `json:"type"`
@@ -190,6 +199,7 @@ type Run struct {
 	StartedAt        *time.Time         `json:"started_at,omitempty"`
 	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
 	Stage            Stage              `json:"stage,omitempty"`
+	CreatedBy        string             `json:"created_by,omitempty"`
 	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
 	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
 	PerVacancySkills [][]string         `json:"-"`

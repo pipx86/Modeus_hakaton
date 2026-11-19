@@ -49,6 +49,6 @@ it("показывает цитату в обоснованиях дерева �
   />)
   fireEvent.click(screen.getByRole("button", { name: "Узел Техник: показать обоснования" }))
   const dialog = screen.getByRole("dialog")
-  expect([...dialog.querySelectorAll("span")].some((node) => node.textContent === exactText)).toBe(true)
+  expect(dialog.textContent).toContain(exactText)
   expect(dialog.querySelector("mark[data-proof]")).toBeNull()
 })

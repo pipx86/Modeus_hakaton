@@ -60,7 +60,7 @@ func TestInterviewKeepsOriginalAnswerInSession(t *testing.T) {
 }
 
 func TestChatHTTPTransmitsExactText(t *testing.T) {
-	token := testToken(t, auth.RoleTeacher)
+	token := testToken(t, auth.RoleAdmin)
 	service := chat.NewService(chat.UnavailableClient{}, nil)
 	if err := service.Start("literal-chat", "Техник"); err != nil {
 		t.Fatal(err)

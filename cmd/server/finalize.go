@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"activity-descriptor/internal/agent"
 	"activity-descriptor/internal/agent/analyst"
@@ -17,6 +19,7 @@ import (
 	"activity-descriptor/internal/embeddings"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/llmobs"
+	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/search"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -398,27 +401,78 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
+// ragSettings — параметры RAG-ретривера из окружения. Отдельная структура
+// позволяет проверить умолчания и выбор стратегии без PostgreSQL и модели.
+type ragSettings struct {
+	OllamaURL  string
+	EmbedModel string
+	Strategy   string // "vector" или "hybrid"
+	Limit      int
+}
+
+// ragSettingsFromEnv читает OLLAMA_URL, OLLAMA_EMBED_MODEL, RAG_SEARCH_STRATEGY
+// и RAG_SEARCH_LIMIT. Пустые значения дают локальную Ollama (nomic-embed-text)
+// и векторный поиск с top-8 фрагментов — совместимо с прежним поведением.
+func ragSettingsFromEnv() ragSettings {
+	cfg := search.ConfigFromEnv()
+	settings := ragSettings{
+		OllamaURL:  cfg.OllamaURL,
+		EmbedModel: cfg.EmbedModel,
+		Strategy:   "vector",
+		Limit:      8,
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("RAG_SEARCH_STRATEGY"))) {
+	case "", "vector":
+		settings.Strategy = "vector"
+	case "hybrid":
+		settings.Strategy = "hybrid"
+	default:
+		// Неизвестная стратегия не должна ломать finalizer: остаёмся на vector.
+		logging.Logger.Warn("rag_search_strategy_unknown",
+			"value", os.Getenv("RAG_SEARCH_STRATEGY"),
+			"fallback", "vector")
+	}
+	if raw := strings.TrimSpace(os.Getenv("RAG_SEARCH_LIMIT")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 && value <= 50 {
+			settings.Limit = value
+		} else {
+			logging.Logger.Warn("rag_search_limit_invalid",
+				"value", raw,
+				"fallback", settings.Limit)
+		}
+	}
+	return settings
+}
+
 // newRAGRetriever builds a lexical/vector retriever. It degrades to BM25 when
-// Ollama is unavailable; an empty index simply returns no sources.
+// Ollama is unavailable; an empty index simply returns no sources. The search
+// strategy (vector or hybrid) and fragment limit come from the environment so a
+// deployment can trade latency for recall without a code change.
 func newRAGRetriever(pgStore *api.PGStore) sourceRetriever {
 	if pgStore == nil || pgStore.Pool == nil {
 		return nil
 	}
-	address := os.Getenv("OLLAMA_URL")
-	model := os.Getenv("OLLAMA_EMBED_MODEL")
-	if model == "" {
-		model = "nomic-embed-text"
-	}
+	settings := ragSettingsFromEnv()
 	service := search.Service{
 		Pool:  pgStore.Pool,
-		Model: embeddings.Ollama{BaseURL: address, Model: model},
+		Model: embeddings.Ollama{BaseURL: settings.OllamaURL, Model: settings.EmbedModel},
 	}
+	logging.Logger.Info("rag_retriever_configured",
+		"ollama_url", settings.OllamaURL,
+		"embed_model", settings.EmbedModel,
+		"strategy", settings.Strategy,
+		"limit", settings.Limit)
 	return func(ctx context.Context, runID, query string) ([]domain.Source, error) {
 		var id pgtype.UUID
 		if err := id.Scan(runID); err != nil || !id.Valid {
 			return nil, fmt.Errorf("invalid run id: %w", err)
 		}
-		hits, _, err := service.Search(ctx, id, query, 8)
+		started := time.Now()
+		searchFn := service.Search
+		if settings.Strategy == "hybrid" {
+			searchFn = service.HybridSearch
+		}
+		hits, mode, err := searchFn(ctx, id, query, settings.Limit)
 		if err != nil {
 			return nil, err
 		}
@@ -453,6 +507,13 @@ func newRAGRetriever(pgStore *api.PGStore) sourceRetriever {
 		for _, item := range bySource {
 			out = append(out, *item)
 		}
+		logging.Logger.Info("rag_retrieved",
+			"run_id", runID,
+			"strategy", settings.Strategy,
+			"mode", mode,
+			"hits", len(hits),
+			"sources", len(out),
+			"duration_ms", time.Since(started).Milliseconds())
 		return out, nil
 	}
 }

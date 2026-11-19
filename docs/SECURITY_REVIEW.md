@@ -10,20 +10,17 @@ prompt injection, LLM-провайдер и остаточные риски. О�
 [`internal/auth/middleware.go`](../internal/auth/middleware.go),
 [`internal/auth/guard.go`](../internal/auth/guard.go).
 
-- **HS256** (`golang-jwt/jwt/v5`), claims `sub`/`role`/`iat`/`exp`; паролей и серверных сессий нет. TTL задаётся при выпуске (`cmd/local-token` — 15 мин по умолчанию, макс. 24 ч; `cmd/test-users` — 24 ч). Отзыва/refresh, `iss`/`aud` нет — токен валиден до `exp`.
+- **HS256** (`golang-jwt/jwt/v5`), claims `sub`/`role`/`iat`/`exp`; пароли хранятся как bcrypt-хэши в `users`, серверных сессий нет. JWT выдаётся на 24 часа после `POST /auth/login` или `POST /auth/register`. Отзыва/refresh, `iss`/`aud` нет — токен валиден до `exp`.
 - Секрет — только env `JWT_SECRET`; `cmd/server` не стартует с пустым секретом. Проверки **минимальной длины в коде нет**: требование «≥ 32 байт вне локальной разработки» зафиксировано в [docs/DOCKER.md](DOCKER.md), compose-fallback `local-dev-jwt-secret-change-me-32-bytes-min` — только для локального стека.
 - Middleware принимает `Authorization: Bearer <jwt>` и (для `EventSource`) `?access_token=`; query-токен не пишется в access-логи (`internal/logging` логирует только path), но может попасть в историю браузера/логи прокси.
-- Защищены все `/api/v1/*`, кроме `GET /api/v1/health`; swagger — whitelist. Публичны `GET /api/v1/health` (и `/health` в demo `cmd/api`) и `/metrics` (лейблы без run_id/PII). `/api/v1/llm/*` — тот же JWT. Роли: `admin`, `teacher`, `rop`, `student`, `guest`, проверка — явный `RequireRole(...)` в каждом хендлере.
+- Публичны `GET /api/v1/health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `/swagger` и `/metrics` (лейблы без run_id/PII). Остальные `/api/v1/*` требуют JWT; роли — `admin` и `user`, проверка явным `RequireRole(...)` в каждом хендлере.
 
 | Роль | Чтение | Запись |
 |---|---|---|
-| admin | всё | всё: включая `DELETE /runs/{id}`, `DELETE /sources/{id}`, users |
-| teacher | прогоны, дерево, ответы, сообщения, снимки, поиск, источники, LLM-журнал | создание прогона/источника, дерево, узлы, approve, индексация, снимки, активация промптов |
-| rop | как teacher (включая LLM-журнал) | создание прогона, дерево, узлы, approve, снимки |
-| student | `GET /runs/{id}`, `GET /runs/{id}/messages`, LLM-журнал | — |
-| guest | прогоны, дерево, ответы, сообщения, снимки, источники, подтверждения, поиск, экспорт | — |
+| admin | всё | всё: пользователи, источники, дерево, approve/reject, ЗУН, удаление |
+| user | прогоны, дерево, ответы, сообщения, снимки, поиск, источники, конфликты, экспорт | создание прогона, интервью, batch-транскрипт |
 
-**Гостевой read-only** подтверждён `internal/api/guest_access_test.go`: гостю разрешены только GET, а создание/запись/approve/индексация/удаление и `POST .../messages` дают `403 FORBIDDEN`; удаление источников остаётся admin-only. Риски: в роутере нет default-deny (middleware проверяет только подпись, роль — хендлер: новый хендлер без `RequireRole` откроется всем ролям, включая guest); **RBAC на уровне прогона отсутствует** — любой аутентифицированный пользователь читает любой run по UUID, `runs.created_by` в HTTP-пути не заполняется.
+**Обычный пользователь** может создавать исследования и проходить интервью; экспертные изменения доступны только admin. Риски: в роутере нет default-deny (middleware проверяет только подпись, роль — хендлер: новый хендлер без `RequireRole` откроется всем ролям); **RBAC на уровне прогона отсутствует** — любой аутентифицированный пользователь читает любой run по UUID, `runs.created_by` в HTTP-пути не заполняется.
 
 ## 2. Webhook и outbox (SSRF)
 
@@ -77,7 +74,7 @@ prompt injection, LLM-провайдер и остаточные риски. О�
 | Угроза | Контроль | Остаточный риск |
 |---|---|---|
 | Подделка/кража JWT | HS256, `exp`, подпись | нет отзыва/refresh; query-token и localStorage на фронте; нет TLS в MVP |
-| Повышение прав по роли | `RequireRole` + тесты гостя | нет default-deny; активация промптов доступна teacher/rop |
+| Повышение прав по роли | `RequireRole` + auth-тесты | нет default-deny; активация промптов admin-only |
 | Чтение чужих прогонов | JWT-аутентификация | нет RBAC на run, `created_by` не заполняется |
 | SSRF через webhook | URL из env, схема/host/no-userinfo, no-redirect, HMAC | нет allowlist/private-IP deny |
 | Утечка ключа LLM | env/файл, gitignore, no-log, pairing rule | доступ к хосту/`.secrets` = доступ к ключу |
@@ -99,4 +96,4 @@ prompt injection, LLM-провайдер и остаточные риски. О�
 5. **Усилить auth**: падать на старте при `JWT_SECRET` короче 32 байт; запретить query-токен для не-SSE маршрутов; отзыв/ротация токенов; уйти от localStorage к памяти/HttpOnly-cookie с CSRF-защитой.
 6. **Аудит и CI**: включить canary для leak-guard; security-логи (401/403, активации промптов, удаления) с retention; `govulncheck`/`gosec` в CI (сейчас `.golangci.yml` — только `govet`/`ineffassign`/`misspell`).
 7. **Служебные эндпоинты**: закрыть `/metrics` от внешней сети или вынести за auth-proxy; health оставить публичным.
-8. **Prompt activation**: сделать активацию версий промптов admin-only (сейчас teacher/rop тоже могут) с обязательным reason и аудитом.
+8. **Prompt activation**: активация версий промптов уже admin-only, добавить обязательный reason и аудит.

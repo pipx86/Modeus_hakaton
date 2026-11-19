@@ -38,7 +38,7 @@ type handler struct {
 }
 
 func (h *handler) listRequests(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	limit := 0
@@ -61,7 +61,7 @@ func (h *handler) listRequests(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getRequest(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	item, err := h.store.GetRequest(r.Context(), r.PathValue("id"))
@@ -77,7 +77,7 @@ func (h *handler) getRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) listPromptVersions(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	items, err := h.store.ListPromptVersions(r.Context(), strings.TrimSpace(r.URL.Query().Get("agent")))
@@ -94,7 +94,7 @@ type activateRequest struct {
 }
 
 func (h *handler) activatePromptVersion(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	var req activateRequest
@@ -118,7 +118,7 @@ func (h *handler) activatePromptVersion(w http.ResponseWriter, r *http.Request) 
 
 // usage отдаёт расход токенов по моделям за период (?since=24h).
 func (h *handler) usage(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	since := time.Now().Add(-24 * time.Hour)

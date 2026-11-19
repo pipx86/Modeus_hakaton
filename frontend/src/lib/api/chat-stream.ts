@@ -8,6 +8,7 @@
  */
 
 import { getValidToken } from "@/lib/auth"
+import { normalizeText } from "@/lib/text"
 import { apiBaseUrl, apiToken, type ChatMessage, type RunEvent, type RunStatus } from "./client"
 
 export type StreamState = "open" | "reconnecting" | "failed"
@@ -40,7 +41,9 @@ function dispatchEvent(raw: string, handlers: ChatStreamHandlers): void {
   }
   try {
     const payload = JSON.parse(payloadText) as RunEvent
-    if (event === "agent_message" && payload.message) handlers.onAgentMessage(payload.message)
+    if (event === "agent_message" && payload.message) {
+      handlers.onAgentMessage({ ...payload.message, content: normalizeText(payload.message.content) })
+    }
     if (event === "run_status" && payload.status) handlers.onRunStatus(payload.status)
   } catch {
     // Битое событие не должно ронять весь поток.
@@ -62,7 +65,9 @@ function connectWithEventSource(runId: string, handlers: ChatStreamHandlers): ()
 
   source.addEventListener("agent_message", (event) => {
     const payload = JSON.parse((event as MessageEvent).data) as RunEvent
-    if (payload.message) handlers.onAgentMessage(payload.message)
+    if (payload.message) {
+      handlers.onAgentMessage({ ...payload.message, content: normalizeText(payload.message.content) })
+    }
   })
 
   source.addEventListener("run_status", (event) => {

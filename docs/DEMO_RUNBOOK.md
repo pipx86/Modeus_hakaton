@@ -79,9 +79,12 @@ python scripts/demo_preflight.py
 python scripts/demo_preflight.py --token "$env:DEMO_TOKEN"
 ```
 
-Для ручной проверки UI используйте `go run ./cmd/test-users -json`: он печатает
-admin и guest токены, которые frontend читает из `VITE_API_TOKEN`. На стенде
-guest — только чтение, для `demo_data.py --cleanup-failed --yes` нужен admin.
+Для ручной проверки UI откройте `/login` и войдите по email/паролю. Первый
+зарегистрированный пользователь становится admin, остальные — обычными
+пользователями. Для служебных проверок можно выпустить токен командой
+`go run ./cmd/local-token -role admin -ttl 24h`. Обычный пользователь может
+создавать исследования и проходить интервью; approve/reject, дерево и источники
+меняет admin.
 
 ## 3. Быстрая проверка стенда
 
@@ -279,7 +282,7 @@ python scripts/demo_data.py --delete-run <run-id> --allow-completed --yes
       (сначала посмотреть план без `--yes`).
 - [ ] Один успешный `python scripts/demo_preflight.py --full` — записать его
       `run_id` как запасной demo-прогон. Этот прогон не удалять.
-- [ ] Проверить вручную: UI с `VITE_API_TOKEN` (admin), дашборд Grafana, таргеты
+- [ ] Проверить вручную: вход по email/паролю, дашборд Grafana, таргеты
       Prometheus, Jaeger UI, очередь `/api/v1/reviews/evidence`.
 - [ ] Проверить, что `logs/app.log` не растёт ошибками `finalizer`/`provider`.
 

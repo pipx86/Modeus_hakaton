@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	role := flag.String("role", "teacher", "роль: admin, teacher, rop, student, guest")
+	role := flag.String("role", "user", "роль: admin или user")
 	subject := flag.String("subject", "local-demo", "идентификатор локального пользователя")
 	ttl := flag.Duration("ttl", 15*time.Minute, "срок действия, не более суток")
 	flag.Parse()

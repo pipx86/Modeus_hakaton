@@ -34,7 +34,7 @@ function frontendLogCollector(): Plugin {
                 fs.renameSync(file, path.join(dir, "frontend.log.prev"))
               }
             } catch {
-              // файла ещё нет — просто создадим
+              // файла ещё нет - просто создадим
             }
             fs.appendFileSync(file, `${body.trim()}\n`, "utf8")
           } catch {
@@ -85,7 +85,7 @@ export default defineConfig(({ mode }) => {
                 proxyReq.setHeader("Accept-Encoding", "identity")
               }
             })
-            // Отдаём статус и заголовки бэкенда сразу, тело — потоком (важно для SSE).
+            // Отдаём статус и заголовки бэкенда сразу, тело - потоком (важно для SSE).
             proxy.on("proxyRes", (proxyRes, _req, res) => {
               res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers)
               proxyRes.pipe(res)

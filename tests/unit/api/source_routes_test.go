@@ -20,62 +20,62 @@ import (
 func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 	pool, pg := testPostgresAPI(t)
 	h := api.NewServer(pg).Routes()
-	teacher := testToken(t, auth.RoleTeacher)
-	student := testToken(t, auth.RoleStudent)
+	admin := testToken(t, auth.RoleAdmin)
+	user := testToken(t, auth.RoleUser)
 	when := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	src := func() *pgxmock.Rows {
 		return pgxmock.NewRows([]string{"id", "type", "title", "content", "source_url", "created_at"}).
 			AddRow(dbSource, domain.SourceStandard, "Документ", "Материал", "", &when)
 	}
 	pool.ExpectQuery("FROM sources ORDER BY").WillReturnRows(src())
-	resp := callAPI(h, http.MethodGet, "/api/v1/sources", student, nil)
+	resp := callAPI(h, http.MethodGet, "/api/v1/sources", user, nil)
 	var sources []domain.Source
 	if err := json.Unmarshal(resp.Body.Bytes(), &sources); resp.Code != 200 || err != nil ||
 		len(sources) != 1 || sources[0].ID != dbSource || !sources[0].CreatedAt.Equal(when) {
 		t.Fatalf("список источников: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	pool.ExpectQuery("FROM sources WHERE id=").WithArgs(dbSource).WillReturnRows(src())
-	resp = callAPI(h, http.MethodGet, "/api/v1/sources/"+dbSource, student, nil)
+	resp = callAPI(h, http.MethodGet, "/api/v1/sources/"+dbSource, user, nil)
 	var source domain.Source
 	if err := json.Unmarshal(resp.Body.Bytes(), &source); resp.Code != 200 || err != nil || source.Content != "Материал" {
 		t.Fatalf("источник: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	pool.ExpectQuery("FROM sources WHERE id=").WithArgs(dbSource).WillReturnError(pgx.ErrNoRows)
-	if resp = callAPI(h, http.MethodGet, "/api/v1/sources/"+dbSource, student, nil); resp.Code != 404 {
+	if resp = callAPI(h, http.MethodGet, "/api/v1/sources/"+dbSource, user, nil); resp.Code != 404 {
 		t.Fatalf("отсутствующий источник: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("FROM sources ORDER BY").WillReturnError(errTestDB)
-	if resp = callAPI(h, http.MethodGet, "/api/v1/sources", student, nil); resp.Code != 500 {
+	if resp = callAPI(h, http.MethodGet, "/api/v1/sources", user, nil); resp.Code != 500 {
 		t.Fatalf("ошибка выдачи источников: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("FROM evidence WHERE").WithArgs(dbNode, dbSource).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
 			AddRow(dbEvidence, dbNode, dbSource, "r1", "Старая цитата", "approved"))
-	resp = callAPI(h, http.MethodGet, "/api/v1/evidences?node_id="+dbNode+"&source_id="+dbSource, student, nil)
+	resp = callAPI(h, http.MethodGet, "/api/v1/evidences?node_id="+dbNode+"&source_id="+dbSource, user, nil)
 	var evidences []domain.Evidence
 	if err := json.Unmarshal(resp.Body.Bytes(), &evidences); resp.Code != 200 || err != nil || len(evidences) != 1 ||
 		evidences[0].Status != domain.EvidenceApproved || evidences[0].NodeID != dbNode {
 		t.Fatalf("отфильтрованные доказательства: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	for _, path := range []string{"/api/v1/evidences?node_id=bad", "/api/v1/evidences?source_id=bad"} {
-		if resp = callAPI(h, http.MethodGet, path, student, nil); resp.Code != 422 {
+		if resp = callAPI(h, http.MethodGet, path, user, nil); resp.Code != 422 {
 			t.Fatalf("некорректный фильтр: %d %s", resp.Code, resp.Body.String())
 		}
 	}
 	createBody := []byte(`{"node_id":"` + dbNode + `","source_id":"` + dbSource + `","quote":"Новая цитата","ref_id":"r2"}`)
-	if resp = callAPI(h, http.MethodPost, "/api/v1/evidences", student, createBody); resp.Code != 403 {
-		t.Fatalf("роль студента не должна менять доказательства: %d %s", resp.Code, resp.Body.String())
+	if resp = callAPI(h, http.MethodPost, "/api/v1/evidences", user, createBody); resp.Code != 403 {
+		t.Fatalf("обычный пользователь не должна менять доказательства: %d %s", resp.Code, resp.Body.String())
 	}
-	if resp = callAPI(h, http.MethodPost, "/api/v1/evidences", teacher, []byte(`{"extra":true}`)); resp.Code != 400 {
+	if resp = callAPI(h, http.MethodPost, "/api/v1/evidences", admin, []byte(`{"extra":true}`)); resp.Code != 400 {
 		t.Fatalf("проверка контракта JSON: %d %s", resp.Code, resp.Body.String())
 	}
-	if resp = callAPI(h, http.MethodPost, "/api/v1/evidences", teacher, []byte(`{"quote":"  "}`)); resp.Code != 422 {
+	if resp = callAPI(h, http.MethodPost, "/api/v1/evidences", admin, []byte(`{"quote":"  "}`)); resp.Code != 422 {
 		t.Fatalf("проверка полей цитаты: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("INSERT INTO evidence").WithArgs(dbNode, dbSource, "Новая цитата", "r2").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
 			AddRow(dbEvidence, dbNode, dbSource, "r2", "Новая цитата", "pending"))
-	resp = callAPI(h, http.MethodPost, "/api/v1/evidences", teacher, createBody)
+	resp = callAPI(h, http.MethodPost, "/api/v1/evidences", admin, createBody)
 	var evidence domain.Evidence
 	if err := json.Unmarshal(resp.Body.Bytes(), &evidence); resp.Code != 201 || err != nil ||
 		evidence.Status != domain.EvidencePending || evidence.ID != dbEvidence {
@@ -85,7 +85,7 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
 			AddRow(dbEvidence, dbNode, dbSource, "r2", "Исправленная цитата", domain.EvidenceApproved))
 	url := "/api/v1/evidences/" + dbEvidence
-	resp = callAPI(h, http.MethodPatch, url, teacher, []byte(`{"quote":" Исправленная цитата "}`))
+	resp = callAPI(h, http.MethodPatch, url, admin, []byte(`{"quote":" Исправленная цитата "}`))
 	if err := json.Unmarshal(resp.Body.Bytes(), &evidence); resp.Code != 200 || err != nil ||
 		evidence.Quote != "Исправленная цитата" || evidence.Status != domain.EvidenceApproved {
 		t.Fatalf("исправленная цитата с прежним статусом: %d %s, %v", resp.Code, resp.Body.String(), err)
@@ -93,7 +93,7 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 	pool.ExpectQuery("FROM evidence WHERE id=").WithArgs(dbEvidence).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "approved"}).
 			AddRow(dbEvidence, dbNode, dbSource, "r2", "Исправленная цитата", "approved", false))
-	resp = callAPI(h, http.MethodGet, url, student, nil)
+	resp = callAPI(h, http.MethodGet, url, user, nil)
 	var details struct {
 		domain.Evidence
 		Approved bool `json:"approved"`
@@ -157,8 +157,8 @@ func TestPostgresAttachSourceCommitsBothWrites(t *testing.T) {
 func TestPostgresSnapshotsHTTPKeepVersionTreeAndRunOwnership(t *testing.T) {
 	pool, pg := testPostgresAPI(t)
 	h := api.NewServer(pg).Routes()
-	teacher := testToken(t, auth.RoleTeacher)
-	student := testToken(t, auth.RoleStudent)
+	admin := testToken(t, auth.RoleAdmin)
+	user := testToken(t, auth.RoleUser)
 	url := "/api/v1/runs/" + dbRun + "/snapshots"
 	snap := dbEvidence
 	root := dbNode
@@ -170,13 +170,13 @@ func TestPostgresSnapshotsHTTPKeepVersionTreeAndRunOwnership(t *testing.T) {
 			AddRow(snapID, runID, int32(2), tree, stamp.Time)
 	}
 	pool.ExpectQuery("FROM runs WHERE id=").WithArgs(dbRun).WillReturnRows(runRow())
-	resp := callAPI(h, http.MethodPost, url, teacher, nil)
+	resp := callAPI(h, http.MethodPost, url, admin, nil)
 	if resp.Code != 409 {
 		t.Fatalf("снимок до сохранения дерева: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("FROM runs WHERE id=").WithArgs(dbRun).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "root", "started", "finished"}).
-			AddRow(dbRun, "Инженер", domain.RunDone, domain.StageDone, domain.RunTypeBatch, &root, nil, nil))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished"}).
+			AddRow(dbRun, "Инженер", domain.RunDone, domain.StageDone, domain.RunTypeBatch, "", &root, nil, nil))
 	pool.ExpectBegin()
 	pool.ExpectQuery("SELECT id, root_node_id FROM runs").WithArgs(runID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "root"}).AddRow(runID, rootID))
@@ -186,7 +186,7 @@ func TestPostgresSnapshotsHTTPKeepVersionTreeAndRunOwnership(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"tree"}).AddRow(tree))
 	pool.ExpectQuery("INSERT INTO snapshots").WithArgs(runID, tree).WillReturnRows(row())
 	pool.ExpectCommit()
-	resp = callAPI(h, http.MethodPost, url, teacher, nil)
+	resp = callAPI(h, http.MethodPost, url, admin, nil)
 	type snapshot struct {
 		ID      string          `json:"id"`
 		RunID   string          `json:"run_id"`
@@ -200,20 +200,20 @@ func TestPostgresSnapshotsHTTPKeepVersionTreeAndRunOwnership(t *testing.T) {
 	}
 	pool.ExpectQuery("FROM runs WHERE id=").WithArgs(dbRun).WillReturnRows(runRow())
 	pool.ExpectQuery("ListSnapshotsByRun").WithArgs(runID).WillReturnRows(row())
-	resp = callAPI(h, http.MethodGet, url, student, nil)
+	resp = callAPI(h, http.MethodGet, url, user, nil)
 	var versions []snapshot
 	if err := json.Unmarshal(resp.Body.Bytes(), &versions); resp.Code != 200 || err != nil || len(versions) != 1 || versions[0].Version != 2 {
 		t.Fatalf("список версий: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	pool.ExpectQuery("GetSnapshot").WithArgs(runID, snapID).WillReturnRows(row())
-	resp = callAPI(h, http.MethodGet, url+"/"+snap, student, nil)
+	resp = callAPI(h, http.MethodGet, url+"/"+snap, user, nil)
 	var selected snapshot
 	if err := json.Unmarshal(resp.Body.Bytes(), &selected); resp.Code != 200 || err != nil ||
 		selected.ID != created.ID || string(selected.Tree) != string(tree) {
 		t.Fatalf("выбранный снимок: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	pool.ExpectQuery("GetSnapshot").WithArgs(runID, snapID).WillReturnError(pgx.ErrNoRows)
-	if resp = callAPI(h, http.MethodGet, url+"/"+snap, student, nil); resp.Code != 404 {
+	if resp = callAPI(h, http.MethodGet, url+"/"+snap, user, nil); resp.Code != 404 {
 		t.Fatalf("недоступный в исследовании снимок: %d %s", resp.Code, resp.Body.String())
 	}
 }

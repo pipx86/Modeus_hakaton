@@ -30,8 +30,8 @@ function stubAdminData() {
       return {
         status: 200,
         body: [
-          { subject: "demo-admin", role: "admin" },
-          { subject: "demo-guest", role: "guest", read_only: true },
+          { id: "u-admin", email: "admin@example.com", display_name: "Администратор", role: "admin" },
+          { id: "u-user", email: "user@example.com", display_name: "Пользователь", role: "user" },
         ],
       }
     }
@@ -105,8 +105,8 @@ describe("админка", () => {
 
     renderAdmin()
 
-    expect(await screen.findByText("demo-admin")).toBeInTheDocument()
-    expect(await screen.findByText("demo-guest")).toBeInTheDocument()
+    expect(await screen.findByText("admin@example.com")).toBeInTheDocument()
+    expect(await screen.findByText("user@example.com")).toBeInTheDocument()
     expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
     expect(
       screen.queryByRole("button", { name: /Удалить исследование/ }),
@@ -183,7 +183,7 @@ describe("админка", () => {
     const user = userEvent.setup()
 
     renderAdmin()
-    await screen.findByText("demo-admin")
+    await screen.findByText("admin@example.com")
 
     await user.click(screen.getAllByRole("combobox")[0])
     await user.click(await screen.findByRole("option", { name: "Аналитик" }))
@@ -222,7 +222,7 @@ describe("админка", () => {
     stubAdminData()
 
     renderAdmin()
-    await screen.findByText("demo-admin")
+    await screen.findByText("admin@example.com")
     const before = fetchCalls().filter((call) => call.url.includes("/llm/requests")).length
 
     fireEvent.click(screen.getByRole("button", { name: /Обновить/ }))
@@ -239,7 +239,7 @@ describe("админка", () => {
     const user = userEvent.setup()
 
     renderAdmin()
-    await screen.findByText("demo-admin")
+    await screen.findByText("admin@example.com")
 
     await user.click(screen.getAllByRole("combobox")[1])
     await user.click(await screen.findByRole("option", { name: "error" }))

@@ -49,7 +49,7 @@ func waitForChatMessages(t *testing.T, handler http.Handler, runID string, want 
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		code, messages := getChatMessages(t, handler, runID, "student")
+		code, messages := getChatMessages(t, handler, runID, "user")
 		if code == http.StatusOK && len(messages) >= want {
 			return messages
 		}
@@ -114,21 +114,20 @@ func TestChatHistorySurvivesRestart(t *testing.T) {
 		t.Fatalf("unexpected dialog start: %+v", greeting[:2])
 	}
 
-	// Role behaviour must stay unchanged: guests may read the history but not
-	// write to it.
+	// По действующей схеме admin/user история и ответы требуют JWT.
 	if rec := do(t, handler, http.MethodGet, path, "", ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous GET = %d, want 401", rec.Code)
 	}
-	if code, _ := getChatMessages(t, handler, run.ID, "guest"); code != http.StatusOK {
-		t.Fatalf("guest GET = %d, want 200", code)
+	if code, _ := getChatMessages(t, handler, run.ID, "user"); code != http.StatusOK {
+		t.Fatalf("user GET = %d, want 200", code)
 	}
-	if rec := do(t, handler, http.MethodPost, path, "guest", `{"content":"нельзя"}`); rec.Code != http.StatusForbidden {
-		t.Fatalf("guest POST = %d, want 403", rec.Code)
+	if rec := do(t, handler, http.MethodPost, path, "", `{"content":"нельзя"}`); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous POST = %d, want 401", rec.Code)
 	}
 
 	// An active run still accepts answers through POST and persists them once.
 	answer := "Я аналитик данных и отвечаю за управленческую отчётность."
-	posted := do(t, handler, http.MethodPost, path, "teacher", `{"content":`+quoteJSON(answer)+`}`)
+	posted := do(t, handler, http.MethodPost, path, "user", `{"content":`+quoteJSON(answer)+`}`)
 	if posted.Code != http.StatusCreated {
 		t.Fatalf("POST message = %d: %s", posted.Code, posted.Body.String())
 	}
@@ -151,7 +150,7 @@ func TestChatHistorySurvivesRestart(t *testing.T) {
 	// courses message, which must also be persisted.
 	for answerIndex := 1; answerIndex < 6; answerIndex++ {
 		waitForChatMessages(t, handler, run.ID, 2*answerIndex+2)
-		rec := do(t, handler, http.MethodPost, path, "teacher", `{"content":"Конкретный ответ про аналитику данных."}`)
+		rec := do(t, handler, http.MethodPost, path, "user", `{"content":"Конкретный ответ про аналитику данных."}`)
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("POST answer %d = %d: %s", answerIndex, rec.Code, rec.Body.String())
 		}
@@ -217,7 +216,7 @@ func TestChatHistorySurvivesRestart(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT gen_random_uuid()::text`).Scan(&unknownRunID); err != nil {
 		t.Fatal(err)
 	}
-	rec := do(t, restartedHandler, http.MethodGet, "/api/v1/runs/"+unknownRunID+"/messages", "student", "")
+	rec := do(t, restartedHandler, http.MethodGet, "/api/v1/runs/"+unknownRunID+"/messages", "user", "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown run GET = %d, want 404 (%s)", rec.Code, rec.Body.String())
 	}

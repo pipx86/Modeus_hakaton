@@ -23,9 +23,9 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
-import { Sparkline } from "@/components/charts"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
+import { normalizeDashes } from "@/lib/text"
 import {
   averageHistogramMs,
   fetchMetricsText,
@@ -34,10 +34,11 @@ import {
   type MetricSample,
 } from "@/lib/metrics"
 
-interface DemoUser {
-  subject: string
+interface AppUser {
+  id: string
+  email: string
+  display_name: string
   role: string
-  read_only?: boolean
 }
 
 interface LlmRequest {
@@ -50,6 +51,15 @@ interface LlmRequest {
   attempt?: number
   max_attempts?: number
   created_at?: string
+}
+
+interface PromptVersion {
+  id: string
+  agent: string
+  version: string
+  status: string
+  created_at: string
+  activated_at?: string
 }
 
 interface ModelUsage {
@@ -76,10 +86,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Администратор",
-  guest: "Гость",
-  teacher: "Преподаватель",
-  rop: "РОП",
-  student: "Студент",
+  user: "Пользователь",
 }
 
 function formatPercent(value: number): string {
@@ -108,7 +115,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 export function Admin() {
   const role = getCurrentRole()
   const isAdmin = role === "admin"
-  const [users, setUsers] = useState<DemoUser[]>([])
+  const [users, setUsers] = useState<AppUser[]>([])
   const [runs, setRuns] = useState<Run[]>([])
   const [health, setHealth] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<MetricSample[]>([])
@@ -119,6 +126,8 @@ export function Admin() {
   const [llmUsage, setLlmUsage] = useState<ModelUsage[]>([])
   const [llmUsageError, setLlmUsageError] = useState(false)
   const [llmLoading, setLlmLoading] = useState(false)
+  const [promptVersions, setPromptVersions] = useState<PromptVersion[]>([])
+  const [activatingPrompt, setActivatingPrompt] = useState<string | null>(null)
   const [agentFilter, setAgentFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sources, setSources] = useState<AdminSource[]>([])
@@ -162,14 +171,14 @@ export function Admin() {
 
       if (requestsResponse.ok) {
         const payload = (await requestsResponse.json()) as { items?: LlmRequest[] }
-        setLlmRequests(payload.items ?? [])
+        setLlmRequests(normalizeDashes(payload.items ?? []))
       } else {
         setLlmRequests([])
       }
 
       if (usageResponse.ok) {
         const payload = (await usageResponse.json()) as { items?: ModelUsage[] }
-        setLlmUsage(payload.items ?? [])
+        setLlmUsage(normalizeDashes(payload.items ?? []))
         setLlmUsageError(false)
       } else {
         setLlmUsage([])
@@ -184,6 +193,23 @@ export function Admin() {
     }
   }, [agentFilter, statusFilter])
 
+  const loadPromptVersions = useCallback(async () => {
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/llm/prompt-versions`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!response.ok) {
+        setPromptVersions([])
+        return
+      }
+      const payload = (await response.json()) as { items?: PromptVersion[] }
+      setPromptVersions(normalizeDashes(payload.items ?? []))
+    } catch {
+      setPromptVersions([])
+    }
+  }, [])
+
   useEffect(() => {
     if (!isAdmin) return
     let cancelled = false
@@ -195,6 +221,7 @@ export function Admin() {
         apiClient.GET("/sources"),
       ])
       await loadMetrics()
+      await loadPromptVersions()
       if (cancelled) return
       if (usersResponse.data) setUsers(usersResponse.data)
       if (runsResponse.data) setRuns(runsResponse.data)
@@ -206,8 +233,7 @@ export function Admin() {
     return () => {
       cancelled = true
     }
-  }, [isAdmin, loadMetrics])
-
+  }, [isAdmin, loadMetrics, loadPromptVersions])
   useEffect(() => {
     if (!isAdmin) return
     const timer = window.setTimeout(() => {
@@ -219,8 +245,34 @@ export function Admin() {
   const refresh = async () => {
     setRefreshing(true)
     await loadMetrics()
+    await loadPromptVersions()
     await loadLlmRequests()
     setRefreshing(false)
+  }
+
+  const activatePromptVersion = async (version: PromptVersion) => {
+    setActivatingPrompt(version.id)
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/llm/prompt-versions/activate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ id: version.id, reason: "Активация из админки" }),
+      })
+      if (!response.ok) {
+        toast.error("Не удалось активировать версию промпта")
+        return
+      }
+      toast.success("Версия промпта активирована")
+      await loadPromptVersions()
+    } catch {
+      toast.error("Сервер недоступен", { description: "Версия промпта не активирована." })
+    } finally {
+      setActivatingPrompt(null)
+    }
   }
 
   const addSource = async (event: FormEvent<HTMLFormElement>) => {
@@ -246,7 +298,7 @@ export function Admin() {
         })
         return
       }
-      const created = (await response.json()) as AdminSource
+      const created = normalizeDashes((await response.json()) as AdminSource)
       setSourceTitle("")
       setSourceFile(null)
       setSourceFileKey((value) => value + 1)
@@ -351,24 +403,25 @@ export function Admin() {
     return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])
   }, [llmRequests])
 
-  const llmLatencies = useMemo(
-    () => llmRequests.map((request) => request.latency_ms).reverse(),
-    [llmRequests],
-  )
-
-  const llmLatencyStats = useMemo(() => {
-    if (llmLatencies.length === 0) return null
-    const min = Math.min(...llmLatencies)
-    const max = Math.max(...llmLatencies)
-    const avg = llmLatencies.reduce((sum, value) => sum + value, 0) / llmLatencies.length
-    return { min, max, avg }
-  }, [llmLatencies])
-
   const tokenStats = useMemo(() => {
     const total = llmUsage.reduce((sum, item) => sum + item.total_tokens, 0)
     const requests = llmUsage.reduce((sum, item) => sum + item.requests, 0)
     return { total, requests }
   }, [llmUsage])
+
+  const sourceStats = useMemo(() => {
+    const byType = new Map<string, number>()
+    let withContent = 0
+    for (const source of sources) {
+      byType.set(source.type, (byType.get(source.type) ?? 0) + 1)
+      if (source.content && source.content.trim() !== "") withContent++
+    }
+    return {
+      byType: Array.from(byType.entries()).sort((left, right) => right[1] - left[1]),
+      withContent,
+      empty: sources.length - withContent,
+    }
+  }, [sources])
 
   const routeStats = useMemo(() => {
     const map = new Map<
@@ -452,7 +505,7 @@ export function Admin() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Kpi label="Исследования" value={String(stats.total)} hint={`в работе: ${stats.running}`} />
+        <Kpi label="Исследования" value={String(stats.total)} hint={`интервью: ${stats.running}`} />
         <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
         <Kpi
           label="HTTP 4xx"
@@ -480,6 +533,62 @@ export function Admin() {
         />
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Версии промптов</CardTitle>
+          <CardDescription>
+            Версии системных промптов агентов; активная версия используется новыми запросами.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {promptVersions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Версий промптов пока нет.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Агент</th>
+                    <th className="py-2 pr-3 font-medium">Версия</th>
+                    <th className="py-2 pr-3 font-medium">Статус</th>
+                    <th className="py-2 pr-3 font-medium">Создана</th>
+                    <th className="py-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {promptVersions.map((version) => (
+                    <tr key={version.id} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3">{version.agent}</td>
+                      <td className="py-2 pr-3 font-mono text-xs">{version.version}</td>
+                      <td className="py-2 pr-3">
+                        <Badge variant={version.status === "active" ? "default" : "secondary"}>
+                          {version.status === "active" ? "активна" : version.status}
+                        </Badge>
+                      </td>
+                      <td className="py-2 pr-3 text-xs text-muted-foreground">
+                        {version.created_at ? new Date(version.created_at).toLocaleString("ru-RU") : "-"}
+                      </td>
+                      <td className="py-2 text-right">
+                        {version.status !== "active" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={activatingPrompt === version.id}
+                            onClick={() => void activatePromptVersion(version)}
+                          >
+                            Активировать
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -605,24 +714,6 @@ export function Admin() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Латентность LLM</CardTitle>
-          <CardDescription>
-            Последние {llmLatencies.length} запросов: динамика времени ответа модели.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Sparkline values={llmLatencies} className="text-primary" />
-          {llmLatencyStats && (
-            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span>мин: {formatMs(llmLatencyStats.min)}</span>
-              <span>средняя: {formatMs(llmLatencyStats.avg)}</span>
-              <span>макс: {formatMs(llmLatencyStats.max)}</span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
           <CardTitle className="text-base">Ошибки LLM</CardTitle>
           <CardDescription>Коды ошибок в загруженных запросах.</CardDescription>
         </CardHeader>
@@ -672,6 +763,46 @@ export function Admin() {
                 </tbody>
               </table>
             </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Качество источников</CardTitle>
+          <CardDescription>
+            Состав материалов и наличие извлечённого текста, на который опирается аналитик.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Источников пока нет.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {sourceStats.byType.map(([type, count]) => (
+                  <Badge key={type} variant="secondary">
+                    {SOURCE_TYPE_LABELS[type] ?? type}: {count}
+                  </Badge>
+                ))}
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>С извлечённым текстом</span>
+                  <span>
+                    {sourceStats.withContent} из {sources.length}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${(sourceStats.withContent / sources.length) * 100}%` }}
+                  />
+                </div>
+                {sourceStats.empty > 0 && (
+                  <p className="text-xs text-warning">Без текста: {sourceStats.empty}</p>
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -805,7 +936,7 @@ export function Admin() {
             <UsersIcon className="size-4 shrink-0" />
             Пользователи
           </CardTitle>
-          <CardDescription>Демонстрационные учётные записи и их права.</CardDescription>
+          <CardDescription>Зарегистрированные учётные записи и их роли.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -816,14 +947,12 @@ export function Admin() {
           ) : (
             <ul className="divide-y">
               {users.map((user) => (
-                <li key={user.subject} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="font-medium">{user.subject}</span>
+                <li key={user.id} className="flex flex-wrap items-center gap-3 py-3">
+                  <span className="font-medium">{user.display_name}</span>
+                  <span className="text-xs text-muted-foreground">{user.email}</span>
                   <Badge variant={user.role === "admin" ? "default" : "secondary"}>
                     {ROLE_LABEL[user.role] ?? user.role}
                   </Badge>
-                  {user.read_only && (
-                    <span className="text-xs text-muted-foreground">только чтение</span>
-                  )}
                 </li>
               ))}
             </ul>

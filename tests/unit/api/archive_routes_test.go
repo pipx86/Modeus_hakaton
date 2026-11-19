@@ -68,13 +68,12 @@ func TestArchiveEndpointsValidateParametersBeforeSQL(t *testing.T) {
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("каталог без JWT: %d, %s", response.Code, response.Body.String())
 	}
-	guest := testToken(t, auth.RoleGuest)
-	response = callAPI(handler, http.MethodPost, "/api/v1/subscriptions", guest, []byte(`{"topic":"IoT"}`))
+	user := testToken(t, auth.RoleUser)
+	response = callAPI(handler, http.MethodPost, "/api/v1/webhooks/new-publications", user, []byte(`{}`))
 	if response.Code != http.StatusForbidden {
-		t.Fatalf("гость создал подписку: %d, %s", response.Code, response.Body.String())
+		t.Fatalf("пользователь получил доступ к операторскому callback: %d, %s", response.Code, response.Body.String())
 	}
-	student := testToken(t, auth.RoleStudent)
-	response = callAPI(handler, http.MethodPost, "/api/v1/academic/analyze-gap-local", student, []byte(`{}`))
+	response = callAPI(handler, http.MethodPost, "/api/v1/academic/analyze-gap-local", user, []byte(`{}`))
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("сверка без роли: %d, %s", response.Code, response.Body.String())
 	}

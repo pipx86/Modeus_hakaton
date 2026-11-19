@@ -172,7 +172,7 @@ func validateAttachableSource(src domain.Source) error {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/sources [post]
 func (s *Server) handleAttachRunSource(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return
 	}
 	p, ok := requirePG(w, s)
@@ -210,6 +210,11 @@ func (s *Server) handleAttachRunSource(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось привязать источник")
 		}
 		return
+	}
+	if created != nil {
+		// Источник, привязанный к исследованию, тоже должен попадать в
+		// семантический индекс: иначе поиск по run не найдёт его до backfill.
+		s.indexSourceAsync(created.ID)
 	}
 	writeJSON(w, http.StatusCreated, created)
 }

@@ -1,0 +1,439 @@
+{
+  "name": "Run completed email notification",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "3b3ac055-f13d-4f1b-bb20-0fb6763bd7a2",
+      "name": "Manual test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "run-completed",
+        "authentication": "none",
+        "responseMode": "onReceived",
+        "options": {
+          "responseData": "accepted"
+        }
+      },
+      "id": "fbd72a28-acb3-4a71-9dc7-120a5e6eff44",
+      "name": "Webhook: run-completed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        -240
+      ],
+      "webhookId": "837d88e1-4e1f-44bc-b35e-d862b5cbbf5e"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Normalize the backend run.completed event into one email item.\n// Webhook input: { headers, params, query, body } (n8n webhook node).\n// Manual trigger input: {} - a demo event is produced so the SMTP path can be\n// verified end to end from the editor without the backend.\nconst incoming = $input.first()?.json ?? {};\nconst isWebhook =\n  Object.prototype.hasOwnProperty.call(incoming, 'body') ||\n  Object.prototype.hasOwnProperty.call(incoming, 'headers');\nconst body =\n  isWebhook && incoming.body && typeof incoming.body === 'object' && !Array.isArray(incoming.body)\n    ? incoming.body\n    : {};\n\nconst pick = (...values) =>\n  values.find((value) => value !== undefined && value !== null && String(value).trim() !== '') ?? '';\nconst str = (value, fallback = '') =>\n  value === undefined || value === null || String(value).trim() === '' ? fallback : String(value).trim();\nconst int = (value) => {\n  const number = Number(value);\n  return Number.isFinite(number) && number >= 0 ? Math.trunc(number) : 0;\n};\n\nconst nowIso = $now.toISO();\n\n// Required deployment configuration (see deploy/n8n/workflows/README.md).\n// The actual SMTP transport lives in the n8n 'smtp' credential; these names are\n// validated here and used for From/To so a misconfigured deployment fails\n// loudly instead of sending mail to an empty address.\nconst smtpHost = $env.SMTP_HOST ?? '';\nconst smtpPort = $env.SMTP_PORT ?? '';\nconst smtpUser = $env.SMTP_USER ?? '';\nconst smtpPass = $env.SMTP_PASS ?? '';\nconst mailFrom = $env.MAIL_FROM ?? '';\nconst mailTo = $env.MAIL_TO ?? '';\n\nconst missingEnv = [];\nif (!smtpHost) missingEnv.push('SMTP_HOST');\nif (!smtpPort) missingEnv.push('SMTP_PORT');\nif (!smtpUser) missingEnv.push('SMTP_USER');\nif (!smtpPass) missingEnv.push('SMTP_PASS');\nif (!mailFrom) missingEnv.push('MAIL_FROM');\nif (!mailTo) missingEnv.push('MAIL_TO');\n\nlet event;\nlet runId;\nlet profession;\nlet status;\nlet message;\nlet runType;\nlet degradedReason;\nlet nodesCount;\nlet evidenceCount;\nlet approvedEvidenceCount;\nlet sourcesCount;\nlet startedAt;\nlet finishedAt;\n\nif (isWebhook) {\n  event = str(pick(body.event));\n  runId = str(pick(body.run_id));\n  profession = str(pick(body.profession), '(не указана)');\n  status = str(pick(body.status), 'done');\n  message = str(pick(body.message), 'Данные собраны, анализ обновлён');\n  runType = str(pick(body.type), 'batch');\n  degradedReason = str(body.degraded_reason);\n  nodesCount = int(body.nodes_count);\n  evidenceCount = int(body.evidence_count);\n  approvedEvidenceCount = int(body.approved_evidence_count);\n  sourcesCount = int(body.sources_count);\n  startedAt = str(body.started_at);\n  finishedAt = str(body.finished_at);\n} else {\n  event = 'run.completed';\n  runId = 'manual-' + Date.now();\n  profession = 'Тестовая профессия';\n  status = 'done';\n  message = 'Данные собраны, анализ обновлён (ручной тест SMTP)';\n  runType = 'batch';\n  degradedReason = '';\n  nodesCount = 0;\n  evidenceCount = 0;\n  approvedEvidenceCount = 0;\n  sourcesCount = 0;\n  startedAt = nowIso;\n  finishedAt = nowIso;\n}\n\nconst problems = [];\nif (missingEnv.length > 0) {\n  problems.push('Missing environment variable(s): ' + missingEnv.join(', '));\n}\nif (event !== 'run.completed') {\n  problems.push('Unexpected event ' + JSON.stringify(event) + ' (expected run.completed)');\n}\nif (!runId) {\n  problems.push('Missing run_id');\n}\n\n// The backend outbox is at-least-once: skip a run_id that was already emailed.\n// The map is persisted in the n8n global static data and written only after a\n// successful send by the \"Remember run_id\" node.\nconst staticData = $getWorkflowStaticData('global');\nconst seen =\n  staticData.notifiedRunIds && typeof staticData.notifiedRunIds === 'object'\n    ? staticData.notifiedRunIds\n    : {};\nconst retentionMs = 7 * 24 * 60 * 60 * 1000;\nconst cutoff = Date.now() - retentionMs;\nfor (const key of Object.keys(seen)) {\n  if (!(Number(seen[key]) > cutoff)) delete seen[key];\n}\nstaticData.notifiedRunIds = seen;\nif (runId && seen[runId]) {\n  problems.push(\n    'Duplicate run_id ' + runId + ' already notified at ' + new Date(seen[runId]).toISOString(),\n  );\n}\n\nreturn [\n  {\n    json: {\n      event,\n      run_id: runId,\n      profession,\n      status,\n      message,\n      type: runType,\n      degraded_reason: degradedReason,\n      nodes_count: nodesCount,\n      evidence_count: evidenceCount,\n      approved_evidence_count: approvedEvidenceCount,\n      sources_count: sourcesCount,\n      started_at: startedAt,\n      finished_at: finishedAt,\n      received_at: nowIso,\n      mail_to: mailTo,\n      is_webhook: isWebhook,\n      skip_reason: problems.join('; '),\n    },\n  },\n];"
+      },
+      "id": "fac54a8b-b5bf-4efa-8f5e-c47157221b5d",
+      "name": "Normalize payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1e34764-7c58-491c-b6fa-60dc22dc15c2",
+              "leftValue": "={{ $json.skip_reason }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "3b31c7a9-4ad6-405c-b1a8-66164cc8e048",
+      "name": "Should send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.MAIL_FROM }}",
+        "toEmail": "={{ $env.MAIL_TO }}",
+        "subject": "=[Activity Descriptor] Анализ завершён: {{ $json.profession }}",
+        "emailFormat": "text",
+        "text": "=Activity Descriptor — анализ завершён\n=======================================\n\n{{ $json.message }}\n\nПрофессия: {{ $json.profession }}\nСтатус: {{ $json.status }}\nТип исследования: {{ $json.type }}\n\nНомер исследования (run_id): {{ $json.run_id }}\nДанные собраны, анализ обновлён.\nУзлов в дереве: {{ $json.nodes_count }}\nИсточников: {{ $json.sources_count }}\nЦитат-подтверждений: {{ $json.approved_evidence_count }} из {{ $json.evidence_count }}\nОграничение: {{ $json.degraded_reason || 'нет' }}\n\nНачато: {{ $json.started_at || '(не указано)' }}\nЗавершено: {{ $json.finished_at || '(не указано)' }}\nУведомление получено: {{ $json.received_at }}\nn8n execution: {{ $execution.id }}\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput",
+      "id": "5ebd490f-c704-447b-ba26-1f1912e8e3d7",
+      "name": "Send email via SMTP",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Persist the delivered run_id so an at-least-once redelivery does not email twice.\n// The email node outputs the SMTP response (no run_id), so read the normalized item.\nconst data = $getWorkflowStaticData('global');\nconst seen =\n  data.notifiedRunIds && typeof data.notifiedRunIds === 'object' ? data.notifiedRunIds : {};\nconst runId = String($('Normalize payload').item.json.run_id ?? '');\nif (runId) seen[runId] = Date.now();\ndata.notifiedRunIds = seen;\nreturn [{ json: { ...$json, run_id: runId, dedupe_recorded: Boolean(runId) } }];"
+      },
+      "id": "9ac05a68-af32-4db8-a5bf-8a198be64020",
+      "name": "Remember run_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "51d5270b-e251-4c1e-beab-dae2f4f3452b",
+              "name": "status",
+              "value": "sent",
+              "type": "string"
+            },
+            {
+              "id": "e9d63ba7-ba41-49d0-9131-d7773c3023d8",
+              "name": "run_id",
+              "value": "={{ $('Normalize payload').item.json.run_id }}",
+              "type": "string"
+            },
+            {
+              "id": "83e1124b-2e90-44cd-91c8-a4b08360aa84",
+              "name": "profession",
+              "value": "={{ $('Normalize payload').item.json.profession }}",
+              "type": "string"
+            },
+            {
+              "id": "8c905080-d0c0-4b2a-8531-bd1dff671c02",
+              "name": "mail_to",
+              "value": "={{ $('Normalize payload').item.json.mail_to }}",
+              "type": "string"
+            },
+            {
+              "id": "830b07a8-311a-41da-ada9-ad30696f180a",
+              "name": "message_id",
+              "value": "={{ $json.messageId ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "39dc33fb-cc87-4106-8dfa-ea21f93ed0ea",
+              "name": "sent_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "ec2379cc-383e-46b1-bbc7-c30cfe92f123",
+              "name": "execution_id",
+              "value": "={{ String($execution.id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "10681a36-2351-425f-b67d-e8272b2a8a21",
+      "name": "Summary: email sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4bc95a53-b75f-4be5-b86c-0d04e113113e",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "fd20d81a-bcbd-4141-aa7e-cb7e70364cc9",
+              "name": "error",
+              "value": "={{ $json.error ?? $json.message ?? 'Email send failed' }}",
+              "type": "string"
+            },
+            {
+              "id": "d0fa13a9-209f-4b18-9eaf-0ef66397673b",
+              "name": "run_id",
+              "value": "={{ $('Normalize payload').item.json.run_id }}",
+              "type": "string"
+            },
+            {
+              "id": "0cbc8971-6cb3-4016-bd50-9f8e8113eb85",
+              "name": "profession",
+              "value": "={{ $('Normalize payload').item.json.profession }}",
+              "type": "string"
+            },
+            {
+              "id": "e47e7ae9-8e7a-4b5f-99e0-cc72174e0f48",
+              "name": "failed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "9504cda9-1bbd-49bd-b2e4-8c079347b44e",
+              "name": "execution_id",
+              "value": "={{ String($execution.id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7c07e963-19c8-43b1-aa27-0ba64108dcc0",
+      "name": "Log email failure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c9f2342f-7bf6-4121-938c-9604e2dae204",
+              "name": "status",
+              "value": "skipped",
+              "type": "string"
+            },
+            {
+              "id": "83e195ab-0f77-4ff5-a6d1-888fd8aee364",
+              "name": "reason",
+              "value": "={{ $json.skip_reason ?? 'unknown event' }}",
+              "type": "string"
+            },
+            {
+              "id": "1eed1a03-8b74-47fc-8551-427ca5a74a5a",
+              "name": "run_id",
+              "value": "={{ $json.run_id ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "fd153c66-b4bc-45c8-a31f-b05270109348",
+              "name": "profession",
+              "value": "={{ $json.profession ?? '(unknown)' }}",
+              "type": "string"
+            },
+            {
+              "id": "005fb845-ebd2-47c0-afe0-2f9b6598c491",
+              "name": "logged_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "0dad76b5-bc48-40c6-8406-3437b14ff0e5",
+              "name": "execution_id",
+              "value": "={{ String($execution.id) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "45835c2a-814f-45bf-bc82-e188c592cf0c",
+      "name": "Log skipped notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        120,
+        80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "0bd18b3b-c148-460e-88bc-03a30decf666",
+      "name": "Done (no-op)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        940,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Manual test": {
+      "main": [
+        [
+          {
+            "node": "Normalize payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: run-completed": {
+      "main": [
+        [
+          {
+            "node": "Normalize payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize payload": {
+      "main": [
+        [
+          {
+            "node": "Should send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should send?": {
+      "main": [
+        [
+          {
+            "node": "Log skipped notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send email via SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email via SMTP": {
+      "main": [
+        [
+          {
+            "node": "Remember run_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log email failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember run_id": {
+      "main": [
+        [
+          {
+            "node": "Summary: email sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary: email sent": {
+      "main": [
+        [
+          {
+            "node": "Done (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log email failure": {
+      "main": [
+        [
+          {
+            "node": "Done (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log skipped notification": {
+      "main": [
+        [
+          {
+            "node": "Done (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Europe/Moscow"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "aebbb1bb-fc3e-443f-ba5d-1323ce0f77a1",
+  "id": null,
+  "tags": []
+}

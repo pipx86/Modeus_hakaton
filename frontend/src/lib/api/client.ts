@@ -5,6 +5,7 @@
 
 import createClient from "openapi-fetch"
 import { frontendLog } from "@/lib/frontend-log"
+import { normalizeDashes } from "@/lib/text"
 import { getValidToken } from "@/lib/auth"
 import type { paths, components } from "./schema"
 
@@ -20,7 +21,37 @@ export const apiBaseUrl =
 
 export const apiToken = import.meta.env.VITE_API_TOKEN ?? ""
 
-export const apiClient = createClient<paths>({ baseUrl: apiBaseUrl })
+/** Убирает длинные тире из JSON-ответа, не трогая бинарные и текстовые форматы. */
+async function normalizeJSONResponse(response: Response): Promise<Response> {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (
+    !contentType.includes("application/json") ||
+    response.status === 204 ||
+    typeof response.clone !== "function"
+  ) {
+    return response
+  }
+  try {
+    const data: unknown = await response.clone().json()
+    const headers = new Headers(response.headers)
+    headers.delete("content-length")
+    headers.delete("content-encoding")
+    return new Response(JSON.stringify(normalizeDashes(data)), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  } catch {
+    return response
+  }
+}
+
+const normalizeFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init)
+  return normalizeJSONResponse(response)
+}
+
+export const apiClient = createClient<paths>({ baseUrl: apiBaseUrl, fetch: normalizeFetch })
 
 // Токен нужен, если фронтенд обращается к API напрямую (без прокси).
 apiClient.use({
@@ -70,6 +101,7 @@ export type CoverageResponse = components["schemas"]["CoverageResponse"]
 export type RunCompare = components["schemas"]["RunCompare"]
 export type RunEstimate = components["schemas"]["RunEstimate"]
 export type RunCost = components["schemas"]["RunCost"]
+export type CorrelationResponse = components["schemas"]["CorrelationResponse"]
 export type ReviewProgress = components["schemas"]["ReviewProgress"]
 export type ZunSuggestion = components["schemas"]["ZunSuggestion"]
 export type EvidenceContext = components["schemas"]["EvidenceContext"]
@@ -224,7 +256,7 @@ export async function compareRunSnapshots(
 }
 
 /**
- * Очередь спорных подтверждений. Доступна только ролям admin/teacher/rop;
+ * Очередь спорных подтверждений. Доступна только роли admin;
  * остальным сервер отвечает 403, и экран показывает это сообщением.
  */
 export async function listReviewEvidence(

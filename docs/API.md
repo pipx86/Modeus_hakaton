@@ -33,11 +33,12 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 
 ## Авторизация, роли и ошибки
 
-- Все `/api/v1/*`, кроме `GET /api/v1/health` и `GET /api/v1/ready`, требуют заголовок
-  `Authorization: Bearer <JWT>`; `role` claim — `admin`, `teacher`, `rop`,
-  `student` или `guest`. `401` — токен отсутствует или невалиден, `403` — роль не
-  разрешена для операции. Для GET-роутов демо-данных гость (guest) имеет доступ
-  только на чтение; изменяющие операции гостю запрещены.
+- Все `/api/v1/*`, кроме `GET /api/v1/health`, `GET /api/v1/ready`, `POST /api/v1/auth/register` и
+  `POST /api/v1/auth/login`, требуют заголовок
+  `Authorization: Bearer <JWT>`; `role` claim — `admin` или `user`. `401` — токен
+  отсутствует или невалиден, `403` — роль не разрешена для операции. Обычный
+  пользователь (`user`) может создавать исследования, проходить интервью и
+  читать результаты; изменяющие экспертные операции доступны только `admin`.
 - `Idempotency-Key` (необязательный заголовок для не-GET запросов): повтор с тем
   же ключом и телом возвращает сохранённый ответ; тот же ключ с другим телом —
   `409 IDEMPOTENCY_CONFLICT`.
@@ -51,34 +52,39 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 ## Что актуализировано в этом обновлении
 
 Каноническая спецификация теперь покрывает все маршруты, зарегистрированные в
-[`internal/api/handlers.go`](../internal/api/handlers.go): 37 путей и 46 операций.
+[`internal/api/handlers.go`](../internal/api/handlers.go): 42 пути и 51 операция.
 
 | Метод и путь | Назначение | Роли | Основные ответы |
 | --- | --- | --- | --- |
-| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, teacher, rop, student, guest | 200, 404, 500 |
-| `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, student, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
-| `GET /reviews/evidence?status=&limit=&offset=` | Очередь спорных подтверждений для эксперта: `status=pending\|rejected`, `limit` 1..200 (50), `offset` >= 0; пустая страница — `[]` | admin, teacher, rop | 200, 400, 501 |
-| `POST /evidences/{id}/reject` | Отклонить подтверждение (только pending) | admin, teacher | 204, 404, 409 `ALREADY_REJECTED`/`ALREADY_APPROVED` |
-| `GET /evidences/{id}` | Подтверждение + legacy-флаг `approved` | admin, teacher, rop, guest | 200, 404, 501 |
-| `POST /evidences/bulk-approve` | Массовое подтверждение, `{approved, skipped}` | admin, teacher | 200, 400 |
+| `POST /auth/register` | Регистрация по email/паролю; первый пользователь становится admin, остальные — user | публично | 201, 400, 409 `EMAIL_TAKEN`, 500 |
+| `POST /auth/login` | Вход по email/паролю, JWT на 24 часа | публично | 200, 400, 401, 500 |
+| `GET /users` | Список зарегистрированных пользователей | admin | 200, 403 |
+| `GET /dashboard/correlation` | Матрица корреляции Пирсона между длительностью, числом ролей/функций/задач/действий и цитат по завершённым прогонам; `sample_size` показывает выборку | admin, user | 200, 401, 403, 500 |
+| `GET /dashboard/skills` | Граф совместной встречаемости функций/задач/действий в деревьях завершённых прогонов | admin, user | 200, 401, 403, 500 |
+| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, user | 200, 404, 500 |
+| `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, user | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
+| `GET /reviews/evidence?status=&limit=&offset=` | Очередь спорных подтверждений для эксперта: `status=pending\|rejected`, `limit` 1..200 (50), `offset` >= 0; пустая страница — `[]` | admin | 200, 400, 501 |
+| `POST /evidences/{id}/reject` | Отклонить подтверждение (только pending) | admin | 204, 404, 409 `ALREADY_REJECTED`/`ALREADY_APPROVED` |
+| `GET /evidences/{id}` | Подтверждение + legacy-флаг `approved` | admin, user | 200, 404, 501 |
+| `POST /evidences/bulk-approve` | Массовое подтверждение, `{approved, skipped}` | admin | 200, 400 |
 | `GET /runs/{id}/messages` | История чата интервью | все роли | 200, 404, 503 `CHAT_DISABLED` |
-| `POST /runs/{id}/messages` | Ответ интервьюируемого | admin, teacher, rop, student | 201, 400, 404, 409, 503 |
-| `DELETE /runs/{id}` | Удаление исследования (каскадно) | admin | 204, 404 |
+| `POST /runs/{id}/messages` | Ответ интервьюируемого | admin, user | 201, 400, 404, 409, 503 |
+| `DELETE /runs/{id}` | Удаление исследования (каскадно): admin - любое, user - только своё | admin, user | 204, 403, 404 |
 | `GET /users` | Демо-пользователи и роли | admin | 200, 403 |
-| `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin, teacher, rop | 200, 404, 501 |
-| `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin, teacher, rop | 200, 404, 501 |
-| `POST /runs/{id}/sources` | Привязать standard/vacancy источник к прогону для live multi-source анализа; admin/teacher | 201, 400, 401, 403, 404, 422, 501 |
-| `GET /runs/{id}/export?format=json\|md` | Экспорт завершённого исследования: legacy-массив узлов по умолчанию, JSON-документ через `?format=json`, Markdown через `?format=md` | admin, teacher, rop, student, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
-| `GET /runs/estimate?profession=&type=` | Оценка длительности/токенов/стоимости будущего прогона по истории; `estimated_cost_usd` может быть `null`, `confidence` — high/medium/low, `method` называет использованные данные | admin, teacher, rop, student | 200, 400, 500 |
+| `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin | 200, 404, 501 |
+| `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin | 200, 404, 501 |
+| `POST /runs/{id}/sources` | Привязать standard/vacancy источник к прогону для live multi-source анализа; admin/admin | 201, 400, 401, 403, 404, 422, 501 |
+| `GET /runs/{id}/export?format=json\|md` | Экспорт завершённого исследования: legacy-массив узлов по умолчанию, JSON-документ через `?format=json`, Markdown через `?format=md` | admin, user | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
+| `GET /runs/estimate?profession=&type=` | Оценка длительности/токенов/стоимости будущего прогона по истории; `estimated_cost_usd` может быть `null`, `confidence` — high/medium/low, `method` называет использованные данные | admin, user | 200, 400, 500 |
 | `GET /runs/{id}/cost` | Фактический расход LLM по прогону: токены, стоимость (`null` если провайдер не сообщил цену), `by_model`/`by_agent`, `status_counts`, `attribution`, плюс пересчитанная оценка | все роли (как `GET /runs/{id}`) | 200, 404, 500, 503, 504 |
-| `GET /runs/{id}/insights` | Консолидированные инсайты: provenance по узлам, health score с breakdown, red flags, market heat, coverage, sources, node explanations; детерминированно, без LLM | admin, teacher, rop, guest | 200, 401, 403, 404, 500, 501, 503, 504 |
-| `GET /runs/{id}/coverage` | Матрица покрытия роль/функция/задача × типы источников; JSON по умолчанию, `?format=csv` — `text/csv` с заголовком `node_id,title,type,interview,standard,vacancy,document` | admin, teacher, rop, guest | 200, 401, 403, 404, 500, 501, 503, 504 |
-| `GET /runs/{id}/compare?against=` | Сравнение деревьев двух исследований: `added`/`removed`/`changed`/`summary`, `match` (`by_id`/`by_title`/`unmatched`), `same_profession`, `story` | admin, teacher, rop, guest | 200, 400, 401, 403, 404, 409 `RUN_PROFESSION_MISMATCH`/`RUN_TREE_MISSING`, 500, 501, 503, 504 |
-| `GET /runs/{id}/zun/suggestions` | Rule-based предложения ЗУН для каждого узла дерева (`source=rule`, без LLM); у узлов с непустым ЗУН списки пусты и `can_apply=false` | admin, teacher, rop | 200, 401, 403, 404, 500 |
-| `POST /runs/{id}/zun/suggestions/apply` | Сохранить предложенный ЗУН одному узлу, только если ЗУН ещё пуст; нормализация пунктов и лимиты | admin, teacher, rop | 200, 400, 401, 403, 404, 409 `ZUN_ALREADY_SET`, 500, 501 |
-| `POST /runs/{id}/zun/suggestions/reject` | Постоянно отклонить предложение ЗУН для узла; повторный GET больше его не возвращает, идемпотентно | admin, teacher, rop | 200, 400, 401, 403, 404, 500, 501 |
+| `GET /runs/{id}/insights` | Консолидированные инсайты: provenance по узлам, health score с breakdown, red flags, market heat, coverage, sources, node explanations; детерминированно, без LLM | admin, user | 200, 401, 403, 404, 500, 501, 503, 504 |
+| `GET /runs/{id}/coverage` | Матрица покрытия роль/функция/задача × типы источников; JSON по умолчанию, `?format=csv` — `text/csv` с заголовком `node_id,title,type,interview,standard,vacancy,document` | admin | 200, 401, 403, 404, 500, 501, 503, 504 |
+| `GET /runs/{id}/compare?against=` | Сравнение деревьев двух исследований: `added`/`removed`/`changed`/`summary`, `match` (`by_id`/`by_title`/`unmatched`), `same_profession`, `story` | admin, user | 200, 400, 401, 403, 404, 409 `RUN_PROFESSION_MISMATCH`/`RUN_TREE_MISSING`, 500, 501, 503, 504 |
+| `GET /runs/{id}/zun/suggestions` | Rule-based предложения ЗУН для каждого узла дерева (`source=rule`, без LLM); у узлов с непустым ЗУН списки пусты и `can_apply=false` | admin | 200, 401, 403, 404, 500 |
+| `POST /runs/{id}/zun/suggestions/apply` | Сохранить предложенный ЗУН одному узлу, только если ЗУН ещё пуст; нормализация пунктов и лимиты | admin | 200, 400, 401, 403, 404, 409 `ZUN_ALREADY_SET`, 500, 501 |
+| `POST /runs/{id}/zun/suggestions/reject` | Постоянно отклонить предложение ЗУН для узла; повторный GET больше его не возвращает, идемпотентно | admin | 200, 400, 401, 403, 404, 500, 501 |
 | `GET /runs/{id}/evidence/{evidence_id}/context` | Контекст подтверждения: цитата с контекстом узла/источника, сохранённый транскрипт интервью и лучшая совпавшая реплика (`match`, `note`) | все роли | 200, 400, 401, 404, 500, 501 |
-| `GET /reviews/evidence/progress?run_id=` | Счётчики проверки подтверждений: `pending`/`approved`/`rejected`/`total`, глобально или по прогону (`scope`/`run_id`) | admin, teacher, rop | 200, 400, 401, 403, 404, 500, 501 |
+| `GET /reviews/evidence/progress?run_id=` | Счётчики проверки подтверждений: `pending`/`approved`/`rejected`/`total`, глобально или по прогону (`scope`/`run_id`) | admin | 200, 400, 401, 403, 404, 500, 501 |
 
 Детали контрактов: [`snapshot_diff.go`](../internal/api/snapshot_diff.go),
 [`comparison_story.go`](../internal/api/comparison_story.go),
@@ -119,7 +125,7 @@ search, nodes, users, конфликты синтезатора) сохрани�
 - Неизвестный/невалидный `id` — `404 NOT_FOUND`; незавершённый прогон —
   `409 RUN_NOT_FINISHED`; завершённый прогон без сохранённого дерева —
   `409 RUN_HAS_NO_TREE`.
-- Роли: `admin`, `teacher`, `rop`, `guest`; `student` получает `403` (как и
+- Роли: `admin`, `admin`, `admin`, `user`; `user` получает `403` (как и
   раньше на этом маршруте), без токена — `401`.
 - `Content-Type` — `text/markdown; charset=utf-8` или
   `application/json; charset=utf-8`; `Content-Disposition: attachment` с
@@ -166,8 +172,8 @@ task (actions исключены), `cells` содержит счётчики п�
 `Content-Disposition: attachment`. Любое другое значение `format` — JSON.
 
 Оба маршрута требуют PostgreSQL и привязанные источники прогона; на in-memory
-демо-хранилище возвращается `501 NOT_IMPLEMENTED`. Роли: admin/teacher/rop/guest
-(student получает 403). Никаких LLM/внешних вызовов при построении нет.
+демо-хранилище возвращается `501 NOT_IMPLEMENTED`. Роли: admin/admin/admin/user
+(user получает 403). Никаких LLM/внешних вызовов при построении нет.
 
 ## Сравнение исследований
 
@@ -190,7 +196,7 @@ task (actions исключены), `cells` содержит счётчики п�
   человекочитаемое описание diff'а, количества в котором совпадают с `summary`.
 - `against` обязателен, должен быть UUID и отличаться от `id` (иначе 400);
   неизвестный прогон/невалидный UUID в пути — 404; in-memory хранилище — 501.
-- Роли: admin/teacher/rop/guest, чтение; student получает 403.
+- Роли: admin/admin/admin/user, чтение; user получает 403.
 
 ## Оценка стоимости и фактический расход
 
@@ -215,7 +221,7 @@ prompt/completion/total токены, стоимость (`null` — «неиз�
 сравнения. `attribution` объясняет, откуда взяты запросы: `run_id` (точная
 атрибуция), `time_window` (окно прогона; приблизительно) или `none`;
 `attribution_ambiguous=true`, если окно пересекается с другим прогоном.
-Роли — как у `GET /runs/{id}` (admin/teacher/rop/student/guest).
+Роли — как у `GET /runs/{id}` (admin/admin/admin/user/user).
 
 ## Auto-ZUN (предложения ЗУН)
 
@@ -230,7 +236,7 @@ prompt/completion/total токены, стоимость (`null` — «неиз�
 `409 ZUN_ALREADY_SET`. Пункты нормализуются (trim, схлопывание пробелов,
 дедупликация без учёта регистра, ≤200 символов на пункт, ≤50 пунктов на список);
 нужен хотя бы один непустой пункт, иначе 400. Узел должен принадлежать прогону
-(404). Роли: admin/teacher/rop; in-memory хранилище тоже умеет apply, для
+(404). Роли: admin/admin/admin; in-memory хранилище тоже умеет apply, для
 хранилищ без этой возможности — 501.
 
 ## Контекст подтверждения и прогресс проверки
@@ -253,7 +259,7 @@ id сообщения → `answer-N`/`a-N` (N-я реплика пользова
 эксперта: `pending`, `approved`, `rejected`, `total`, где `total` всегда равен их
 сумме. Без `run_id` счётчики глобальные (`scope=global`), с `run_id` —
 `scope=run` и `run_id` в ответе. Невалидный `run_id` — 400, неизвестный — 404.
-Роли: admin/teacher/rop; in-memory хранилище счётчики поддерживает, иначе 501.
+Роли: admin/admin/admin; in-memory хранилище счётчики поддерживает, иначе 501.
 
 ## Проверка спецификации
 

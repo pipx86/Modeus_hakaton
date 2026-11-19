@@ -8,7 +8,7 @@ import (
 
 func TestIssueAndParseRoundTrip(t *testing.T) {
 	SetSecretForTests("test-secret-for-ci")
-	tok, err := Issue("u-42", RoleTeacher, time.Hour)
+	tok, err := Issue("u-42", RoleAdmin, time.Hour)
 	if err != nil {
 		t.Fatalf("issue failed: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestIssueAndParseRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if claims.Sub != "u-42" || claims.Role != "teacher" {
+	if claims.Sub != "u-42" || claims.Role != "admin" {
 		t.Fatalf("wrong claims: %+v", claims)
 	}
 }
@@ -35,7 +35,7 @@ func TestParseRejectsTamperedSignature(t *testing.T) {
 
 func TestParseRejectsExpired(t *testing.T) {
 	SetSecretForTests("test-secret-for-ci")
-	tok, _ := Issue("u-2", RoleStudent, -time.Second) // уже просрочен
+	tok, _ := Issue("u-2", RoleUser, -time.Second) // уже просрочен
 	if _, err := Parse(tok); err == nil {
 		t.Fatalf("expired token must be rejected")
 	}
@@ -50,10 +50,10 @@ func TestIssueRejectsUnknownRole(t *testing.T) {
 
 func TestGuestRoleIsValidAndRoundTrips(t *testing.T) {
 	SetSecretForTests("test-secret-for-ci")
-	if !ValidRole(string(RoleGuest)) {
+	if !ValidRole(string(RoleUser)) {
 		t.Fatal("guest должен быть допустимой ролью")
 	}
-	tok, err := Issue("demo-guest", RoleGuest, time.Hour)
+	tok, err := Issue("demo-user", RoleUser, time.Hour)
 	if err != nil {
 		t.Fatalf("не удалось выпустить guest-токен: %v", err)
 	}
@@ -61,14 +61,14 @@ func TestGuestRoleIsValidAndRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guest-токен не разобрался: %v", err)
 	}
-	if claims.Sub != "demo-guest" || claims.Role != string(RoleGuest) {
+	if claims.Sub != "demo-user" || claims.Role != string(RoleUser) {
 		t.Fatalf("неверные claims: %+v", claims)
 	}
 }
 
 func TestParseRejectsWrongSecret(t *testing.T) {
 	SetSecretForTests("secret-A")
-	tok, _ := Issue("u-4", RoleROP, time.Hour)
+	tok, _ := Issue("u-4", RoleAdmin, time.Hour)
 	SetSecretForTests("secret-B")
 	if _, err := Parse(tok); err == nil {
 		t.Fatalf("token signed with other secret must fail parse")

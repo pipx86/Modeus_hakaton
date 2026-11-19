@@ -35,8 +35,39 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
     expect(screen.getByText("Frontend Developer")).toBeInTheDocument()
     expect(screen.getByText("Завершено")).toBeInTheDocument()
-    expect(screen.getByText("В работе")).toBeInTheDocument()
+    expect(screen.getByText("Интервью")).toBeInTheDocument()
     expect(screen.getByText("Активность за 14 дней")).toBeInTheDocument()
+  })
+
+  it("показывает карту корреляции из бэкенда", async () => {
+    setFetchHandler(async (url) => {
+      if (url.endsWith("/api/v1/dashboard/correlation")) {
+        return {
+          status: 200,
+          body: {
+            sample_size: 3,
+            metrics: [
+              { key: "duration", label: "Длительность, мин" },
+              { key: "roles", label: "Роли" },
+            ],
+            matrix: [
+              [1, 0.5],
+              [0.5, 1],
+            ],
+          },
+        }
+      }
+      return {
+        status: 200,
+        body: [{ id: "1", profession: "Data Scientist", status: "done" }],
+      }
+    })
+
+    renderPage()
+
+    expect(await screen.findByText("Карта корреляции")).toBeInTheDocument()
+    expect(screen.getAllByText("Длительность, мин").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("0.50").length).toBeGreaterThan(0)
   })
 
   it("считает количество исследований и активных", async () => {
@@ -52,7 +83,7 @@ describe("Dashboard", () => {
     renderPage()
 
     expect(await screen.findByText(/3 исследований/)).toBeInTheDocument()
-    expect(screen.getByText(/1 в работе/)).toBeInTheDocument()
+    expect(screen.getByText(/1 интервью/)).toBeInTheDocument()
   })
 
   it("показывает пустое состояние, если исследований нет", async () => {

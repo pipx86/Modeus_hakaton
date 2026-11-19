@@ -76,7 +76,7 @@ func TestTranscriptPostgresReadAndSearchRoundTrip(t *testing.T) {
 	}
 	auth.SetSecretForTests("test-only-token-secret-168434b-2")
 	t.Setenv("OLLAMA_URL", "not-an-http-url")
-	token, err := auth.Issue("read-test", auth.RoleTeacher, time.Minute)
+	token, err := auth.Issue("read-test", auth.RoleAdmin, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -118,10 +118,11 @@ demo-smoke:
 docker-build:
 	$(COMPOSE) -f $(COMPOSE_FILE) build api
 
-## docker-build-server: build the full-backend and migration images
+## docker-build-server: build the full-backend, migration and web images
 docker-build-server:
 	docker build --target server -t activity-descriptor-server:local .
 	docker build --target migrate -t activity-descriptor-migrate:local .
+	docker build --target web -t activity-descriptor-web:local .
 
 ## docker-size: print the API image size in bytes (< 104857600 required)
 docker-size:
@@ -139,17 +140,23 @@ down:
 logs:
 	$(COMPOSE) -f $(COMPOSE_FILE) logs -f --tail=100 api web postgres
 
-## up-server: build + start the full backend (cmd/server) with goose migrations
+## up-server: build + start the full backend (cmd/server) + the one-port web UI
 up-server:
-	$(COMPOSE) -f $(COMPOSE_FILE) --profile server up -d --build server
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server up -d --build server web-server
 
-## down-server: stop the full-backend services (keeps volumes)
+## up-server-monitoring: full backend/web + Prometheus/Grafana (server scrape config)
+up-server-monitoring:
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server up -d --build server web-server
+	PROMETHEUS_CONFIG=prometheus.server.yml \
+		$(COMPOSE) -f $(COMPOSE_FILE) --profile monitoring up -d --no-deps prometheus grafana
+
+## down-server: stop the full-backend and web services (keeps volumes)
 down-server:
-	$(COMPOSE) -f $(COMPOSE_FILE) --profile server rm -f migrate server
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server rm -f migrate migrate-vector server web-server
 
-## logs-server: follow the full-backend logs
+## logs-server: follow the full-backend and web logs
 logs-server:
-	$(COMPOSE) -f $(COMPOSE_FILE) --profile server logs -f --tail=100 migrate server
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server logs -f --tail=100 migrate migrate-vector server web-server
 
 ## up-monitoring: start prometheus + grafana
 up-monitoring:
@@ -164,6 +171,7 @@ check-compose:
 	$(COMPOSE) -f $(COMPOSE_FILE) config --quiet
 	$(COMPOSE) -f $(COMPOSE_FILE) --profile monitoring --profile automation config --quiet
 	$(COMPOSE) -f $(COMPOSE_FILE) --profile server config --quiet
+	$(COMPOSE) -f $(COMPOSE_FILE) --profile server --profile monitoring config --quiet
 
 ## check-deploy: validate compose/Grafana/Prometheus/n8n assets and docs
 check-deploy:
@@ -180,4 +188,4 @@ import-n8n:
 clean:
 	rm -rf bin coverage.out e2e-output.json
 
-.PHONY: help env deps build test test-race vet fmt fmt-check lint tidy ci run token e2e demo-smoke docker-build docker-build-server docker-size up down logs up-server down-server logs-server up-monitoring up-automation check-compose check-deploy import-n8n clean
+.PHONY: help env deps build test test-race vet fmt fmt-check lint tidy ci run token e2e demo-smoke docker-build docker-build-server docker-size up down logs up-server up-server-monitoring down-server logs-server up-monitoring up-automation check-compose check-deploy import-n8n clean
