@@ -245,9 +245,6 @@ export function Dashboard() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} интервью`}
-          </p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           {demoRun && (

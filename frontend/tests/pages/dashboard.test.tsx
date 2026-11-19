@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
@@ -82,8 +82,12 @@ describe("Dashboard", () => {
 
     renderPage()
 
-    expect(await screen.findByText(/3 исследований/)).toBeInTheDocument()
-    expect(screen.getByText(/1 интервью/)).toBeInTheDocument()
+    const totalCard = (await screen.findByText("Всего исследований")).closest("[data-slot=card]")
+    expect(totalCard).not.toBeNull()
+    expect(within(totalCard as HTMLElement).getByText("3")).toBeInTheDocument()
+    const activeCard = screen.getByText("Активных").closest("[data-slot=card]")
+    expect(activeCard).not.toBeNull()
+    expect(within(activeCard as HTMLElement).getByText("1")).toBeInTheDocument()
   })
 
   it("показывает пустое состояние, если исследований нет", async () => {
