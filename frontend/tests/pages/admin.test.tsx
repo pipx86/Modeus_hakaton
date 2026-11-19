@@ -117,6 +117,12 @@ describe("админка", () => {
     expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
     expect(screen.getByText("Материалы для агентов")).toBeInTheDocument()
     expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Свернуть материалы" }))
+    expect(screen.queryByText("Загрузить файл")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Развернуть материалы" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Развернуть материалы" }))
+    expect(screen.getByText("Загрузить файл")).toBeInTheDocument()
     expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
 

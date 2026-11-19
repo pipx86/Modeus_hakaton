@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { Link } from "react-router-dom"
 import {
   ActivityIcon,
+  ChevronDownIcon,
   DatabaseIcon,
   DownloadIcon,
   RefreshCwIcon,
@@ -132,6 +133,7 @@ export function Admin() {
   const [agentFilter, setAgentFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sources, setSources] = useState<AdminSource[]>([])
+  const [materialsOpen, setMaterialsOpen] = useState(true)
   const [sourceType, setSourceType] = useState("document")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceFile, setSourceFile] = useState<File | null>(null)
@@ -834,14 +836,31 @@ export function Admin() {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Материалы для агентов</CardTitle>
-          <CardDescription>
-            Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
-            доступны всем новым прогонам, агенты опираются на них при разборе интервью.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <CardTitle className="text-base">Материалы для агентов</CardTitle>
+            <CardDescription>
+              Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
+              доступны всем новым прогонам, агенты опираются на них при разборе интервью.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0 text-muted-foreground"
+            aria-expanded={materialsOpen}
+            aria-controls="materials-content"
+            aria-label={materialsOpen ? "Свернуть материалы" : "Развернуть материалы"}
+            onClick={() => setMaterialsOpen((open) => !open)}
+          >
+            <ChevronDownIcon
+              className={`size-4 transition-transform ${materialsOpen ? "rotate-180" : ""}`}
+            />
+          </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {materialsOpen && (
+        <CardContent id="materials-content" className="space-y-4">
           <form onSubmit={addSource} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
               <div className="space-y-2">
@@ -891,7 +910,7 @@ export function Admin() {
           {sources.length === 0 ? (
             <p className="text-sm text-muted-foreground">Материалов пока нет.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="max-h-80 divide-y overflow-y-auto">
               {sources.map((source) => (
                 <li key={source.id} className="flex items-center gap-3 py-3 text-sm">
                   <Badge variant="secondary">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</Badge>
@@ -920,6 +939,7 @@ export function Admin() {
             </ul>
           )}
         </CardContent>
+        )}
       </Card>
       <Card>
         <CardHeader>
