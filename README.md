@@ -212,12 +212,8 @@ cd frontend && npm test -- --run
 ## Ограничения
 
 - для production нужны собственный TLS-домен, Alertmanager, HA и retention;
-- Gmail/local Postfix relay — демонстрационный транспорт, production требует
+- Gmail/local Postfix relay - демонстрационный транспорт, production требует
   стабильного SMTP-провайдера;
 - Cloudflare quick tunnel временный;
 - публичный webhook требует отдельной аутентификации;
 - Ollama нужен только для семантического поиска; без него остаётся BM25.
-
-## Зависимости
-
-Список сторонних зависимостей: [DEPENDENCIES.md](DEPENDENCIES.md).
