@@ -268,6 +268,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dashboard/correlation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Correlation matrix for completed runs
+         * @description Deterministic Pearson correlation between run duration, tree structure and evidence volume across completed runs. Available to admin and user.
+         */
+        get: operations["getDashboardCorrelation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs": {
         parameters: {
             query?: never;
@@ -1161,6 +1181,16 @@ export interface components {
         AuthResponse: {
             token: string;
             user: components["schemas"]["AuthUser"];
+        };
+        CorrelationMetric: {
+            key: string;
+            label: string;
+        };
+        CorrelationResponse: {
+            sample_size: number;
+            metrics: components["schemas"]["CorrelationMetric"][];
+            /** @description Symmetric matrix of Pearson coefficients in the range [-1, 1]. */
+            matrix: number[][];
         };
         /** @description JSON body of GET /runs/estimate (pre-run cost and time estimate). */
         RunEstimate: {
@@ -2353,6 +2383,29 @@ export interface operations {
             };
             500: components["responses"]["InternalError"];
             501: components["responses"]["NotImplemented"];
+        };
+    };
+    getDashboardCorrelation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Correlation matrix and the number of runs used. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrelationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listRuns: {

@@ -52,13 +52,14 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 ## Что актуализировано в этом обновлении
 
 Каноническая спецификация теперь покрывает все маршруты, зарегистрированные в
-[`internal/api/handlers.go`](../internal/api/handlers.go): 40 путей и 49 операций.
+[`internal/api/handlers.go`](../internal/api/handlers.go): 41 путь и 50 операций.
 
 | Метод и путь | Назначение | Роли | Основные ответы |
 | --- | --- | --- | --- |
 | `POST /auth/register` | Регистрация по email/паролю; первый пользователь становится admin, остальные — user | публично | 201, 400, 409 `EMAIL_TAKEN`, 500 |
 | `POST /auth/login` | Вход по email/паролю, JWT на 24 часа | публично | 200, 400, 401, 500 |
 | `GET /users` | Список зарегистрированных пользователей | admin | 200, 403 |
+| `GET /dashboard/correlation` | Матрица корреляции Пирсона между длительностью, числом ролей/функций/задач/действий и цитат по завершённым прогонам; `sample_size` показывает выборку | admin, user | 200, 401, 403, 500 |
 | `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, user | 200, 404, 500 |
 | `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, user | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
 | `GET /reviews/evidence?status=&limit=&offset=` | Очередь спорных подтверждений для эксперта: `status=pending\|rejected`, `limit` 1..200 (50), `offset` >= 0; пустая страница — `[]` | admin | 200, 400, 501 |

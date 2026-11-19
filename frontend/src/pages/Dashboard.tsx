@@ -20,7 +20,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { Donut, StackedBars } from "@/components/charts"
-import { apiClient, type Run } from "@/lib/api/client"
+import { CorrelationMap } from "@/components/correlation-map"
+import { apiClient, type CorrelationResponse, type Run } from "@/lib/api/client"
 import { getCurrentRole } from "@/lib/auth"
 
 const DAYS = 14
@@ -76,6 +77,8 @@ export function Dashboard() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [correlation, setCorrelation] = useState<CorrelationResponse | null>(null)
+  const [correlationLoading, setCorrelationLoading] = useState(true)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
   const canCreate = true
@@ -112,6 +115,25 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/dashboard/correlation")
+        if (!cancelled && data && !Array.isArray(data) && "matrix" in data) {
+          setCorrelation(data)
+        }
+      } catch {
+        // Карта необязательна: остальные виджеты дашборда должны остаться доступны.
+      } finally {
+        if (!cancelled) setCorrelationLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const active = runs.filter((run) => run.status === "running").length
   const demoRun = runs.find((run) => run.status === "done")
@@ -345,6 +367,27 @@ export function Dashboard() {
                   </div>
                 )
               })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Карта корреляции</CardTitle>
+              <CardDescription>
+                Связи между длительностью, структурой дерева и объёмом цитат по завершённым
+                исследованиям. −1 - обратная связь, +1 - прямая.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {correlationLoading ? (
+                <Skeleton className="h-48 w-full" />
+              ) : correlation ? (
+                <CorrelationMap data={correlation} />
+              ) : (
+                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Не удалось загрузить карту корреляции. Остальные данные дашборда доступны.
+                </p>
+              )}
             </CardContent>
           </Card>
         </>

@@ -1115,6 +1115,42 @@
         }
       }
     },
+    "/dashboard/correlation": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Correlation matrix for completed runs",
+        "description": "Deterministic Pearson correlation between run duration, tree structure and evidence volume across completed runs. Available to admin and user.",
+        "operationId": "getDashboardCorrelation",
+        "responses": {
+          "200": {
+            "description": "Correlation matrix and the number of runs used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrelationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/runs": {
       "get": {
         "tags": [
@@ -5036,6 +5072,55 @@
           },
           "user": {
             "$ref": "#/components/schemas/AuthUser"
+          }
+        }
+      },
+      "CorrelationMetric": {
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "CorrelationResponse": {
+        "type": "object",
+        "required": [
+          "sample_size",
+          "metrics",
+          "matrix"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sample_size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorrelationMetric"
+            }
+          },
+          "matrix": {
+            "type": "array",
+            "description": "Symmetric matrix of Pearson coefficients in the range [-1, 1].",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
+              }
+            }
           }
         }
       },
