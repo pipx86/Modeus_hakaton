@@ -115,7 +115,7 @@ describe("админка", () => {
     expect(screen.getByText("HTTP 5xx")).toBeInTheDocument()
     expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
     expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
-    expect(screen.getByText("Материалы для аналитика")).toBeInTheDocument()
+    expect(screen.getByText("Материалы для агентов")).toBeInTheDocument()
     expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
     expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()

@@ -1,6 +1,6 @@
 /**
  * @file admin.tsx
- * @description Админка: пользователи, исследования, LLM-метрики, расход токенов и материалы для аналитика.
+ * @description Админка: пользователи, исследования, LLM-метрики, расход токенов и материалы для агентов.
  */
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
@@ -305,7 +305,7 @@ export function Admin() {
       setSourceFileKey((value) => value + 1)
       setSources((prev) => [created, ...prev])
       toast.success("Материал загружен", {
-        description: "Аналитик будет учитывать его в следующих прогонах.",
+        description: "Агенты будут учитывать его в следующих прогонах.",
       })
     } catch {
       toast.error("Сервер недоступен", { description: "Файл не загружен." })
@@ -797,7 +797,7 @@ export function Admin() {
         <CardHeader>
           <CardTitle className="text-base">Качество источников</CardTitle>
           <CardDescription>
-            Состав материалов и наличие извлечённого текста, на который опирается аналитик.
+            Состав материалов и наличие извлечённого текста, на который опираются агенты.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -835,10 +835,10 @@ export function Admin() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Материалы для аналитика</CardTitle>
+          <CardTitle className="text-base">Материалы для агентов</CardTitle>
           <CardDescription>
             Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
-            доступны всем новым прогонам, аналитик опирается на них при разборе интервью.
+            доступны всем новым прогонам, агенты опираются на них при разборе интервью.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
