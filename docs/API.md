@@ -52,7 +52,7 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 ## Что актуализировано в этом обновлении
 
 Каноническая спецификация теперь покрывает все маршруты, зарегистрированные в
-[`internal/api/handlers.go`](../internal/api/handlers.go): 39 путей и 48 операций.
+[`internal/api/handlers.go`](../internal/api/handlers.go): 40 путей и 49 операций.
 
 | Метод и путь | Назначение | Роли | Основные ответы |
 | --- | --- | --- | --- |

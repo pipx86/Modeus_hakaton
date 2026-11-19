@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Запустить импорт настроенных файлов
+         * @description Требуется роль admin. Имена файлов задаются на сервере.
+         */
+        post: operations["ingestConfiguredFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -545,8 +565,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export a completed run as Markdown or JSON
-         * @description Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, user and user; conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.
+         * Export a completed run as Markdown, JSON or CSV
+         * @description Exports the finalized activity tree of a run whose status is `done`. Without `format` the endpoint returns the legacy bare JSON array of tree nodes. Explicit `format=json` returns a structured run export document; `format=md` returns a human-readable Markdown report with the profession, status, run id, role → function → task → action hierarchy, evidence quotes (source_id/ref_id/status), resolved conflicts, the final recommendations/courses chat message when available and the generation timestamp. `format=json` returns the same data as a structured document (`schema=run-export/v1`). Roles: admin, user. CSV returns one row per evidence quote or per node without evidence. Conflicts and source metadata are auxiliary and are read best-effort: if they cannot be loaded the export still succeeds without them. The response is served with `Content-Disposition: attachment` and a filename built from a sanitized run id.
          */
         get: operations["exportRun"];
         put?: never;
@@ -1655,6 +1675,73 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ingestConfiguredFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sources: ("vacancies" | "standards")[];
+                };
+            };
+        };
+        responses: {
+            /** @description Число вставленных и обновлённых записей. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "ok";
+                        ingested: number;
+                        vacancies: number;
+                        standards: number;
+                    };
+                };
+            };
+            /** @description Некорректный список источников */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Сбой загрузки настроенных файлов */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Файлы или PostgreSQL не настроены */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -3488,8 +3575,8 @@ export interface operations {
     exportRun: {
         parameters: {
             query?: {
-                /** @description Export format: `md`, `json`, or omitted for the legacy bare node array. Any other value returns 400 BAD_REQUEST. Case and surrounding whitespace are normalized. */
-                format?: "md" | "json";
+                /** @description Export format: `md`, `json`, `csv`, or omitted for the legacy bare node array. Any other value returns 400 BAD_REQUEST. Case and surrounding whitespace are normalized. */
+                format?: "md" | "json" | "csv";
             };
             header?: never;
             path: {
@@ -3500,10 +3587,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Legacy bare node array by default; structured JSON or Markdown when requested. */
+            /** @description Legacy bare node array by default; CSV, structured JSON or Markdown when requested. */
             200: {
                 headers: {
-                    /** @description `attachment; filename="run-<sanitized-id>.md"` or `.json`; the id is reduced to ASCII letters, digits, `-` and `_`. */
+                    /** @description `attachment; filename="run-<sanitized-id>.md"`, `.json` or `.csv`; the id is reduced to ASCII letters, digits, `-` and `_`. */
                     "Content-Disposition"?: string;
                     [name: string]: unknown;
                 };
@@ -3532,6 +3619,7 @@ export interface operations {
                      */
                     "text/markdown": string;
                     "application/json": components["schemas"]["ExportRun"];
+                    "text/csv": string;
                 };
             };
             400: components["responses"]["BadRequest"];
