@@ -37,3 +37,9 @@ Makefile
 README.md
 openapi.yaml
 scripts
+
+# Full prompt texts are local-only; images use prompts/default.
+prompts/_shared
+prompts/interviewer
+prompts/analyst
+prompts/synthesizer

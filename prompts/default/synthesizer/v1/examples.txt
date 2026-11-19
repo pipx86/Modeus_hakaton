@@ -1,0 +1,1 @@
+Return the merged nodes and any conflicts in the requested schema.

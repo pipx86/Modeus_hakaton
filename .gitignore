@@ -56,5 +56,8 @@ data/reports/
 *.sln
 *.sw?
 
-# Shared prompt rules are local-only / generated outside git.
+# Full prompt texts are local-only; the public repo ships safe defaults.
 prompts/_shared/
+prompts/interviewer/
+prompts/analyst/
+prompts/synthesizer/

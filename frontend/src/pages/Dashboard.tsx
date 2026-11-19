@@ -41,9 +41,9 @@ const STAGE_LABEL: Record<string, string> = {
 const STAGE_COLOR: Record<string, string> = {
   created: "bg-muted-foreground/40",
   interview: "bg-warning",
-  analysis: "bg-sky-500",
+  analysis: "bg-primary/55",
   synthesis: "bg-primary",
-  review: "bg-cyan-500",
+  review: "bg-primary/75",
   done: "bg-success",
   failed: "bg-destructive",
 }
@@ -189,7 +189,7 @@ export function Dashboard() {
     return days.map((day) => ({
       label: day.label,
       segments: [
-        { value: day.done, className: "bg-emerald-500" },
+        { value: day.done, className: "bg-success" },
         { value: day.running, className: "bg-warning" },
         { value: day.failed, className: "bg-destructive" },
         { value: day.other, className: "bg-muted-foreground/40" },
@@ -209,7 +209,7 @@ export function Dashboard() {
   }, [runs])
 
   const statusSegments = [
-    { label: "done", value: stats.done, className: "text-emerald-500" },
+    { label: "done", value: stats.done, className: "text-success" },
     { label: "running", value: active, className: "text-warning" },
     { label: "failed", value: stats.failed, className: "text-destructive" },
     {
@@ -315,7 +315,7 @@ export function Dashboard() {
                 <StackedBars data={daily} />
                 <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <span className="size-2 rounded-full bg-emerald-500" /> успешные
+                    <span className="size-2 rounded-full bg-success" /> успешные
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-warning" /> интервью
