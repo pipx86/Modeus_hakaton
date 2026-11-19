@@ -324,6 +324,28 @@ func TestSaveAITreeStepCreatesSourceAndUUIDs(t *testing.T) {
 	}
 }
 
+func TestSaveAITreeStepPreservesVacancyEvidenceSource(t *testing.T) {
+	run := &domain.Run{ID: "run-vacancy-source", Data: map[string]any{
+		DataKeyTranscript: "Я аналитик",
+		DataKeySourceIDs:  map[string]string{"vac-1": "vac-1"},
+		DataKeyTree: []domain.Node{{
+			ID: "n1", Type: domain.NodeRole, Title: "Роль",
+			Evidence: []domain.Evidence{{ID: "e1", SourceID: "vac-1", Quote: "Go"}},
+		}},
+	}}
+	store := newFakeAITreeStore()
+	if err := (&SaveAITreeStep{Store: store, NewID: sequenceUUID()}).Execute(context.Background(), run); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	saved := store.Saved(run.ID)
+	if len(saved) != 1 || len(saved[0].Evidence) != 1 {
+		t.Fatalf("saved = %+v", saved)
+	}
+	if saved[0].Evidence[0].SourceID != "vac-1" {
+		t.Fatalf("evidence source = %q, want vac-1", saved[0].Evidence[0].SourceID)
+	}
+}
+
 func TestSaveAITreeStepReusesPersistedSource(t *testing.T) {
 	persistedSourceID := "33333333-3333-4333-8333-333333333333"
 	run := &domain.Run{ID: "run-6", Data: map[string]any{

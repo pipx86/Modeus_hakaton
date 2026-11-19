@@ -23,6 +23,7 @@ const (
 	DataKeyTree              = "tree"
 	DataKeyConflicts         = "conflicts"
 	DataKeyInterviewSourceID = "interview_source_id"
+	DataKeySourceIDs         = "source_ids"
 )
 
 // Synthesizer is the deterministic merge step of the agent pipeline. The
@@ -90,15 +91,26 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	// llm_requests.run_id is populated for the run cost endpoint instead of
 	// depending on a time-window guess.
 	ctx = llmobs.WithRunID(ctx, run.ID)
+	sources := s.analysisSources(ctx, run.ID, vacancies)
 	analysis, err := agentInstance.Analyze(ctx, agent.AnalystInput{
 		SessionID:  run.ID,
 		Profession: run.Profession,
 		Transcript: transcript,
-		Sources:    s.analysisSources(ctx, run.ID, vacancies),
+		Sources:    sources,
 	})
 	if err != nil {
 		return fmt.Errorf("agent analysis step: analyze: %w", err)
 	}
+	if run.Data == nil {
+		run.Data = make(map[string]any)
+	}
+	sourceIDs := make(map[string]string)
+	for _, source := range sources {
+		if source.ID != "" {
+			sourceIDs[source.ID] = source.ID
+		}
+	}
+	run.Data[DataKeySourceIDs] = sourceIDs
 
 	nodes := make([]domain.Node, 0, len(analysis.Entities))
 	for _, entity := range analysis.Entities {
@@ -281,7 +293,8 @@ func (s *SaveAITreeStep) Execute(ctx context.Context, run *domain.Run) error {
 	if err != nil {
 		return fmt.Errorf("save AI tree step: repair tree: %w", err)
 	}
-	converted := assignAITreeUUIDs(repaired, sourceID, s.nextID)
+	sourceIDs, _ := run.Data[DataKeySourceIDs].(map[string]string)
+	converted := assignAITreeUUIDs(repaired, sourceID, sourceIDs, s.nextID)
 	roots := 0
 	for _, node := range converted {
 		if node.ParentID == nil {
@@ -308,7 +321,7 @@ func (s *SaveAITreeStep) nextID() string {
 // expects: UUID node ids, UUID evidence ids and the run's interview source id on
 // every evidence item (the analyst emits a synthetic interview source id that is
 // not a database row). Title, description, type, hierarchy and quotes survive.
-func assignAITreeUUIDs(nodes []domain.Node, sourceID string, newID func() string) []domain.Node {
+func assignAITreeUUIDs(nodes []domain.Node, sourceID string, sourceIDs map[string]string, newID func() string) []domain.Node {
 	ids := make(map[string]string, len(nodes))
 	for _, node := range nodes {
 		ids[node.ID] = newID()
@@ -327,9 +340,13 @@ func assignAITreeUUIDs(nodes []domain.Node, sourceID string, newID func() string
 		}
 		converted.Evidence = make([]domain.Evidence, 0, len(node.Evidence))
 		for _, evidence := range node.Evidence {
+			evidenceSourceID := sourceID
+			if mapped, ok := sourceIDs[evidence.SourceID]; ok {
+				evidenceSourceID = mapped
+			}
 			converted.Evidence = append(converted.Evidence, domain.Evidence{
 				ID:       newID(),
-				SourceID: sourceID,
+				SourceID: evidenceSourceID,
 				RefID:    evidence.RefID,
 				Quote:    evidence.Quote,
 				Status:   evidence.Status,
