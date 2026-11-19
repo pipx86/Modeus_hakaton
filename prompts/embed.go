@@ -8,4 +8,7 @@ import "embed"
 // override them with a private PROMPTS_DIR (see internal/prompts).
 //
 //go:embed all:default
+//go:embed interviewer/v1
+//go:embed analyst/v1
+//go:embed synthesizer/v1
 var FS embed.FS

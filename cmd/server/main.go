@@ -48,6 +48,21 @@ func loadConfig() (config, error) {
 	return c, nil
 }
 
+// aiStepTimeout returns the per-attempt budget of an AI batch step. The
+// default is one hour because analyst extraction can span many sources.
+func aiStepTimeout() time.Duration {
+	const defaultTimeout = time.Hour
+	raw := strings.TrimSpace(os.Getenv("AI_STEP_TIMEOUT_S"))
+	if raw == "" {
+		return defaultTimeout
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return defaultTimeout
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // sourceAutoIndexEnabled reports whether new sources should be indexed in the
 // background. Enabled by default; SOURCE_AUTO_INDEX=false disables the
 // background embedding calls (for example on a server without Ollama).
@@ -163,6 +178,10 @@ func run(ctx context.Context, c config) error {
 		Synthesizer:          batchSynth,
 		Store:                pgStore,
 		VacancyTopK:          10,
+		AITimeout:            aiStepTimeout(),
+		ZunEnricher: func(ctx context.Context, profession string, nodes []domain.Node) []domain.Node {
+			return enrichZun(ctx, analystClient, profession, nodes)
+		},
 	})
 	logging.Logger.Info("batch pipeline configured",
 		"ai", batchPlan.HasAI(),
@@ -170,6 +189,8 @@ func run(ctx context.Context, c config) error {
 		"synthesizer_prompt_version", synthesizerVersion,
 		"ai_step_timeout", batchPlan.AITimeout,
 		"vacancy_step_timeout", batchPlan.FallbackTimeout)
+	st := store.New(pool)
+	vacancyReader := store.NewVacancyAdapter(st)
 	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
 		metricsRegistry.ObserveRun(string(status), 0)
 		if err := pgStore.SetStatus(runID, status); err != nil {
@@ -183,6 +204,7 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
+	chatService.SetSourceContextLoader(newInterviewSourceContext(pgStore, vacancyReader))
 	// Persist the dialog and the interviewer session cursor, so chat history
 	// survives restarts and an active interview resumes instead of hanging.
 	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
@@ -192,6 +214,7 @@ func run(ctx context.Context, c config) error {
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
+	startHHVacancyImporter(context.Background(), pool)
 	// Семантическая индексация: источники, созданные через POST /sources и
 	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).
 	// Уже существующие источники догоняет cmd/index-sources (README.md).
@@ -232,9 +255,7 @@ func run(ctx context.Context, c config) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
 
-	st := store.New(pool)
-	reader := store.NewVacancyAdapter(st)
-	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
+	resumer := api.NewResumeProcessor(pgStore, pgStore, vacancyReader)
 	resumer.SetBatchPlan(batchPlan)
 	app.BindResumeProcessor(resumer)
 	// A restart may have interrupted a chat run between two durable steps:

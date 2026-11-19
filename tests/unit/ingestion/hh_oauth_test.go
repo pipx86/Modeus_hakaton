@@ -6,12 +6,36 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"activity-descriptor/internal/ingestion"
 )
+
+func TestHHTokenSourceReusesDiskCacheAfterRestart(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "hh-token.json")
+	okServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"access_token":"cached-token","token_type":"bearer","expires_in":3600}`)
+	}))
+	defer okServer.Close()
+	first := ingestion.NewHHTokenSource(okServer.Client(), okServer.URL, "client", "secret", "agent", "")
+	first.SetCachePath(cachePath)
+	if token, err := first.Token(context.Background()); err != nil || token != "cached-token" {
+		t.Fatalf("first token = %q, %v", token, err)
+	}
+
+	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "app token refresh too early", http.StatusForbidden)
+	}))
+	defer denied.Close()
+	second := ingestion.NewHHTokenSource(denied.Client(), denied.URL, "client", "secret", "agent", "")
+	second.SetCachePath(cachePath)
+	if token, err := second.Token(context.Background()); err != nil || token != "cached-token" {
+		t.Fatalf("cached token = %q, %v", token, err)
+	}
+}
 
 func TestFetchHHApplicationToken(t *testing.T) {
 	var gotForm string

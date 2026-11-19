@@ -412,25 +412,25 @@ type ragSettings struct {
 
 // ragSettingsFromEnv читает OLLAMA_URL, OLLAMA_EMBED_MODEL, RAG_SEARCH_STRATEGY
 // и RAG_SEARCH_LIMIT. Пустые значения дают локальную Ollama (nomic-embed-text)
-// и векторный поиск с top-8 фрагментов — совместимо с прежним поведением.
+// и гибридный поиск (RRF BM25+vector) с top-8 фрагментов.
 func ragSettingsFromEnv() ragSettings {
 	cfg := search.ConfigFromEnv()
 	settings := ragSettings{
 		OllamaURL:  cfg.OllamaURL,
 		EmbedModel: cfg.EmbedModel,
-		Strategy:   "vector",
+		Strategy:   "hybrid",
 		Limit:      8,
 	}
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("RAG_SEARCH_STRATEGY"))) {
-	case "", "vector":
-		settings.Strategy = "vector"
-	case "hybrid":
+	case "", "hybrid":
 		settings.Strategy = "hybrid"
+	case "vector":
+		settings.Strategy = "vector"
 	default:
-		// Неизвестная стратегия не должна ломать finalizer: остаёмся на vector.
+		// Неизвестная стратегия не должна ломать finalizer: остаёмся на hybrid.
 		logging.Logger.Warn("rag_search_strategy_unknown",
 			"value", os.Getenv("RAG_SEARCH_STRATEGY"),
-			"fallback", "vector")
+			"fallback", "hybrid")
 	}
 	if raw := strings.TrimSpace(os.Getenv("RAG_SEARCH_LIMIT")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value >= 1 && value <= 50 {

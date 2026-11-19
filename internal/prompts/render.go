@@ -180,15 +180,21 @@ func Versions(kind string) ([]string, error) {
 func readAsset(name string) (string, error) {
 	if dir := promptDir(); dir != "" {
 		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
-		if err != nil {
+		if err == nil {
+			if strings.TrimSpace(string(data)) == "" {
+				return "", fmt.Errorf("prompts: %s is empty", name)
+			}
+			return strings.TrimSpace(string(data)), nil
+		}
+		// _shared is intentionally not committed; use the safe defaults.
+		if !strings.HasPrefix(name, "_shared/") {
 			return "", fmt.Errorf("prompts: read %s: %w", name, err)
 		}
-		if strings.TrimSpace(string(data)) == "" {
-			return "", fmt.Errorf("prompts: %s is empty", name)
-		}
-		return strings.TrimSpace(string(data)), nil
 	}
-	fallback := "default/" + strings.TrimSuffix(name, ".md") + ".txt"
+	fallback := name
+	if strings.HasPrefix(name, "_shared/") {
+		fallback = "default/" + strings.TrimSuffix(name, ".md") + ".txt"
+	}
 	data, err := promptassets.FS.ReadFile(fallback)
 	if err != nil {
 		return "", fmt.Errorf("prompts: read %s: %w", name, err)

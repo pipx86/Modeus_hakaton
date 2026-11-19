@@ -23,6 +23,7 @@ const (
 	DataKeyTree              = "tree"
 	DataKeyConflicts         = "conflicts"
 	DataKeyInterviewSourceID = "interview_source_id"
+	DataKeySourceIDs         = "source_ids"
 )
 
 // Synthesizer is the deterministic merge step of the agent pipeline. The
@@ -38,6 +39,20 @@ type AgentAnalysisStep struct {
 	Client llm.ChatClient
 	// PromptVersion pins the analyst prompt version (empty means the default v1).
 	PromptVersion string
+	// RunSources and GlobalSources are optional best-effort loaders for the
+	// materials that must be visible to the analyst alongside the transcript.
+	RunSources    RunSourceLoader
+	GlobalSources GlobalSourceLoader
+}
+
+// RunSourceLoader returns the sources linked to one run.
+type RunSourceLoader interface {
+	ListRunSourceContents(ctx context.Context, runID string) ([]domain.Source, error)
+}
+
+// GlobalSourceLoader returns admin-uploaded materials shared by all runs.
+type GlobalSourceLoader interface {
+	ListGlobalSources(limit int) ([]domain.Source, error)
 }
 
 // Name implements domain.Step.
@@ -49,9 +64,10 @@ func (s *AgentAnalysisStep) Execute(ctx context.Context, run *domain.Run) error 
 	return s.ExecuteWithData(ctx, run, nil)
 }
 
-// ExecuteWithData implements domain.DataStep. Vacancies are not used: the
-// transcript is the primary source for an interview-backed batch run.
-func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, _ []domain.VacancyRecord) error {
+// ExecuteWithData implements domain.DataStep. The transcript is the primary
+// input; linked run sources, admin materials and profession vacancies are added
+// as supporting evidence when loaders are configured.
+func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run, vacancies []domain.VacancyRecord) error {
 	if run == nil {
 		return fmt.Errorf("agent analysis step: run is nil")
 	}
@@ -75,14 +91,26 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	// llm_requests.run_id is populated for the run cost endpoint instead of
 	// depending on a time-window guess.
 	ctx = llmobs.WithRunID(ctx, run.ID)
+	sources := s.analysisSources(ctx, run.ID, vacancies)
 	analysis, err := agentInstance.Analyze(ctx, agent.AnalystInput{
 		SessionID:  run.ID,
 		Profession: run.Profession,
 		Transcript: transcript,
+		Sources:    sources,
 	})
 	if err != nil {
 		return fmt.Errorf("agent analysis step: analyze: %w", err)
 	}
+	if run.Data == nil {
+		run.Data = make(map[string]any)
+	}
+	sourceIDs := make(map[string]string)
+	for _, source := range sources {
+		if source.ID != "" {
+			sourceIDs[source.ID] = source.ID
+		}
+	}
+	run.Data[DataKeySourceIDs] = sourceIDs
 
 	nodes := make([]domain.Node, 0, len(analysis.Entities))
 	for _, entity := range analysis.Entities {
@@ -95,13 +123,71 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	return nil
 }
 
+// analysisSources merges admin materials, linked run sources and vacancies.
+// Duplicate ids are collapsed; the interview transcript is not repeated because
+// the analyst receives it in a dedicated field.
+func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID string, vacancies []domain.VacancyRecord) []domain.Source {
+	sources := make([]domain.Source, 0, len(vacancies)+8)
+	if s.GlobalSources != nil {
+		if global, err := s.GlobalSources.ListGlobalSources(5); err == nil {
+			sources = append(sources, global...)
+		}
+	}
+	if s.RunSources != nil {
+		if linked, err := s.RunSources.ListRunSourceContents(ctx, runID); err == nil {
+			sources = append(sources, linked...)
+		}
+	}
+	for _, vacancy := range vacancies {
+		if strings.TrimSpace(vacancy.SourceID) == "" || strings.TrimSpace(vacancy.Description) == "" {
+			continue
+		}
+		if s.RunSources == nil && s.GlobalSources == nil {
+			// A bare step without source loaders keeps the historical
+			// transcript-only behaviour used by direct callers and tests.
+			break
+		}
+		sources = append(sources, domain.Source{
+			ID:        vacancy.SourceID,
+			Type:      domain.SourceVacancy,
+			Title:     vacancy.Title,
+			Content:   vacancy.Description,
+			SourceURL: vacancy.SourceURL,
+		})
+	}
+
+	unique := make([]domain.Source, 0, len(sources))
+	seen := make(map[string]bool, len(sources))
+	for _, source := range sources {
+		if source.Type == domain.SourceInterview || strings.TrimSpace(source.Content) == "" {
+			continue
+		}
+		key := source.ID
+		if key == "" {
+			key = source.Title + "\x00" + source.Content
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		unique = append(unique, source)
+	}
+	return unique
+}
+
 // AgentSynthesisStep merges interview nodes into one tree and stores the result
 // in run.Data[DataKeyTree] and run.Data[DataKeyConflicts].
 type AgentSynthesisStep struct {
 	// Synthesizer is the deterministic merge agent. A nil value falls back to
 	// the default synthesizer, which keeps direct step construction working.
 	Synthesizer Synthesizer
+	// ZunEnricher optionally fills knowledge/skills/abilities after synthesis.
+	ZunEnricher ZunEnricher
 }
+
+// ZunEnricher adds ZUN to a synthesized tree. It is best-effort: the caller
+// decides whether an enrichment failure should fail the run.
+type ZunEnricher func(ctx context.Context, profession string, nodes []domain.Node) []domain.Node
 
 // Name implements domain.Step.
 func (s *AgentSynthesisStep) Name() domain.Stage { return domain.StageSynthesis }
@@ -132,6 +218,9 @@ func (s *AgentSynthesisStep) Execute(ctx context.Context, run *domain.Run) error
 	}
 	if run.Data == nil {
 		run.Data = make(map[string]any)
+	}
+	if s.ZunEnricher != nil {
+		out.Tree = s.ZunEnricher(ctx, run.Profession, out.Tree)
 	}
 	run.Data[DataKeyTree] = out.Tree
 	run.Data[DataKeyConflicts] = out.Conflicts
@@ -213,7 +302,8 @@ func (s *SaveAITreeStep) Execute(ctx context.Context, run *domain.Run) error {
 	if err != nil {
 		return fmt.Errorf("save AI tree step: repair tree: %w", err)
 	}
-	converted := assignAITreeUUIDs(repaired, sourceID, s.nextID)
+	sourceIDs, _ := run.Data[DataKeySourceIDs].(map[string]string)
+	converted := assignAITreeUUIDs(repaired, sourceID, sourceIDs, s.nextID)
 	roots := 0
 	for _, node := range converted {
 		if node.ParentID == nil {
@@ -240,7 +330,7 @@ func (s *SaveAITreeStep) nextID() string {
 // expects: UUID node ids, UUID evidence ids and the run's interview source id on
 // every evidence item (the analyst emits a synthetic interview source id that is
 // not a database row). Title, description, type, hierarchy and quotes survive.
-func assignAITreeUUIDs(nodes []domain.Node, sourceID string, newID func() string) []domain.Node {
+func assignAITreeUUIDs(nodes []domain.Node, sourceID string, sourceIDs map[string]string, newID func() string) []domain.Node {
 	ids := make(map[string]string, len(nodes))
 	for _, node := range nodes {
 		ids[node.ID] = newID()
@@ -259,9 +349,13 @@ func assignAITreeUUIDs(nodes []domain.Node, sourceID string, newID func() string
 		}
 		converted.Evidence = make([]domain.Evidence, 0, len(node.Evidence))
 		for _, evidence := range node.Evidence {
+			evidenceSourceID := sourceID
+			if mapped, ok := sourceIDs[evidence.SourceID]; ok {
+				evidenceSourceID = mapped
+			}
 			converted.Evidence = append(converted.Evidence, domain.Evidence{
 				ID:       newID(),
-				SourceID: sourceID,
+				SourceID: evidenceSourceID,
 				RefID:    evidence.RefID,
 				Quote:    evidence.Quote,
 				Status:   evidence.Status,

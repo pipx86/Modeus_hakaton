@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
-import { TreeMatrix } from "@/components/tree-matrix"
+import { CorrelationMap } from "@/components/correlation-map"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
@@ -54,7 +54,7 @@ import {
 import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
-import { buildTreeMatrix } from "@/lib/tree-matrix"
+import { buildTreeCorrelation } from "@/lib/tree-correlation"
 import {
   CheckIcon,
   EyeIcon,
@@ -1084,14 +1084,41 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
-  const [view, setView] = useState<"list" | "matrix">("list")
+  const [zunCount, setZunCount] = useState<number | null>(null)
+  const [view, setView] = useState<"list" | "correlation">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
     { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
   >([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  const treeMatrix = useMemo(() => buildTreeMatrix(nodes), [nodes])
+  const treeCorrelation = useMemo(() => buildTreeCorrelation(nodes), [nodes])
+
+  useEffect(() => {
+    if (!id || readOnly || nodes.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setZunCount(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/runs/{id}/zun/suggestions", {
+          params: { path: { id } },
+        })
+        if (!cancelled) {
+          setZunCount(
+            Array.isArray(data) ? data.filter((item) => item.can_apply).length : null,
+          )
+        }
+      } catch {
+        if (!cancelled) setZunCount(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id, nodes, readOnly])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1379,7 +1406,7 @@ function TreeTab({
           onClick={() => setZunOpen(true)}
         >
           <SparklesIcon className="size-3.5" />
-          Предложить ЗУН
+          ЗУН по исследованию{zunCount !== null ? `: ${zunCount}` : ""}
         </Button>
         )}
         <Button
@@ -1469,15 +1496,15 @@ function TreeTab({
         <Button
           type="button"
           size="sm"
-          variant={view === "matrix" ? "secondary" : "ghost"}
+          variant={view === "correlation" ? "secondary" : "ghost"}
           className="h-7 px-2.5 text-xs"
-          onClick={() => setView("matrix")}
+          onClick={() => setView("correlation")}
         >
-          Матрица
+          Корреляция
         </Button>
       </div>
-      {view === "matrix" ? (
-        <TreeMatrix data={treeMatrix} />
+      {view === "correlation" ? (
+        <CorrelationMap data={treeCorrelation} sampleLabel="узлов" />
       ) : (
         <ActivityTree
         nodes={nodes}
@@ -1521,6 +1548,7 @@ function TreeTab({
         open={zunOpen}
         onOpenChange={setZunOpen}
         onApplied={() => {
+          setZunCount(null)
           void load()
         }}
       />
@@ -1654,7 +1682,6 @@ export function Research() {
           <div className="mt-3">
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {run.started_at && <span>Старт: {formatDate(run.started_at)}</span>}
               {run.finished_at && <span>Финиш: {formatDate(run.finished_at)}</span>}
               {run.started_at && run.finished_at && (
                 <span>
@@ -1688,12 +1715,6 @@ export function Research() {
             Повторить
           </Button>
         </div>
-      )}
-      {isActive && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2Icon className="size-3.5 animate-spin" />
-          Агенты работают - страница обновляется автоматически
-        </p>
       )}
       {guestView && (
         <p className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">

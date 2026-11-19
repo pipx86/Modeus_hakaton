@@ -18,7 +18,7 @@
           "type": { "enum": ["role", "function", "task", "action"] },
           "title": { "type": "string", "minLength": 1 },
           "description": { "type": "string" },
-          "parent_id": { "type": "string", "minLength": 1 },
+          "parent_id": { "type": ["string", "null"], "minLength": 1 },
           "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
           "evidence": {
             "type": "array",

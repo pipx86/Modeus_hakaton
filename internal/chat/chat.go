@@ -86,6 +86,11 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 // after all questions are answered and before the run is marked done.
 type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
 
+// SourceContextLoader builds a compact summary of vacancies and materials
+// relevant to the profession. It is best-effort: an error or empty string just
+// leaves the interviewer without extra context.
+type SourceContextLoader func(runID, profession string) string
+
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
 // resumeMode records what the dialog still owes when a session was restored
@@ -104,6 +109,7 @@ type Service struct {
 	finalizer     Finalizer
 	onFinish      func(runID string, status domain.RunStatus)
 	promptVersion string
+	sourceContext SourceContextLoader
 
 	mu           sync.Mutex
 	sessions     map[string]*session
@@ -209,6 +215,24 @@ func (s *Service) SetPromptVersion(version string) {
 	s.promptVersion = version
 }
 
+// SetSourceContextLoader installs a best-effort provider of vacancy/material
+// context for new and restored interviewer sessions.
+func (s *Service) SetSourceContextLoader(loader SourceContextLoader) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sourceContext = loader
+}
+
+func (s *Service) sourceContextFor(runID, profession string) string {
+	s.mu.Lock()
+	loader := s.sourceContext
+	s.mu.Unlock()
+	if loader == nil {
+		return ""
+	}
+	return loader(runID, profession)
+}
+
 // newAgent builds the interviewer agent for one session.
 func (s *Service) newAgent(version string) (*interviewer.Agent, error) {
 	opts := []interviewer.Option{}
@@ -242,6 +266,7 @@ func (s *Service) Start(runID, profession string) error {
 	if err != nil {
 		return fmt.Errorf("chat: session: %w", err)
 	}
+	interview.SetSourceContext(s.sourceContextFor(runID, profession))
 
 	s.mu.Lock()
 	if _, exists := s.sessions[runID]; exists {
@@ -525,6 +550,7 @@ func (s *Service) restore(runID string, store SessionStore) (*session, error) {
 		s.notifyFinish(runID, domain.RunFailed)
 		return nil, ErrSessionInterrupted
 	}
+	interview.SetSourceContext(s.sourceContextFor(runID, snapshot.Profession))
 	messages, err := store.ListMessages(ctx, runID)
 	if err != nil {
 		return nil, fmt.Errorf("chat: load messages: %w", err)
@@ -576,6 +602,19 @@ func (s *Service) restoreLegacyRun(ctx context.Context, store SessionStore, runI
 	}
 	if isTerminalRunStatus(status) {
 		return ErrSessionFinished
+	}
+	// Batch runs have no chat session at all. Probing /messages must not turn
+	// such a run into a failed chat: only a run with persisted chat history was
+	// created by the legacy chat implementation.
+	messages, err := store.ListMessages(ctx, runID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("chat: load legacy messages: %w", err)
+	}
+	if len(messages) == 0 {
+		return ErrNotFound
 	}
 	log.Printf("chat: run %s has chat history but no durable session snapshot; SESSION_INTERRUPTED", runID)
 	// Honest failure marking: the dialog can never continue, so the run must not
@@ -735,13 +774,18 @@ func (s *Service) failSession(sess *session) {
 	s.notifyFinish(sess.runID, domain.RunFailed)
 }
 
+// finalizerTimeout bounds the post-interview analyst/synthesizer pipeline. It
+// is intentionally generous: a long transcript and several source extractions
+// can legitimately take tens of minutes.
+const finalizerTimeout = 60 * time.Minute
+
 func (s *Service) complete(sess *session) {
 	status := domain.RunDone
 	if finalizer := s.finalizerFn(); finalizer != nil {
 		sess.mu.Lock()
 		state := sess.session.State()
 		sess.mu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), finalizerTimeout)
 		// The finalizer makes the analyst (and optional ZUN) LLM calls; the run
 		// id in the context attributes them to this run.
 		ctx = llmobs.WithRunID(ctx, sess.runID)

@@ -17,7 +17,15 @@ export interface BarDatum {
 }
 
 /** Столбики по дням: сегменты стека, высота пропорциональна максимуму. */
-export function StackedBars({ data, className }: { data: BarDatum[]; className?: string }) {
+export function StackedBars({
+  data,
+  className,
+  heightClass = "h-24",
+}: {
+  data: BarDatum[]
+  className?: string
+  heightClass?: string
+}) {
   const totals = data.map((item) => item.segments.reduce((sum, segment) => sum + segment.value, 0))
   const max = Math.max(1, ...totals)
 
@@ -31,7 +39,7 @@ export function StackedBars({ data, className }: { data: BarDatum[]; className?:
             className="flex min-w-0 flex-1 flex-col items-center gap-1"
             title={`${item.label}: ${total}`}
           >
-            <div className="flex h-24 w-full items-end">
+            <div className={cn("flex w-full items-end", heightClass)}>
               <div
                 className="flex w-full flex-col-reverse overflow-hidden rounded-sm"
                 style={{ height: `${Math.max(total > 0 ? 4 : 0, (total / max) * 100)}%` }}

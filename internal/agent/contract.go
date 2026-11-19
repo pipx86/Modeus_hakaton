@@ -102,6 +102,7 @@ type InterviewerInput struct {
 	SessionID         string               `json:"session_id"`
 	Respondent        domain.Respondent    `json:"respondent"`
 	Profession        string               `json:"profession,omitempty"`
+	SourceContext     string               `json:"source_context,omitempty"`
 	Asked             []domain.Question    `json:"asked,omitempty"`
 	Answers           []domain.Answer      `json:"answers,omitempty"`
 	NextLevel         domain.QuestionLevel `json:"next_level"`

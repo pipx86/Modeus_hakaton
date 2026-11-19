@@ -20,8 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { Donut, StackedBars } from "@/components/charts"
-import { CorrelationMap } from "@/components/correlation-map"
-import { apiClient, type CorrelationResponse, type Run } from "@/lib/api/client"
+import { apiClient, type Run } from "@/lib/api/client"
 import { getCurrentRole, getCurrentUserID } from "@/lib/auth"
 
 const DAYS = 14
@@ -77,8 +76,6 @@ export function Dashboard() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [correlation, setCorrelation] = useState<CorrelationResponse | null>(null)
-  const [correlationLoading, setCorrelationLoading] = useState(true)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
   const canCreate = true
@@ -117,25 +114,6 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const { data } = await apiClient.GET("/dashboard/correlation")
-        if (!cancelled && data && !Array.isArray(data) && "matrix" in data) {
-          setCorrelation(data)
-        }
-      } catch {
-        // Карта необязательна: остальные виджеты дашборда должны остаться доступны.
-      } finally {
-        if (!cancelled) setCorrelationLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const active = runs.filter((run) => run.status === "running").length
   const demoRun = runs.find((run) => run.status === "done")
@@ -242,13 +220,8 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} интервью`}
-          </p>
-        </div>
+      <div className="flex flex-col gap-4 sm:h-9 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-3xl font-semibold leading-none tracking-tight">Исследования</h1>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           {demoRun && (
             <Button variant="outline" asChild className="w-full sm:w-auto">
@@ -271,48 +244,44 @@ export function Dashboard() {
 
       {!loading && !error && runs.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Card size="sm">
-              <CardContent className="space-y-1">
-                <p className="text-xs text-muted-foreground">Всего исследований</p>
-                <p className="text-2xl font-semibold">{runs.length}</p>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1">
-                <p className="text-xs text-muted-foreground">Активных</p>
-                <p className="text-2xl font-semibold">{active}</p>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1">
-                <p className="text-xs text-muted-foreground">Успешных</p>
-                <p className="text-2xl font-semibold">
+          <Card className="p-0">
+            <CardContent className="grid grid-cols-2 divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">Всего исследований</p>
+                <p className="text-xl font-semibold tabular-nums">{runs.length}</p>
+              </div>
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">Активных</p>
+                <p className="text-xl font-semibold tabular-nums">{active}</p>
+              </div>
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">
+                  Успешных{" "}
+                  <span className="text-[10px]">
+                    {stats.done} из {stats.done + stats.failed}
+                  </span>
+                </p>
+                <p className="text-xl font-semibold tabular-nums">
                   {stats.successRate === null ? "-" : `${Math.round(stats.successRate)}%`}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {stats.done} из {stats.done + stats.failed} завершённых
-                </p>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardContent className="space-y-1">
-                <p className="text-xs text-muted-foreground">Средняя длительность</p>
-                <p className="text-2xl font-semibold">{formatDuration(stats.average)}</p>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">Средняя длительность</p>
+                <p className="text-xl font-semibold tabular-nums">{formatDuration(stats.average)}</p>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-3 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="text-base">Активность за 14 дней</CardTitle>
                 <CardDescription>
-                  Столбики по дням: успешные, активные, с ошибкой.
+                  Столбики по дням: успешные, интервью, с ошибкой.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <StackedBars data={daily} />
+                <StackedBars data={daily} heightClass="h-60" />
                 <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-success" /> успешные
@@ -332,9 +301,11 @@ export function Dashboard() {
                 <CardTitle className="text-base">Статусы</CardTitle>
                 <CardDescription>Распределение всех прогонов.</CardDescription>
               </CardHeader>
-              <CardContent className="flex justify-center">
+              <CardContent className="flex min-h-[280px] items-center justify-center">
                 <Donut
                   segments={statusSegments}
+                  size={210}
+                  thickness={20}
                   centerLabel="прогонов"
                   centerValue={String(runs.length)}
                 />
@@ -372,26 +343,6 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Карта корреляции</CardTitle>
-              <CardDescription>
-                Связи между длительностью, структурой дерева и объёмом цитат по завершённым
-                исследованиям. −1 - обратная связь, +1 - прямая.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {correlationLoading ? (
-                <Skeleton className="h-48 w-full" />
-              ) : correlation ? (
-                <CorrelationMap data={correlation} />
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  Не удалось загрузить карту корреляции. Остальные данные дашборда доступны.
-                </p>
-              )}
-            </CardContent>
-          </Card>
         </>
       )}
 

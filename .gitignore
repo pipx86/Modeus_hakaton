@@ -58,6 +58,3 @@ data/reports/
 
 # Full prompt texts are local-only; the public repo ships safe defaults.
 prompts/_shared/
-prompts/interviewer/
-prompts/analyst/
-prompts/synthesizer/

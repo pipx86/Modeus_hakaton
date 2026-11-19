@@ -34,10 +34,11 @@ func TestZunSuggestionsHandlerAuth(t *testing.T) {
 		want int
 	}{
 		{"admin", http.StatusOK},
+		{"user", http.StatusOK},
 		{"teacher", http.StatusOK},
 		{"rop", http.StatusOK},
-		{"student", http.StatusForbidden},
-		{"guest", http.StatusForbidden},
+		{"student", http.StatusOK},
+		{"guest", http.StatusOK},
 		{"", http.StatusForbidden},
 	}
 	for _, test := range tests {
@@ -105,10 +106,11 @@ func TestZunApplyHandlerAuth(t *testing.T) {
 		want int
 	}{
 		{"admin", http.StatusOK},
+		{"user", http.StatusOK},
 		{"teacher", http.StatusOK},
 		{"rop", http.StatusOK},
-		{"student", http.StatusForbidden},
-		{"guest", http.StatusForbidden},
+		{"student", http.StatusOK},
+		{"guest", http.StatusOK},
 		{"", http.StatusForbidden},
 	}
 	for _, test := range tests {

@@ -4,6 +4,26 @@ import "testing"
 
 func ptr(value string) *string { return &value }
 
+func TestRepairTreeMergesDuplicateSiblingTitles(t *testing.T) {
+	nodes := []Node{
+		{ID: "root", Type: NodeRole, Title: "Backend"},
+		{ID: "fn", Type: NodeFunction, Title: "Разработка", ParentID: ptr("root")},
+		{ID: "task-a", Type: NodeTask, Title: "Писать SQL", ParentID: ptr("fn"), Evidence: []Evidence{{ID: "e1", SourceID: "s1", Quote: "пишу SQL"}}},
+		{ID: "task-b", Type: NodeTask, Title: "Писать SQL", ParentID: ptr("fn"), Evidence: []Evidence{{ID: "e2", SourceID: "s2", Quote: "SQL"}}},
+	}
+
+	repaired, err := RepairTree(nodes)
+	if err != nil {
+		t.Fatalf("repair: %v", err)
+	}
+	if len(repaired) != 3 {
+		t.Fatalf("nodes = %d, want 3", len(repaired))
+	}
+	if len(repaired[2].Evidence) != 2 {
+		t.Fatalf("merged evidence = %d, want 2", len(repaired[2].Evidence))
+	}
+}
+
 func TestRepairTreeFixesRootType(t *testing.T) {
 	nodes := []Node{
 		{ID: "root", Type: NodeTask, Title: "Task as root"},

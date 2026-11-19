@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { to: "/compare", label: "Сравнение прогонов", icon: GitCompareIcon, end: false },
 ]
 
-const ADMIN_ITEM = { to: "/admin", label: "Админка", icon: ShieldIcon, end: false }
+const ADMIN_ITEM = { to: "/admin", label: "Администрирование", icon: ShieldIcon, end: false }
 
 function useBreadcrumbs() {
   const { pathname } = useLocation()
@@ -161,6 +161,7 @@ function SidebarContent({
         <Button
           asChild
           variant="ghost"
+          size="sm"
           className={cn("w-full justify-start gap-2.5 px-2.5", collapsed && "justify-center px-0")}
         >
           <Link to="/login" onClick={onNavigate}>
