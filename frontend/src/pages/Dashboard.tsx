@@ -242,10 +242,8 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
-        </div>
+      <div className="flex flex-col gap-4 sm:h-9 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-3xl font-semibold leading-none tracking-tight">Исследования</h1>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           {demoRun && (
             <Button variant="outline" asChild className="w-full sm:w-auto">
