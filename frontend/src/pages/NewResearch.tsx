@@ -41,7 +41,7 @@ const LEARNING_STEPS = [
   {
     icon: BookOpenIcon,
     title: "Выбор профессии",
-    description: "Вы указываете роль, на которую хотите выйти.",
+    description: "Вы указываете роль, на которую хотите обучиться.",
   },
   {
     icon: FileSearchIcon,
