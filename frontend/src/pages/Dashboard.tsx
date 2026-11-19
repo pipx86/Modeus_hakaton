@@ -286,7 +286,7 @@ export function Dashboard() {
                 <p className="text-xs text-muted-foreground">
                   Успешных{" "}
                   <span className="text-[10px]">
-                    · {stats.done} из {stats.done + stats.failed}
+                    {stats.done} из {stats.done + stats.failed}
                   </span>
                 </p>
                 <p className="text-xl font-semibold">
