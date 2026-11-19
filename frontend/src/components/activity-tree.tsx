@@ -46,10 +46,10 @@ const TYPE_ORDER: NodeType[] = ["role", "function", "task", "action"]
 
 /** Визуальный код типа узла: цветная точка и мягкий бейдж. */
 const TYPE_STYLE: Record<NodeType, { dot: string; badge: string }> = {
-  role: { dot: "bg-violet-400", badge: "bg-violet-500/10 text-violet-300" },
-  function: { dot: "bg-sky-400", badge: "bg-sky-500/10 text-sky-300" },
-  task: { dot: "bg-amber-400", badge: "bg-amber-500/10 text-amber-300" },
-  action: { dot: "bg-emerald-400", badge: "bg-emerald-500/10 text-emerald-300" },
+  role: { dot: "bg-primary", badge: "bg-primary/10 text-primary" },
+  function: { dot: "bg-primary/60", badge: "bg-primary/10 text-primary" },
+  task: { dot: "bg-warning", badge: "bg-warning/10 text-warning" },
+  action: { dot: "bg-success", badge: "bg-success/10 text-success" },
 }
 
 /**

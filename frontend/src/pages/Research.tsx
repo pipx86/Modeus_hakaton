@@ -1668,7 +1668,7 @@ export function Research() {
           </div>
         )}
         {run?.status === "degraded" && (
-          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
             Результат неполный: агенты работали с ограничениями.
           </p>
         )}
