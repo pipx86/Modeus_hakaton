@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -103,88 +102,4 @@ func FetchHHApplicationToken(ctx context.Context, client *http.Client, endpoint,
 		TokenType:   payload.TokenType,
 		ExpiresIn:   payload.ExpiresIn,
 	}, nil
-}
-
-// HHTokenSource выдаёт действующий app-token hh.ru и обновляет его автоматически.
-//
-// Порядок выбора:
-//  1. статический HH_ACCESS_TOKEN (если задан) — без обновления;
-//  2. иначе client_credentials по HH_CLIENT_ID / HH_CLIENT_SECRET.
-//
-// Токен кэшируется в памяти. Обновление запускается, когда до истечения
-// осталось меньше refreshMargin (по умолчанию 60 с). Ответ
-// "app token refresh too early" не затирает ещё валидный кэш.
-type HHTokenSource struct {
-	Client       *http.Client
-	Endpoint     string
-	ClientID     string
-	ClientSecret string
-	UserAgent    string
-	// StaticToken, если не пустой, используется как есть и никогда не обновляется.
-	StaticToken string
-
-	mu            sync.Mutex
-	token         string
-	expiresAt     time.Time
-	refreshMargin time.Duration
-}
-
-// NewHHTokenSource собирает источник токена из переменных окружения и опций.
-// StaticToken (HH_ACCESS_TOKEN) имеет приоритет над client credentials.
-func NewHHTokenSource(client *http.Client, endpoint, clientID, clientSecret, userAgent, staticToken string) *HHTokenSource {
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
-	if endpoint == "" {
-		endpoint = DefaultHHTokenURL
-	}
-	return &HHTokenSource{
-		Client:        client,
-		Endpoint:      endpoint,
-		ClientID:      strings.TrimSpace(clientID),
-		ClientSecret:  strings.TrimSpace(clientSecret),
-		UserAgent:     strings.TrimSpace(userAgent),
-		StaticToken:   strings.TrimSpace(staticToken),
-		refreshMargin: 60 * time.Second,
-	}
-}
-
-// Token возвращает Bearer-токен. При необходимости выполняет client_credentials
-// и обновляет кэш. Пустая строка означает «работать без токена» (публичный поиск).
-func (s *HHTokenSource) Token(ctx context.Context) (string, error) {
-	if s == nil {
-		return "", nil
-	}
-	if s.StaticToken != "" {
-		return s.StaticToken, nil
-	}
-	if s.ClientID == "" || s.ClientSecret == "" {
-		return "", nil
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	now := time.Now()
-	if s.token != "" && now.Add(s.refreshMargin).Before(s.expiresAt) {
-		return s.token, nil
-	}
-
-	tok, err := FetchHHApplicationToken(ctx, s.Client, s.Endpoint, s.ClientID, s.ClientSecret, s.UserAgent)
-	if err != nil {
-		// hh.ru часто отвечает 403 "app token refresh too early".
-		// Если у нас ещё есть непросроченный кэш — продолжаем с ним.
-		if s.token != "" && now.Before(s.expiresAt) {
-			return s.token, nil
-		}
-		return "", err
-	}
-
-	s.token = tok.AccessToken
-	expiresIn := tok.ExpiresIn
-	if expiresIn <= 0 {
-		expiresIn = 3600 // разумный fallback, если API не вернул expires_in
-	}
-	s.expiresAt = now.Add(time.Duration(expiresIn) * time.Second)
-	return s.token, nil
 }
