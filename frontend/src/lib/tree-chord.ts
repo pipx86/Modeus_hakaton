@@ -11,10 +11,13 @@ export interface TreeChordData {
  * уровни, чтобы подписи оставались читаемыми.
  */
 export function buildTreeChord(nodes: ActivityNode[], limit = 24): TreeChordData {
-  const byID = new Map(nodes.map((node) => [node.id, node]))
+  // Профессия - это корневой role-узел; на карте показываем только
+  // функции, задачи и действия, чтобы не дублировать название исследования.
+  const visible = nodes.filter((node) => node.type !== "role")
+  const byID = new Map(visible.map((node) => [node.id, node]))
   const children = new Map<string, ActivityNode[]>()
   const roots: ActivityNode[] = []
-  for (const node of nodes) {
+  for (const node of visible) {
     if (!node.parent_id || !byID.has(node.parent_id)) {
       roots.push(node)
       continue
@@ -25,7 +28,7 @@ export function buildTreeChord(nodes: ActivityNode[], limit = 24): TreeChordData
   }
 
   const ordered: ActivityNode[] = []
-  const queue = roots.length > 0 ? [...roots] : [...nodes]
+  const queue = roots.length > 0 ? [...roots] : [...visible]
   const seen = new Set<string>()
   while (queue.length > 0 && ordered.length < limit) {
     const node = queue.shift()!
@@ -55,10 +58,10 @@ export function buildTreeChord(nodes: ActivityNode[], limit = 24): TreeChordData
 
   return {
     data: {
-      sample_size: nodes.length,
+      sample_size: visible.length,
       nodes: chordNodes,
       edges,
     },
-    truncated: Math.max(0, nodes.length - ordered.length),
+    truncated: Math.max(0, visible.length - ordered.length),
   }
 }

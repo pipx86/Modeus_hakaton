@@ -9,15 +9,13 @@ const nodes: ActivityNode[] = [
 ]
 
 describe("buildTreeChord", () => {
-  it("строит узлы и связи родитель → ребёнок", () => {
+  it("строит узлы и связи родитель → ребёнок без профессии", () => {
     const { data, truncated } = buildTreeChord(nodes)
     expect(truncated).toBe(0)
-    expect(data.nodes).toHaveLength(3)
-    expect(data.edges).toEqual([
-      { source: "role-1", target: "fn-1", weight: 1 },
-      { source: "fn-1", target: "task-1", weight: 1 },
-    ])
-    expect(data.sample_size).toBe(3)
+    expect(data.nodes).toHaveLength(2)
+    expect(data.nodes.map((node) => node.id)).toEqual(["fn-1", "task-1"])
+    expect(data.edges).toEqual([{ source: "fn-1", target: "task-1", weight: 1 }])
+    expect(data.sample_size).toBe(2)
   })
 
   it("ограничивает большие деревья и сообщает об усечении", () => {

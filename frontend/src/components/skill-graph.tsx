@@ -9,14 +9,13 @@ const RADIUS = 152
 const LABEL_RADIUS = RADIUS + 38
 
 const TYPE_STYLE: Record<string, { color: string; label: string }> = {
-  role: { color: "#a78bfa", label: "Роли" },
   function: { color: "#38bdf8", label: "Функции" },
   task: { color: "#f59e0b", label: "Задачи" },
   action: { color: "#34d399", label: "Действия" },
 }
 
 type Node = SkillGraphResponse["nodes"][number]
-type Filter = "all" | "role" | "function" | "task" | "action"
+type Filter = "all" | "function" | "task" | "action"
 
 interface Slice {
   node: Node
