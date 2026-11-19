@@ -91,3 +91,43 @@ single-origin entry point, a migration-failure gate and Prometheus scraping
 * The `docker` job does not build the `server`/`migrate`/`web` targets or start a
   PostgreSQL service; the full `server` profile is verified locally (see
   [DOCKER_SERVER.md](DOCKER_SERVER.md)) and statically by `check_deploy.py`.
+
+## GitHub Actions billing block and local CI
+
+On 2026-11-19 GitHub Actions stopped starting every job (CI, acceptance and db-check) with:
+
+```text
+The job was not started because recent account payments have failed
+or your spending limit needs to be increased.
+Please check the 'Billing & plans' section in your settings.
+```
+
+The annotation is attached to each job; `runner_name` is empty and the jobs
+finish in 2–4 seconds without logs. This is **not a code/test failure**. GitHub
+Status reported all systems operational. Fixing it requires the repository owner
+to update the payment method or Actions spending limit in
+`Settings -> Billing and plans -> Actions`, then re-run the failed jobs.
+
+While Actions is blocked, run the same important gates locally:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File scripts/ci-local.ps1
+```
+
+The script runs:
+
+```text
+go build ./...
+go vet ./...
+go test ./...
+git diff --check
+python scripts/check_deploy.py
+docker compose config --quiet (default + server + monitoring/automation)
+frontend lint / tests / build (when frontend/package.json exists)
+```
+
+It exits non-zero on the first failed step and prints a timing summary. Use
+`-SkipFrontend`, `-SkipDocker` or `-BuildDocker` to trade speed for coverage.
+The local baseline on 2026-11-19 passed all nine checks; the Docker image build
+and live acceptance still run in GitHub Actions (or manually with
+`make docker-smoke`), because they need a running Docker daemon.
