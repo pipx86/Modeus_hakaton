@@ -603,6 +603,19 @@ func (s *Service) restoreLegacyRun(ctx context.Context, store SessionStore, runI
 	if isTerminalRunStatus(status) {
 		return ErrSessionFinished
 	}
+	// Batch runs have no chat session at all. Probing /messages must not turn
+	// such a run into a failed chat: only a run with persisted chat history was
+	// created by the legacy chat implementation.
+	messages, err := store.ListMessages(ctx, runID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("chat: load legacy messages: %w", err)
+	}
+	if len(messages) == 0 {
+		return ErrNotFound
+	}
 	log.Printf("chat: run %s has chat history but no durable session snapshot; SESSION_INTERRUPTED", runID)
 	// Honest failure marking: the dialog can never continue, so the run must not
 	// stay "running" while the UI waits for a question.
