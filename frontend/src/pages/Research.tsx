@@ -121,13 +121,6 @@ function formatDate(value?: string) {
   }).format(date)
 }
 
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "-"
-  if (ms < 60_000) return `${Math.round(ms / 1000)} с`
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} мин`
-  return `${(ms / 3_600_000).toFixed(1)} ч`
-}
-
 /**
  * Переиспользуемое пустое/ошибочное состояние в рамке: иконка, заголовок, описание.
  * Применяется для «источников нет», «дерево недоступно» и «дерево ещё не построено» -
@@ -1697,17 +1690,6 @@ export function Research() {
         {run?.stage && (
           <div className="mt-3">
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {run.finished_at && <span>Финиш: {formatDate(run.finished_at)}</span>}
-              {run.started_at && run.finished_at && (
-                <span>
-                  Длительность:{" "}
-                  {formatDuration(
-                    new Date(run.finished_at).getTime() - new Date(run.started_at).getTime(),
-                  )}
-                </span>
-              )}
-            </div>
           </div>
         )}
         {run?.status === "degraded" && (
