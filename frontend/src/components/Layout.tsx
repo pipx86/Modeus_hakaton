@@ -161,6 +161,7 @@ function SidebarContent({
         <Button
           asChild
           variant="ghost"
+          size="sm"
           className={cn("w-full justify-start gap-2.5 px-2.5", collapsed && "justify-center px-0")}
         >
           <Link to="/login" onClick={onNavigate}>
