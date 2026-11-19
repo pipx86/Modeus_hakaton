@@ -354,7 +354,7 @@ export function NewResearch() {
                       : estimate.confidence === "medium"
                         ? "средняя"
                         : "низкая"}{" "}
-                    · по {estimate.sample_size} завершённым прогонам
+                    · по {estimate.sample_size} завершённым исследованиям
                   </p>
                 </div>
               )}

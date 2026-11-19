@@ -299,14 +299,14 @@ export function Dashboard() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Статусы</CardTitle>
-                <CardDescription>Распределение всех прогонов.</CardDescription>
+                <CardDescription>Распределение всех исследований.</CardDescription>
               </CardHeader>
               <CardContent className="flex min-h-[280px] items-center justify-center">
                 <Donut
                   segments={statusSegments}
                   size={210}
                   thickness={20}
-                  centerLabel="прогонов"
+                  centerLabel="исследований"
                   centerValue={String(runs.length)}
                 />
               </CardContent>
@@ -315,7 +315,7 @@ export function Dashboard() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Этапы прогонов</CardTitle>
+              <CardTitle className="text-base">Этапы исследований</CardTitle>
               <CardDescription>На каком шаге сейчас находятся исследования.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">

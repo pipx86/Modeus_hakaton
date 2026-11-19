@@ -322,7 +322,7 @@ export function Admin() {
       setSourceFileKey((value) => value + 1)
       setSources((prev) => [created, ...prev])
       toast.success("Материал загружен", {
-        description: "Агенты будут учитывать его в следующих прогонах.",
+        description: "Агенты будут учитывать его в следующих исследованиях.",
       })
     } catch {
       toast.error("Сервер недоступен", { description: "Файл не загружен." })
@@ -558,7 +558,7 @@ export function Admin() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi label="Исследования" value={String(stats.total)} hint={`интервью: ${stats.running}`} />
-        <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
+        <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам исследований" />
         <Kpi
           label="HTTP 4xx"
           value={stats.httpTotal > 0 ? formatPercent((stats.http4xx / stats.httpTotal) * 100) : "-"}
@@ -572,7 +572,7 @@ export function Admin() {
         <Kpi
           label="Средняя латентность API"
           value={formatMs(stats.apiLatency)}
-          hint={stats.runLatency !== null ? `прогон: ${formatMs(stats.runLatency)}` : "без учёта SSE"}
+          hint={stats.runLatency !== null ? `исследование: ${formatMs(stats.runLatency)}` : "без учёта SSE"}
         />
         <Kpi
           label="Токенов за 24 часа"
@@ -920,7 +920,7 @@ export function Admin() {
             <CardTitle className="text-base">Материалы для агентов</CardTitle>
             <CardDescription>
               Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
-              доступны всем новым прогонам, агенты опираются на них при разборе интервью.
+              доступны всем новым исследованиям, агенты опираются на них при разборе интервью.
             </CardDescription>
           </div>
           <Button

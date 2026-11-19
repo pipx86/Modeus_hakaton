@@ -1198,7 +1198,7 @@ function ReviewQueueSection({
                         <ExternalLinkIcon className="size-3" />
                       </a>
                     )}
-                    <span className="font-mono">прогон: {item.run_id}</span>
+                    <span className="font-mono">исследование: {item.run_id}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button

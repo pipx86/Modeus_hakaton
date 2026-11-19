@@ -61,9 +61,9 @@ describe("CompareRuns", () => {
 
     await screen.findByRole("heading", { name: "Сравнение исследований" })
 
-    await user.click(screen.getByRole("combobox", { name: "Базовый прогон" }))
+    await user.click(screen.getByRole("combobox", { name: "Базовое исследование" }))
     await user.click(await screen.findByRole("option", { name: "Data Scientist A" }))
-    await user.click(screen.getByRole("combobox", { name: "Новый прогон" }))
+    await user.click(screen.getByRole("combobox", { name: "Новое исследование" }))
     await user.click(await screen.findByRole("option", { name: "Data Scientist B" }))
 
     expect(await screen.findByText("+1 добавлено")).toBeInTheDocument()

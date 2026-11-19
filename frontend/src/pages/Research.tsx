@@ -354,7 +354,7 @@ function SourcesTab({
         toast.error("Не удалось привязать источник", { description: errorMessage(error) })
         return
       }
-      toast.success("Источник привязан к прогону")
+      toast.success("Источник привязан к исследованию")
       setAttachOpen(false)
       setAttachTitle("")
       setAttachContent("")
@@ -640,7 +640,7 @@ function SourcesTab({
       <Dialog open={attachOpen} onOpenChange={setAttachOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Добавить источник к прогону</DialogTitle>
+            <DialogTitle>Добавить источник к исследованию</DialogTitle>
             <DialogDescription>
               Стандарт или вакансия сразу попадут в run_sources: аналитик сможет цитировать
               источник, а синтезатор - находить конфликты между источниками.
@@ -1368,7 +1368,7 @@ function TreeTab({
               </div>
               {cost.attribution_ambiguous && (
                 <p className="mt-2 text-warning">
-                  Атрибуция по времени может включать запросы параллельного прогона.
+                  Атрибуция по времени может включать запросы параллельного исследования.
                 </p>
               )}
             </details>
@@ -1683,7 +1683,7 @@ export function Research() {
         )}
         {run?.status === "failed" && (
           <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            Прогон завершился ошибкой. Подробности - в журнале LLM-запросов админки.
+            Исследование завершилось ошибкой. Подробности - в журнале LLM-запросов админки.
           </p>
         )}
       </div>
