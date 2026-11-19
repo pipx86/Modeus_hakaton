@@ -433,6 +433,7 @@ describe("ActivityTree", () => {
       screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
     )
     expect(screen.queryByRole("button", { name: "Подтвердить цитату" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/включён в дерево по подтверждениям/)).not.toBeInTheDocument()
   })
 
   it("переходит к цитате в интервью", () => {    const onShowTranscript = vi.fn()

@@ -903,10 +903,12 @@ export function ActivityTree({
           </DialogHeader>
           {selected && (
             <div className="space-y-3">
-              <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-                {insights?.node_explanations?.[selected.id]?.summary ??
-                  explainNode(selected.title, selected.evidence, sourcesById)}
-              </p>
+              {!readOnly && (
+                <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
+                  {insights?.node_explanations?.[selected.id]?.summary ??
+                    explainNode(selected.title, selected.evidence, sourcesById)}
+                </p>
+              )}
               {!readOnly && (flagsByNode.get(selected.id)?.length ?? 0) > 0 && (
                 <ul className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-xs">
                   {flagsByNode.get(selected.id)!.map((flag) => (
