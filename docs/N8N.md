@@ -203,6 +203,49 @@ credential file, never in the repo) and are not reproduced here. Ethereal
 accounts and messages are short-lived; the full copy-paste recipe is in
 [`deploy/n8n/workflows/README.md`](../deploy/n8n/workflows/README.md#end-to-end-test-with-a-real-smtp-relay-ethereal-verified).
 
+### Gmail relay (verified)
+
+Gmail is the typical real relay for this workflow: `smtp.gmail.com:587`,
+`SMTP_SECURE=false` (STARTTLS), `SMTP_USER`/`MAIL_FROM` = the Gmail address,
+`MAIL_TO` = recipient and `SMTP_PASS` = a 16-character Google **App Password**
+(2-Step Verification must be on). Credential import and the public-webhook path
+are the same as above.
+
+Verified on 2026-11-19 with a real Gmail account behind the public HTTPS
+tunnel, with the committed workflow imported **unchanged**:
+
+| Check | Observed result |
+| ----- | --------------- |
+| public `POST /webhook/notion-notify` | HTTP `200`, body `accepted` through the Cloudflare edge |
+| n8n execution | `status: success`, path `Webhook → Normalize payload → Config missing? → Send email via SMTP → Summary: email sent` (no skip/error branch) |
+| Gmail SMTP response | `250 2.0.0 OK 1795077189 … - gsmtp` (STARTTLS + AUTH accepted) |
+| mailbox check (IMAP, Sent Mail + All Mail) | message present: From `opikmaks06@gmail.com` → To `nikolayfortests@gmail.com`, subject `[Notion] page.updated: Gmail final E2E 2026-11-19T08:33:04Z`, `Message-ID: <e06c559a-…@gmail.com>` |
+| credential at rest | imported via CLI; Postgres `credentials_entity.data` starts with `U2FsdGVkX1…` (encrypted) |
+
+Earlier attempts with different app passwords failed at AUTH with
+`535-5.7.8 Username and Password not accepted … BadCredentials`; a direct
+STARTTLS probe outside n8n returned the same 535 while the credential stored in
+n8n was byte-identical to `.secrets/smtp.env`, which proved the transport was
+fine and the app password itself was the problem. Keep this in mind when 535
+appears; no secrets are recorded here.
+
+When Gmail returns 535 `BadCredentials`:
+
+* confirm the App Password was created while signed in to the **same** account
+  and that 2-Step Verification is enabled (turning 2FA off revokes app
+  passwords); **Advanced Protection Program** blocks app passwords entirely;
+* delete and create a new App Password under *Google Account → Security → App
+  passwords*, then update the n8n credential (a CLI re-import upserts by
+  credential id);
+* test it outside n8n (e.g. `curl --url smtps://smtp.gmail.com:465 --user
+  '<user>:<app-password>' …` or another mail client) — a 535 there confirms an
+  account/credential problem, not this workflow;
+* check *Recent security activity* in the Google account for blocked sign-ins
+  from the server's location/IP and for password/2FA changes;
+* if Gmail keeps rejecting it, point the credential at another real relay
+  (`smtp.yandex.ru:465`, `smtp.mail.ru:465`, a transactional provider, …) — the
+  workflow is relay-agnostic.
+
 ### Public HTTPS webhook via a quick tunnel (verified)
 
 The production webhook was exposed with a Cloudflare quick tunnel
@@ -269,10 +312,8 @@ Notion automation at the verified public webhook (when access exists):
 
 Still missing / requires a real environment:
 
-* external deliverability to a real recipient mailbox — Ethereal does not relay
-  externally; use a provider SMTP account (e.g. your mail host) for the final
-  check;
-* the Notion automation itself, as described above;
+* the Notion automation itself, as described above (external delivery to a real
+  mailbox is covered by the Gmail verification above);
 * the real ingestion endpoint for `nightly_ingestion.json` (the compose default
   is a placeholder — see above).
 
