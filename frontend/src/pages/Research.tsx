@@ -1689,12 +1689,6 @@ export function Research() {
           </Button>
         </div>
       )}
-      {isActive && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2Icon className="size-3.5 animate-spin" />
-          Агенты работают - страница обновляется автоматически
-        </p>
-      )}
       {guestView && (
         <p className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
           <EyeIcon className="size-4 text-primary" />
