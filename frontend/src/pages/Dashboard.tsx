@@ -116,7 +116,6 @@ export function Dashboard() {
   }, [load])
 
   const active = runs.filter((run) => run.status === "running").length
-  const demoRun = runs.find((run) => run.status === "done")
 
   const stats = useMemo(() => {
     const done = runs.filter((run) => run.status === "done").length
@@ -223,14 +222,6 @@ export function Dashboard() {
       <div className="flex flex-col gap-4 sm:h-9 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-semibold leading-none tracking-tight">Исследования</h1>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          {demoRun && (
-            <Button variant="outline" asChild className="w-full sm:w-auto">
-              <Link to={`/research/${demoRun.id}`}>
-                <FlaskConicalIcon className="size-4" />
-                Посмотреть пример
-              </Link>
-            </Button>
-          )}
           {canCreate && (
           <Button asChild className="w-full sm:w-auto">
             <Link to="/research/new">

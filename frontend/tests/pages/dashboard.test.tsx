@@ -133,41 +133,6 @@ describe("Dashboard", () => {
     })
   })
 
-  it("ведёт в пример последнего завершённого прогона", async () => {
-    setFetchHandler(async (url) => {
-      if (url.endsWith("/api/v1/runs")) {
-        return {
-          status: 200,
-          body: [
-            { id: "done-1", profession: "Data Scientist", status: "done" },
-            { id: "run-2", profession: "Backend", status: "running" },
-          ],
-        }
-      }
-      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
-    })
-
-    renderPage()
-
-    const link = await screen.findByRole("link", { name: /Посмотреть пример/ })
-    expect(link).toHaveAttribute("href", "/research/done-1")
-
-    fireEvent.click(link)
-    expect(await screen.findByText("page-research")).toBeInTheDocument()
-  })
-
-  it("не показывает пример, если завершённых прогонов нет", async () => {
-    setFetchHandler(async () => ({
-      status: 200,
-      body: [{ id: "run-1", profession: "Backend", status: "running" }],
-    }))
-
-    renderPage()
-
-    expect(await screen.findByText("Backend")).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: /Посмотреть пример/ })).not.toBeInTheDocument()
-  })
-
   it("оставляет исследование при отмене удаления", async () => {
     setFetchHandler(async (url, init) => {
       const method = init?.method ?? "GET"
