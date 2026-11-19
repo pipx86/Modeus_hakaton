@@ -31,7 +31,6 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { normalizeText } from "@/lib/text"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
@@ -42,7 +41,6 @@ import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
-  apiBaseUrl,
   apiClient,
   type ActivityNode,
   type Evidence,
@@ -52,13 +50,11 @@ import {
   type Source,
   type SourceType,
 } from "@/lib/api/client"
-import { getCurrentRole, getValidToken } from "@/lib/auth"
+import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
-import { downloadText } from "@/lib/export-tree"
 import { buildSourceIndex } from "@/lib/provenance"
 import {
   CheckIcon,
-  DownloadIcon,
   EyeIcon,
   PlusIcon,
   FileTextIcon,
@@ -1157,33 +1153,6 @@ function TreeTab({
     return () => clearInterval(timer)
   }, [active, load])
 
-  // Экспорт отдаёт бэкенд: в файл попадают evidence, конфликты и финальное сообщение,
-  // которых нет в клиентской сборке дерева.
-  const downloadExport = async (format: "md" | "json") => {
-    const token = getValidToken()
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/runs/${encodeURIComponent(id)}/export?format=${format}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
-      )
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { message?: string } | null
-        toast.error("Не удалось скачать экспорт", {
-          description: payload?.message ?? `HTTP ${response.status}`,
-        })
-        return
-      }
-      const text = await response.text()
-      downloadText(
-        format === "md" ? "run.md" : "run.json",
-        normalizeText(text),
-        format === "md" ? "text/markdown;charset=utf-8" : "application/json;charset=utf-8",
-      )
-    } catch {
-      toast.error("Сервер недоступен", { description: "Экспорт не скачан." })
-    }
-  }
-
   /**
    * Подтверждение цитаты с optimistic‑rollback: id сначала добавляется в `approvedIds`
    * (мгновенная реакция UI), затем уходит `POST /evidences/{id}/approve`; при ошибке id
@@ -1325,24 +1294,6 @@ function TreeTab({
           Предложить ЗУН
         </Button>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => void downloadExport("md")}
-        >
-          <DownloadIcon className="size-3.5" />
-          Markdown
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => void downloadExport("json")}
-        >
-          <DownloadIcon className="size-3.5" />
-          JSON
-        </Button>
         <Button
           variant="outline"
           size="sm"

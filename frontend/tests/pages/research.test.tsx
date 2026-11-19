@@ -727,41 +727,6 @@ describe("Research", () => {
     expect(await screen.findByText("Дерево недоступно")).toBeInTheDocument()
   })
 
-  it("скачивает дерево в Markdown и JSON", async () => {
-    stubRun({
-      tree: [{ id: "r", type: "role", title: "Data Scientist", evidence: [] }],
-    })
-    const createObjectURL = vi.fn(() => "blob:tree")
-    const revokeObjectURL = vi.fn()
-    Object.assign(URL, { createObjectURL, revokeObjectURL })
-    const downloads: string[] = []
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        downloads.push(this.download)
-      })
-
-    renderPage()
-    await screen.findByRole("heading", { name: "Data Scientist" })
-    act(() => {
-      screen.getByRole("tab", { name: "Дерево" }).focus()
-    })
-    await screen.findByRole("button", { name: "Markdown" })
-
-    fireEvent.click(screen.getByRole("button", { name: "Markdown" }))
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }))
-
-    await waitFor(() => expect(downloads).toEqual(["run.md", "run.json"]))
-    expect(createObjectURL).toHaveBeenCalledTimes(2)
-    expect(
-      fetchCalls().some((call) => call.url.includes("/runs/7/export?format=md")),
-    ).toBe(true)
-    expect(
-      fetchCalls().some((call) => call.url.includes("/runs/7/export?format=json")),
-    ).toBe(true)
-    click.mockRestore()
-  })
-
   it("печатает дерево из вкладки", async () => {
     const print = vi.fn()
     Object.defineProperty(window, "print", { value: print, writable: true })
