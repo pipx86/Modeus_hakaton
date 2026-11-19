@@ -35,7 +35,7 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
     expect(screen.getByText("Frontend Developer")).toBeInTheDocument()
     expect(screen.getByText("Завершено")).toBeInTheDocument()
-    expect(screen.getByText("В работе")).toBeInTheDocument()
+    expect(screen.getByText("Интервью")).toBeInTheDocument()
     expect(screen.getByText("Активность за 14 дней")).toBeInTheDocument()
   })
 
@@ -52,7 +52,7 @@ describe("Dashboard", () => {
     renderPage()
 
     expect(await screen.findByText(/3 исследований/)).toBeInTheDocument()
-    expect(screen.getByText(/1 в работе/)).toBeInTheDocument()
+    expect(screen.getByText(/1 интервью/)).toBeInTheDocument()
   })
 
   it("показывает пустое состояние, если исследований нет", async () => {

@@ -222,7 +222,7 @@ export function Dashboard() {
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold tracking-tight">Исследования</h1>
           <p className="text-sm text-muted-foreground">
-            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} в работе`}
+            {loading ? "Загрузка…" : `${runs.length} исследований, ${active} интервью`}
           </p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -294,7 +294,7 @@ export function Dashboard() {
                     <span className="size-2 rounded-full bg-emerald-500" /> успешные
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="size-2 rounded-full bg-warning" /> в работе
+                    <span className="size-2 rounded-full bg-warning" /> интервью
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="size-2 rounded-full bg-destructive" /> с ошибкой

@@ -8,9 +8,9 @@ describe("StatusBadge", () => {
     expect(screen.getByText("Ожидание")).toBeInTheDocument()
   })
 
-  it("показывает «В работе» для running", () => {
+  it("показывает «Интервью» для running", () => {
     render(<StatusBadge status="running" />)
-    expect(screen.getByText("В работе")).toBeInTheDocument()
+    expect(screen.getByText("Интервью")).toBeInTheDocument()
   })
 
   it("показывает «Завершено» для done", () => {

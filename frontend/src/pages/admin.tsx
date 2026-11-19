@@ -451,7 +451,7 @@ export function Admin() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Kpi label="Исследования" value={String(stats.total)} hint={`в работе: ${stats.running}`} />
+        <Kpi label="Исследования" value={String(stats.total)} hint={`интервью: ${stats.running}`} />
         <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
         <Kpi
           label="HTTP 4xx"
