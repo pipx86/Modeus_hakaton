@@ -68,3 +68,10 @@ export function getCurrentRole(): string | null {
   if (!token) return null
   return decodeToken(token)?.role ?? null
 }
+
+/** Идентификатор текущего аккаунта из `sub` JWT. */
+export function getCurrentUserID(): string | null {
+  const token = getValidToken()
+  if (!token) return null
+  return decodeToken(token)?.sub ?? null
+}

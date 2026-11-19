@@ -23,7 +23,7 @@ import { Donut, StackedBars } from "@/components/charts"
 import { CorrelationMap } from "@/components/correlation-map"
 import { SkillGraph } from "@/components/skill-graph"
 import { apiClient, type CorrelationResponse, type Run, type SkillGraphResponse } from "@/lib/api/client"
-import { getCurrentRole } from "@/lib/auth"
+import { getCurrentRole, getCurrentUserID } from "@/lib/auth"
 
 const DAYS = 14
 
@@ -85,8 +85,10 @@ export function Dashboard() {
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
   const canCreate = true
-  const canDelete =
-    getCurrentRole() === null || getCurrentRole() === "admin"
+  const currentUserID = getCurrentUserID()
+  const isAdmin = getCurrentRole() === null || getCurrentRole() === "admin"
+  const canDeleteRun = (run: Run) =>
+    isAdmin || !run.created_by || run.created_by === currentUserID
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -493,7 +495,7 @@ export function Dashboard() {
                   <StatusBadge status={run.status} />
                   <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
-                {canDelete && (
+                {canDeleteRun(run) && (
                 <Button
                   variant="ghost"
                   size="icon"

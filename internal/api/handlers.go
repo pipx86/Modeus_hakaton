@@ -250,7 +250,13 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run, err := s.store.CreateRun(req.Profession)
+	var run *domain.Run
+	var err error
+	if creator, ok := s.store.(runOwnerCreator); ok {
+		run, err = creator.CreateRunForUser(req.Profession, auth.Subject(r.Context()))
+	} else {
+		run, err = s.store.CreateRun(req.Profession)
+	}
 	if err != nil {
 		logging.Logger.Error("create_run_store_error", "error", err)
 		if mapStoreError(w, err) {
@@ -766,10 +772,26 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id} [delete]
 func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
 	runID := r.PathValue("id")
+	run, err := s.store.GetRun(runID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		return
+	}
+	if role, _ := auth.FromContext(r.Context()); role != auth.RoleAdmin {
+		owner := auth.Subject(r.Context())
+		if !ownerlessRunAllowed(run) && run.CreatedBy != owner {
+			writeErr(w, http.StatusForbidden, "FORBIDDEN", "можно удалить только своё исследование")
+			return
+		}
+	}
 
 	if err := s.store.DeleteRun(runID); err != nil {
 		if errors.Is(err, ErrNotFound) {

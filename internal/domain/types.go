@@ -199,6 +199,7 @@ type Run struct {
 	StartedAt        *time.Time         `json:"started_at,omitempty"`
 	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
 	Stage            Stage              `json:"stage,omitempty"`
+	CreatedBy        string             `json:"created_by,omitempty"`
 	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
 	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
 	PerVacancySkills [][]string         `json:"-"`

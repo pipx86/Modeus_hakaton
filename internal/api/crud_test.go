@@ -318,19 +318,39 @@ func TestDeleteRunNotFound(t *testing.T) {
 	}
 }
 
-func TestDeleteRunRequiresAdmin(t *testing.T) {
-	_, ts := setupCRUDTest(t)
+func TestDeleteRunRequiresOwnerOrAdmin(t *testing.T) {
+	srv, ts := setupCRUDTest(t)
 	auth.EnsureTestSecret()
+	store := srv.store.(*memStore)
 	tok, _ := auth.Issue("user-1", auth.RoleUser, time.Hour)
 
+	other := "user-2"
+	store.mu.Lock()
+	store.runs["run-1"].CreatedBy = other
+	store.mu.Unlock()
 	req, _ := http.NewRequest("DELETE", ts.URL+"/api/v1/runs/run-1", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("ожидали 403, получили %d", resp.StatusCode)
+		t.Fatalf("чужой run: ожидали 403, получили %d", resp.StatusCode)
+	}
+
+	owner := "user-1"
+	store.mu.Lock()
+	store.runs["run-1"].CreatedBy = owner
+	store.mu.Unlock()
+	req, _ = http.NewRequest("DELETE", ts.URL+"/api/v1/runs/run-1", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("свой run: ожидали 204, получили %d", resp.StatusCode)
 	}
 }

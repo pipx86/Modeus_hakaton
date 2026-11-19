@@ -1006,7 +1006,8 @@ paths:
       - runs
       summary: Delete a research run
       description: Deletes the run together with its tree, evidences and messages
-        (cascade).
+        (cascade). Admin can delete any run; a regular user can delete only a run
+        they created. Legacy runs without created_by are removable by a regular user.
       operationId: deleteRun
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3290,6 +3291,9 @@ components:
           - review
           - done
           - failed
+        created_by:
+          type: string
+          description: Account id that created the run; empty for legacy runs.
     Snapshot:
       type: object
       required:

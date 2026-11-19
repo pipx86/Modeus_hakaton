@@ -86,6 +86,7 @@ func MiddlewareWithWhitelist(next http.Handler, whitelistPaths []string) http.Ha
 		}
 
 		ctx := WithRole(r.Context(), Role(claims.Role))
+		ctx = context.WithValue(ctx, subjectKey{}, claims.Sub)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

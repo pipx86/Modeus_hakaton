@@ -362,7 +362,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a research run
-         * @description Deletes the run together with its tree, evidences and messages (cascade).
+         * @description Deletes the run together with its tree, evidences and messages (cascade). Admin can delete any run; a regular user can delete only a run they created. Legacy runs without created_by are removable by a regular user.
          */
         delete: operations["deleteRun"];
         options?: never;
@@ -1051,6 +1051,8 @@ export interface components {
             finished_at?: string;
             /** @enum {string} */
             stage?: "created" | "interview" | "analysis" | "synthesis" | "review" | "done" | "failed";
+            /** @description Account id that created the run; empty for legacy runs. */
+            created_by?: string;
         };
         Snapshot: {
             /** Format: uuid */

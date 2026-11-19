@@ -69,7 +69,7 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 | `POST /evidences/bulk-approve` | Массовое подтверждение, `{approved, skipped}` | admin | 200, 400 |
 | `GET /runs/{id}/messages` | История чата интервью | все роли | 200, 404, 503 `CHAT_DISABLED` |
 | `POST /runs/{id}/messages` | Ответ интервьюируемого | admin, user | 201, 400, 404, 409, 503 |
-| `DELETE /runs/{id}` | Удаление исследования (каскадно) | admin | 204, 404 |
+| `DELETE /runs/{id}` | Удаление исследования (каскадно): admin - любое, user - только своё | admin, user | 204, 403, 404 |
 | `GET /users` | Демо-пользователи и роли | admin | 200, 403 |
 | `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin | 200, 404, 501 |
 | `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin | 200, 404, 501 |

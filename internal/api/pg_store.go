@@ -51,7 +51,23 @@ func (p *PGStore) CreateRun(profession string) (*domain.Run, error) {
 		return nil, &domain.TreeValidationError{Code: "EMPTY_PROFESSION", Details: "профессия не задана"}
 	}
 	r := &domain.Run{}
-	err := p.Pool.QueryRow(ctx, "INSERT INTO runs(profession) VALUES($1) RETURNING id::text,profession,status,stage,type", profession).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type)
+	err := p.Pool.QueryRow(ctx, "INSERT INTO runs(profession) VALUES($1) RETURNING id::text,profession,status,stage,type,COALESCE(created_by::text,'')", profession).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy)
+	return r, translate(err)
+}
+
+// CreateRunForUser creates a run owned by the authenticated account.
+func (p *PGStore) CreateRunForUser(profession, userID string) (*domain.Run, error) {
+	ctx, cancel := operation()
+	defer cancel()
+	profession = strings.TrimSpace(profession)
+	if profession == "" {
+		return nil, &domain.TreeValidationError{Code: "EMPTY_PROFESSION", Details: "профессия не задана"}
+	}
+	if !validUUID(userID) {
+		return p.CreateRun(profession)
+	}
+	r := &domain.Run{}
+	err := p.Pool.QueryRow(ctx, "INSERT INTO runs(profession,created_by) VALUES($1,$2) RETURNING id::text,profession,status,stage,type,COALESCE(created_by::text,'')", profession, userID).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy)
 	return r, translate(err)
 }
 func (p *PGStore) GetRun(id string) (*domain.Run, error) {
@@ -61,7 +77,7 @@ func (p *PGStore) GetRun(id string) (*domain.Run, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	r := &domain.Run{}
-	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,type,root_node_id::text,started_at,finished_at FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.RootNodeID, &r.StartedAt, &r.FinishedAt)
+	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,type,COALESCE(created_by::text,''),root_node_id::text,started_at,finished_at FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy, &r.RootNodeID, &r.StartedAt, &r.FinishedAt)
 	return r, translate(err)
 }
 func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
@@ -495,7 +511,7 @@ func (p *PGStore) DeleteRun(runID string) error {
 func (p *PGStore) ListRuns() ([]*domain.Run, error) {
 	ctx, cancel := operation()
 	defer cancel()
-	rows, err := p.Pool.Query(ctx, `SELECT id::text,profession,status,stage,type,root_node_id::text,started_at,finished_at FROM runs ORDER BY created_at DESC,id`)
+	rows, err := p.Pool.Query(ctx, `SELECT id::text,profession,status,stage,type,COALESCE(created_by::text,''),root_node_id::text,started_at,finished_at FROM runs ORDER BY created_at DESC,id`)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +519,7 @@ func (p *PGStore) ListRuns() ([]*domain.Run, error) {
 	result := []*domain.Run{}
 	for rows.Next() {
 		var r domain.Run
-		if err = rows.Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.RootNodeID, &r.StartedAt, &r.FinishedAt); err != nil {
+		if err = rows.Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy, &r.RootNodeID, &r.StartedAt, &r.FinishedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, &r)
