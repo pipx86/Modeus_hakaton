@@ -74,7 +74,7 @@ export function NewResearch() {
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [estimate, setEstimate] = useState<RunEstimate | null>(null)
-  const [runType, setRunType] = useState<"learning" | "chat">("learning")
+  const [runType, setRunType] = useState<"learning" | "chat">("chat")
   const [apiError, setApiError] = useState<string | null>(null)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
@@ -290,19 +290,6 @@ export function NewResearch() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={learningMode ? "secondary" : "outline"}
-                    aria-pressed={learningMode}
-                    onClick={() => {
-                      setRunType("learning")
-                      setApiError(null)
-                    }}
-                  >
-                    <BookOpenIcon className="mr-1.5 size-3.5" />
-                    План обучения
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
                     variant={!learningMode ? "secondary" : "outline"}
                     aria-pressed={!learningMode}
                     onClick={() => {
@@ -312,6 +299,19 @@ export function NewResearch() {
                   >
                     <MessageSquareTextIcon className="mr-1.5 size-3.5" />
                     Интервью с агентом
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={learningMode ? "secondary" : "outline"}
+                    aria-pressed={learningMode}
+                    onClick={() => {
+                      setRunType("learning")
+                      setApiError(null)
+                    }}
+                  >
+                    <BookOpenIcon className="mr-1.5 size-3.5" />
+                    План обучения
                   </Button>
                 </div>
                 {learningMode && (

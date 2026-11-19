@@ -37,13 +37,13 @@ describe("NewResearch", () => {
     renderPage()
     await act(async () => {})
 
-    expect(screen.getByText("План обучения по профессии")).toBeInTheDocument()
+    expect(screen.getByText("Новое исследование")).toBeInTheDocument()
     expect(screen.getByLabelText("Профессия / роль")).toBeInTheDocument()
     expect(screen.queryByText("Источники к прогону")).not.toBeInTheDocument()
     expect(screen.queryByText("Добавить источник")).not.toBeInTheDocument()
     expect(screen.getByText("Как это работает")).toBeInTheDocument()
-    expect(screen.getByText(/Вы указываете роль/)).toBeInTheDocument()
-    expect(screen.getByText(/пошаговый план/)).toBeInTheDocument()
+    expect(screen.getByText(/Собирается информация о реальной деятельности/)).toBeInTheDocument()
+    expect(screen.getByText(/Строится дерево/)).toBeInTheDocument()
   })
 
   it("показывает подсказки профессий и подставляет выбранную", async () => {
@@ -185,6 +185,7 @@ describe("NewResearch", () => {
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
       target: { value: "Data Analyst" },
     })
+    fireEvent.click(screen.getByRole("button", { name: "План обучения" }))
     fireEvent.click(screen.getByRole("button", { name: "Составить план обучения" }))
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
