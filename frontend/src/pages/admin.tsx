@@ -23,7 +23,6 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
-import { Sparkline } from "@/components/charts"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
@@ -350,19 +349,6 @@ export function Admin() {
     return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])
   }, [llmRequests])
 
-  const llmLatencies = useMemo(
-    () => llmRequests.map((request) => request.latency_ms).reverse(),
-    [llmRequests],
-  )
-
-  const llmLatencyStats = useMemo(() => {
-    if (llmLatencies.length === 0) return null
-    const min = Math.min(...llmLatencies)
-    const max = Math.max(...llmLatencies)
-    const avg = llmLatencies.reduce((sum, value) => sum + value, 0) / llmLatencies.length
-    return { min, max, avg }
-  }, [llmLatencies])
-
   const tokenStats = useMemo(() => {
     const total = llmUsage.reduce((sum, item) => sum + item.total_tokens, 0)
     const requests = llmUsage.reduce((sum, item) => sum + item.requests, 0)
@@ -598,24 +584,6 @@ export function Admin() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Латентность LLM</CardTitle>
-          <CardDescription>
-            Последние {llmLatencies.length} запросов: динамика времени ответа модели.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Sparkline values={llmLatencies} className="text-primary" />
-          {llmLatencyStats && (
-            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span>мин: {formatMs(llmLatencyStats.min)}</span>
-              <span>средняя: {formatMs(llmLatencyStats.avg)}</span>
-              <span>макс: {formatMs(llmLatencyStats.max)}</span>
             </div>
           )}
         </CardContent>
