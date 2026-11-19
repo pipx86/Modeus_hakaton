@@ -122,7 +122,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/vacancies/stats/summary", s.handleVacancyStats)
 	mux.HandleFunc("GET /api/v1/vacancies/stats/analytics", s.handleVacancyAnalytics)
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
-	mux.HandleFunc("POST /api/v1/learning-plans", s.handleLearningPlan)
 	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
 	mux.HandleFunc("GET /api/v1/runs/estimate", s.handleRunEstimate)
 	mux.HandleFunc("GET /api/v1/runs/{id}/cost", s.handleRunCost)
@@ -130,6 +129,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/coverage", s.handleRunCoverage)
 	mux.HandleFunc("GET /api/v1/runs/{id}/compare", s.handleCompareRuns)
 	mux.HandleFunc("GET /api/v1/runs/{id}/zun/suggestions", s.handleZunSuggestions)
+	mux.HandleFunc("GET /api/v1/runs/{id}/learning-plan", s.handleGetLearningPlan)
 	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/apply", s.handleApplyZunSuggestion)
 	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/reject", s.handleRejectZunSuggestion)
 	mux.HandleFunc("GET /api/v1/runs/{id}/evidence/{evidence_id}/context", s.handleEvidenceContext)
@@ -277,8 +277,14 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		runType = domain.RunTypeChat
 	case string(domain.RunTypeBatch):
 		runType = domain.RunTypeBatch
+	case string(domain.RunTypeLearning):
+		if s.learningPlan == nil {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "генератор плана обучения не настроен")
+			return
+		}
+		runType = domain.RunTypeLearning
 	default:
-		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat or batch")
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat, batch or learning")
 		return
 	}
 	if runType == domain.RunTypeChat && s.chat == nil {
@@ -345,6 +351,35 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	run.Type = runType
+	if runType == domain.RunTypeLearning {
+		pgStore, ok := s.store.(*PGStore)
+		if !ok {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "план обучения требует PostgreSQL")
+			return
+		}
+		if err := pgStore.SetRunType(run.ID, domain.RunTypeLearning); err != nil {
+			logging.Logger.Error("learning_run_type_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		if err := s.store.SetStage(run.ID, domain.StageAnalysis); err != nil {
+			logging.Logger.Error("learning_run_stage_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		run.Stage = domain.StageAnalysis
+		stageEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
+			"stage":  string(domain.StageAnalysis),
+			"status": string(domain.RunRunning),
+		})
+		if err := s.eventStore.Append(stageEvent); err != nil {
+			logging.Logger.Error("learning_stage_event_failed", "run_id", run.ID, "error", err)
+		}
+		s.runLearningPlan(run.ID, run.Profession)
+		writeJSON(w, http.StatusCreated, run)
+		return
+	}
+
 	if pgStore, ok := s.store.(*PGStore); runType == domain.RunTypeBatch && ok {
 		if err := pgStore.SetRunType(run.ID, domain.RunTypeBatch); err != nil {
 			logging.Logger.Error("batch_run_type_store_failed", "run_id", run.ID, "error", err)

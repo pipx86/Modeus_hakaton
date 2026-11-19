@@ -230,7 +230,7 @@ func (p *PGStore) SetRunType(id string, runType domain.RunType) error {
 	if !validUUID(id) {
 		return ErrNotFound
 	}
-	if runType != domain.RunTypeBatch && runType != domain.RunTypeChat {
+	if runType != domain.RunTypeBatch && runType != domain.RunTypeChat && runType != domain.RunTypeLearning {
 		return errors.New("INVALID_RUN_TYPE")
 	}
 	ctx, cancel := operation()

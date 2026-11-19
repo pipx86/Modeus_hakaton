@@ -178,29 +178,8 @@ describe("NewResearch", () => {
     expect(input).toHaveValue("Аналитик данных")
   })
 
-  it("составляет план обучения по профессии", async () => {
-    setFetchHandler(async (url, init) => {
-      const method = init?.method ?? "GET"
-      if (url.endsWith("/api/v1/learning-plans") && method === "POST") {
-        return {
-          status: 200,
-          body: {
-            profession: "Data Analyst",
-            summary: "Путь в аналитику данных",
-            weeks: 10,
-            stages: [
-              {
-                title: "База анализа данных",
-                goal: "Научиться работать с таблицами",
-                topics: ["Excel", "SQL"],
-                practice: ["Собрать отчёт по продажам"],
-              },
-            ],
-          },
-        }
-      }
-      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
-    })
+  it("запускает подбор плана и переходит в исследование", async () => {
+    happyHandler()
     renderPage()
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
@@ -208,16 +187,13 @@ describe("NewResearch", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Составить план обучения" }))
 
-    expect(await screen.findByText("План обучения: Data Analyst")).toBeInTheDocument()
-    expect(screen.getByText("База анализа данных")).toBeInTheDocument()
-    expect(screen.getByText("SQL")).toBeInTheDocument()
-    expect(screen.getByText("Собрать отчёт по продажам")).toBeInTheDocument()
-
+    expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
     const call = fetchCalls().find(
-      (item) => item.url.endsWith("/api/v1/learning-plans") && item.init.method === "POST",
+      (item) => item.url.endsWith("/api/v1/runs") && item.init.method === "POST",
     )
-    const body = JSON.parse(String(call?.init.body)) as { profession?: string }
+    const body = JSON.parse(String(call?.init.body)) as { profession?: string; type?: string }
     expect(body.profession).toBe("Data Analyst")
+    expect(body.type).toBe("learning")
   })
 
   it("показывает оценку токенов и времени до запуска", async () => {

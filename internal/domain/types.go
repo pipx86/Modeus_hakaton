@@ -186,8 +186,9 @@ func (s Source) EffectivePriority() int {
 type RunType string
 
 const (
-	RunTypeBatch RunType = "batch"
-	RunTypeChat  RunType = "chat"
+	RunTypeBatch    RunType = "batch"
+	RunTypeChat     RunType = "chat"
+	RunTypeLearning RunType = "learning"
 )
 
 type Run struct {

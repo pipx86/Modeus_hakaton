@@ -38,6 +38,7 @@ import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
 import { ZunSuggestionsDialog } from "@/components/zun-suggestions-dialog"
+import { LearningPlanView } from "@/components/learning-plan-view"
 import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -1712,6 +1713,9 @@ export function Research() {
           <p className="text-sm text-muted-foreground">Старт: {formatDate(run.started_at)}</p>
         )}
       </div>
+      {run?.type === "learning" ? (
+        <LearningPlanView runId={id} status={run.status} />
+      ) : (
       <Tabs value={tab} onValueChange={setTab} className="flex-col">
         <TabsList className="h-9 items-center" data-print-hide>
           <TabsTrigger value="sources" className={TAB_TRIGGER_CLASS}>
@@ -1774,6 +1778,7 @@ export function Research() {
           />
         </TabsContent>
       </Tabs>
+      )}
     </div>
   )
 }

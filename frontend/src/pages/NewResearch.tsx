@@ -14,15 +14,12 @@ import { Label } from "@/components/ui/label"
 import {
   ApiRequestError,
   apiClient,
-  createLearningPlan,
-  type LearningPlan,
   type RunEstimate,
 } from "@/lib/api/client"
 import { stripControlChars } from "@/lib/security"
 import {
   AlertCircleIcon,
   BookOpenIcon,
-  CheckCircle2Icon,
   FileSearchIcon,
   Loader2Icon,
   MessageSquareTextIcon,
@@ -78,7 +75,6 @@ export function NewResearch() {
   const [submitting, setSubmitting] = useState(false)
   const [estimate, setEstimate] = useState<RunEstimate | null>(null)
   const [runType, setRunType] = useState<"learning" | "chat">("learning")
-  const [plan, setPlan] = useState<LearningPlan | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
@@ -145,10 +141,16 @@ export function NewResearch() {
     setSubmitting(true)
     try {
       if (learningMode) {
-        setPlan(null)
-        const result = await createLearningPlan(stripControlChars(profession).trim())
-        setPlan(result)
-        toast.success("План обучения готов")
+        const { data: run, error: runError } = await apiClient.POST("/runs", {
+          body: { profession: stripControlChars(profession).trim(), type: "learning" },
+        })
+        if (runError) {
+          setApiError(runError.message)
+          toast.error("Не удалось запустить подбор плана", { description: runError.message })
+          return
+        }
+        toast.success("Подбор плана запущен")
+        navigate(run?.id ? `/research/${run.id}` : "/")
         return
       }
       const { data: run, error: runError } = await apiClient.POST("/runs", {
@@ -292,7 +294,6 @@ export function NewResearch() {
                     aria-pressed={learningMode}
                     onClick={() => {
                       setRunType("learning")
-                      setPlan(null)
                       setApiError(null)
                     }}
                   >
@@ -306,7 +307,6 @@ export function NewResearch() {
                     aria-pressed={!learningMode}
                     onClick={() => {
                       setRunType("chat")
-                      setPlan(null)
                       setApiError(null)
                     }}
                   >
@@ -401,74 +401,6 @@ export function NewResearch() {
         </div>
       </div>
 
-      {plan && (
-        <Card className="gap-4 p-5">
-          <CardHeader className="px-0">
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2Icon className="size-5 text-success" />
-              План обучения: {plan.profession}
-            </CardTitle>
-            <CardDescription>
-              {plan.summary || "Пошаговый план входа в профессию."}
-              {plan.weeks > 0 && ` Ориентир: ${plan.weeks} нед.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 px-0">
-            {plan.stages.map((stage, index) => (
-              <div key={`${stage.title}-${index}`} className="rounded-xl border p-4">
-                <div className="flex items-start gap-3">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div>
-                      <h3 className="font-medium">{stage.title}</h3>
-                      {stage.goal && (
-                        <p className="mt-0.5 text-sm text-muted-foreground">{stage.goal}</p>
-                      )}
-                    </div>
-                    {stage.topics.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Изучить
-                        </p>
-                        <ul className="mt-1 grid gap-1 sm:grid-cols-2">
-                          {stage.topics.map((topic) => (
-                            <li key={topic} className="flex gap-2 text-sm">
-                              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                              {topic}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {stage.practice.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Практика
-                        </p>
-                        <ul className="mt-1 space-y-1">
-                          {stage.practice.map((item) => (
-                            <li key={item} className="flex gap-2 text-sm">
-                              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-success" />
-                              {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {plan.sources && plan.sources.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Источники: {plan.sources.join("; ")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }
