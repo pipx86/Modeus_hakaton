@@ -1808,8 +1808,8 @@ paths:
         evidence quotes (source_id/ref_id/status), resolved conflicts, the final
         recommendations/courses chat message when available and the generation
         timestamp. `format=json` returns the same data as a structured document
-        (`schema=run-export/v1`). Roles: admin, teacher, rop and guest; student
-        receives 403. Conflicts and source metadata are auxiliary and are read
+        (`schema=run-export/v1`). Roles: admin, teacher, rop, student and guest; conflicts
+        and source metadata are auxiliary and are read
         best-effort: if they cannot be loaded the export still succeeds without
         them. The response is served with `Content-Disposition: attachment` and a
         filename built from a sanitized run id.

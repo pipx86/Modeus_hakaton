@@ -298,10 +298,10 @@ func TestRunInsightsAuthBoundary(t *testing.T) {
 	if response := do(t, handler, http.MethodGet, path, "", ""); response.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: status = %d, want 401", response.Code)
 	}
-	if response := do(t, handler, http.MethodGet, path, "student", ""); response.Code != http.StatusForbidden {
-		t.Fatalf("student: status = %d, want 403", response.Code)
+	if response := do(t, handler, http.MethodGet, path, "student", ""); response.Code != http.StatusNotImplemented {
+		t.Fatalf("student: status = %d, want 501", response.Code)
 	}
-	for _, role := range []string{"admin", "teacher", "rop", "guest"} {
+	for _, role := range []string{"admin", "teacher", "rop", "student", "guest"} {
 		if response := do(t, handler, http.MethodGet, path, role, ""); response.Code != http.StatusNotImplemented {
 			t.Fatalf("%s: status = %d, want 501 (in-memory store cannot read run sources)", role, response.Code)
 		}
@@ -316,8 +316,8 @@ func TestRunCoverageAuthBoundary(t *testing.T) {
 	if response := do(t, handler, http.MethodGet, path, "", ""); response.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: status = %d, want 401", response.Code)
 	}
-	if response := do(t, handler, http.MethodGet, path, "student", ""); response.Code != http.StatusForbidden {
-		t.Fatalf("student: status = %d, want 403", response.Code)
+	if response := do(t, handler, http.MethodGet, path, "student", ""); response.Code != http.StatusNotImplemented {
+		t.Fatalf("student: status = %d, want 501", response.Code)
 	}
 	if response := do(t, handler, http.MethodGet, path, "guest", ""); response.Code != http.StatusNotImplemented {
 		t.Fatalf("guest: status = %d, want 501", response.Code)

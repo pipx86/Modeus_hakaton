@@ -78,7 +78,12 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Run | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const canCreate = getCurrentRole() !== "guest" && getCurrentRole() !== "student"
+  const canCreate = getCurrentRole() !== "guest"
+  const canDelete =
+    getCurrentRole() === null ||
+    getCurrentRole() === "admin" ||
+    getCurrentRole() === "teacher" ||
+    getCurrentRole() === "rop"
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -407,7 +412,7 @@ export function Dashboard() {
                   <StatusBadge status={run.status} />
                   <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
-                {canCreate && (
+                {canDelete && (
                 <Button
                   variant="ghost"
                   size="icon"

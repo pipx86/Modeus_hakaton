@@ -244,7 +244,7 @@ func runCompareError(w http.ResponseWriter, err error) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/compare [get]
 func (s *Server) handleCompareRuns(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
 		return
 	}
 	// Параметры проверяются до обращения к хранилищу: невалидный запрос — это

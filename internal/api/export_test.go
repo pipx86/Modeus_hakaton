@@ -291,7 +291,7 @@ func TestExportRunRoles(t *testing.T) {
 		{"teacher", http.StatusOK},
 		{"rop", http.StatusOK},
 		{"guest", http.StatusOK},
-		{"student", http.StatusForbidden},
+		{"student", http.StatusOK},
 		{"", http.StatusUnauthorized},
 	}
 	for _, tc := range cases {

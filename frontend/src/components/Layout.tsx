@@ -89,9 +89,7 @@ function SidebarNav({
 }) {
   const { pathname } = useLocation()
   const items = (isAdmin ? [...NAV_ITEMS, ADMIN_ITEM] : NAV_ITEMS).filter(
-    (item) =>
-      item.to !== "/research/new" ||
-      (getCurrentRole() !== "guest" && getCurrentRole() !== "student"),
+    (item) => item.to !== "/research/new" || getCurrentRole() !== "guest",
   )
 
   return (

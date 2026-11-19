@@ -249,7 +249,7 @@ func TestSnapshotDiffHandlerAuth(t *testing.T) {
 		{"teacher", http.StatusOK},
 		{"rop", http.StatusOK},
 		{"guest", http.StatusOK},
-		{"student", http.StatusForbidden},
+		{"student", http.StatusOK},
 		{"", http.StatusUnauthorized},
 	}
 	for _, test := range tests {
@@ -627,7 +627,7 @@ func TestSnapshotDiffЧерезAPI(t *testing.T) {
 	if rec = do(t, handler, http.MethodGet, path, "guest", ""); rec.Code != http.StatusOK {
 		t.Fatalf("guest: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec = do(t, handler, http.MethodGet, path, "student", ""); rec.Code != http.StatusForbidden {
+	if rec = do(t, handler, http.MethodGet, path, "student", ""); rec.Code != http.StatusOK {
 		t.Fatalf("student: %d", rec.Code)
 	}
 	if rec = do(t, handler, http.MethodGet, path, "", ""); rec.Code != http.StatusUnauthorized {

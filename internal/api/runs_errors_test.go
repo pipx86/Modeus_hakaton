@@ -476,13 +476,13 @@ func TestRunsErrorCodesMatrix(t *testing.T) {
 			setup:      func() http.Handler { return NewServer(newMemStore()).Routes() },
 			wantStatus: http.StatusUnauthorized,
 		},
-		// 403
+		// 201
 		{
-			name:   "403_forbidden_student",
+			name:   "201_student_can_create",
 			method: http.MethodPost, path: "/api/v1/runs", role: "student",
 			body:       `{"profession":"cook"}`,
 			setup:      func() http.Handler { return NewServer(newMemStore()).Routes() },
-			wantStatus: http.StatusForbidden,
+			wantStatus: http.StatusCreated,
 		},
 		// 404
 		{

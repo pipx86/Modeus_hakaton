@@ -55,8 +55,8 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 
 | Метод и путь | Назначение | Роли | Основные ответы |
 | --- | --- | --- | --- |
-| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, teacher, rop, guest | 200, 404, 500 |
-| `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
+| `GET /runs/{id}/tree` | Плоский список узлов **и** детерминированные инсайты: provenance, health score с breakdown, red flags, market heat, coverage, sources и объяснения узлов | admin, teacher, rop, student, guest | 200, 404, 500 |
+| `GET /runs/{id}/snapshots/{snapshot_id}/diff?against=` | Diff двух снимков дерева: `added`/`removed`/`changed` + `summary`, человекочитаемые `story`/`story_lines`; узлы и evidence с `source_id`/`ref_id`/`quote` | admin, teacher, rop, student, guest | 200, 400, 404, 409 `SNAPSHOT_RUN_MISMATCH`, 501 |
 | `GET /reviews/evidence?status=&limit=&offset=` | Очередь спорных подтверждений для эксперта: `status=pending\|rejected`, `limit` 1..200 (50), `offset` >= 0; пустая страница — `[]` | admin, teacher, rop | 200, 400, 501 |
 | `POST /evidences/{id}/reject` | Отклонить подтверждение (только pending) | admin, teacher | 204, 404, 409 `ALREADY_REJECTED`/`ALREADY_APPROVED` |
 | `GET /evidences/{id}` | Подтверждение + legacy-флаг `approved` | admin, teacher, rop, guest | 200, 404, 501 |
@@ -68,8 +68,8 @@ with open("api-docs/swagger.yaml", "w", encoding="utf-8", newline="\n") as file:
 | `GET /runs/{id}/conflicts` | Разрешённые конфликты синтезатора | admin, teacher, rop | 200, 404, 501 |
 | `GET /runs/{id}/agent-messages` | Память агента-синтезатора (`payload` с конфликтом) | admin, teacher, rop | 200, 404, 501 |
 | `POST /runs/{id}/sources` | Привязать standard/vacancy источник к прогону для live multi-source анализа; admin/teacher | 201, 400, 401, 403, 404, 422, 501 |
-| `GET /runs/{id}/export?format=json\|md` | Экспорт завершённого исследования: legacy-массив узлов по умолчанию, JSON-документ через `?format=json`, Markdown через `?format=md` | admin, teacher, rop, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
-| `GET /runs/estimate?profession=&type=` | Оценка длительности/токенов/стоимости будущего прогона по истории; `estimated_cost_usd` может быть `null`, `confidence` — high/medium/low, `method` называет использованные данные | admin, teacher, rop | 200, 400, 500 |
+| `GET /runs/{id}/export?format=json\|md` | Экспорт завершённого исследования: legacy-массив узлов по умолчанию, JSON-документ через `?format=json`, Markdown через `?format=md` | admin, teacher, rop, student, guest | 200, 400, 404, 409 `RUN_NOT_FINISHED`/`RUN_HAS_NO_TREE`, 500, 503, 504 |
+| `GET /runs/estimate?profession=&type=` | Оценка длительности/токенов/стоимости будущего прогона по истории; `estimated_cost_usd` может быть `null`, `confidence` — high/medium/low, `method` называет использованные данные | admin, teacher, rop, student | 200, 400, 500 |
 | `GET /runs/{id}/cost` | Фактический расход LLM по прогону: токены, стоимость (`null` если провайдер не сообщил цену), `by_model`/`by_agent`, `status_counts`, `attribution`, плюс пересчитанная оценка | все роли (как `GET /runs/{id}`) | 200, 404, 500, 503, 504 |
 | `GET /runs/{id}/insights` | Консолидированные инсайты: provenance по узлам, health score с breakdown, red flags, market heat, coverage, sources, node explanations; детерминированно, без LLM | admin, teacher, rop, guest | 200, 401, 403, 404, 500, 501, 503, 504 |
 | `GET /runs/{id}/coverage` | Матрица покрытия роль/функция/задача × типы источников; JSON по умолчанию, `?format=csv` — `text/csv` с заголовком `node_id,title,type,interview,standard,vacancy,document` | admin, teacher, rop, guest | 200, 401, 403, 404, 500, 501, 503, 504 |

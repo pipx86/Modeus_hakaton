@@ -451,7 +451,7 @@ func snapshotDiffError(w http.ResponseWriter, err error) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/snapshots/{snapshot_id}/diff [get]
 func (s *Server) handleSnapshotDiff(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
 		return
 	}
 	// Параметры проверяем до обращения к хранилищу: невалидный запрос — это

@@ -110,7 +110,7 @@ type runExportNode struct {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/export [get]
 func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
 		return
 	}
 	id := r.PathValue("id")

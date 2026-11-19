@@ -85,11 +85,11 @@ func TestCreateRunUnauthorized(t *testing.T) {
 	}
 }
 
-func TestCreateRunForbiddenStudent(t *testing.T) {
+func TestCreateRunAllowsStudent(t *testing.T) {
 	h := NewServer(newMemStore()).Routes()
 	rr := do(t, h, "POST", "/api/v1/runs", "student", `{"profession":"cook"}`)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("student не должен создавать прогоны: ожидали 403, получили %d", rr.Code)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("student должен создавать прогоны: ожидали 201, получили %d", rr.Code)
 	}
 }
 
@@ -131,8 +131,8 @@ func TestGetRunTree(t *testing.T) {
 	}
 
 	rr = do(t, h, "GET", "/api/v1/runs/r1/tree", "student", "")
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("student не должен видеть tree: ожидали 403, получили %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("student должен видеть tree: ожидали 200, получили %d", rr.Code)
 	}
 }
 
@@ -148,8 +148,8 @@ func TestGetRunAnswers(t *testing.T) {
 	}
 
 	rr = do(t, h, "GET", "/api/v1/runs/r1/answers", "student", "")
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("student не должен видеть answers: ожидали 403, получили %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("student должен видеть answers: ожидали 200, получили %d", rr.Code)
 	}
 }
 
@@ -250,8 +250,8 @@ func TestExportRun(t *testing.T) {
 	}
 
 	rr = do(t, h, "GET", "/api/v1/runs/done/export", "student", "")
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("student не должен экспортировать: ожидали 403, получили %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("student должен экспортировать: ожидали 200, получили %d", rr.Code)
 	}
 }
 

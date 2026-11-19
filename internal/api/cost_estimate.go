@@ -276,7 +276,7 @@ type RunCostResponse struct {
 // silently replaced by defaults on a storage error, because that would hide an
 // outage).
 func (s *Server) handleRunEstimate(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent) {
 		return
 	}
 

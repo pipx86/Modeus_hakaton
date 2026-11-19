@@ -228,7 +228,7 @@ func TestCompareRunsHandlerAuth(t *testing.T) {
 		{"teacher", http.StatusOK},
 		{"rop", http.StatusOK},
 		{"guest", http.StatusOK},
-		{"student", http.StatusForbidden},
+		{"student", http.StatusOK},
 		{"", http.StatusUnauthorized},
 	}
 	for _, test := range tests {
@@ -684,8 +684,8 @@ func TestCompareRunsЧерезAPI(t *testing.T) {
 	if rec = do(t, handler, http.MethodGet, path, "guest", ""); rec.Code != http.StatusOK {
 		t.Fatalf("guest: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec = do(t, handler, http.MethodGet, path, "student", ""); rec.Code != http.StatusForbidden {
-		t.Fatalf("student: ожидали 403, получили %d", rec.Code)
+	if rec = do(t, handler, http.MethodGet, path, "student", ""); rec.Code != http.StatusOK {
+		t.Fatalf("student: ожидали 200, получили %d", rec.Code)
 	}
 	if rec = do(t, handler, http.MethodGet, path, "", ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("без токена: ожидали 401, получили %d", rec.Code)

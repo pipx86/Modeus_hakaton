@@ -168,7 +168,7 @@ func insightHasUsableSkillFreq(skillFreq map[string]int) bool {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/insights [get]
 func (s *Server) handleRunInsights(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
 		return
 	}
 	reader, ok := s.requireInsightsReader(w)
@@ -200,7 +200,7 @@ func (s *Server) handleRunInsights(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/coverage [get]
 func (s *Server) handleRunCoverage(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleGuest) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleTeacher, auth.RoleROP, auth.RoleStudent, auth.RoleGuest) {
 		return
 	}
 	reader, ok := s.requireInsightsReader(w)

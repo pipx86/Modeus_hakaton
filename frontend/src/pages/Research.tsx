@@ -1412,9 +1412,10 @@ export function Research() {
   const focusNodeId = searchParams.get("node")
   const guestView = searchParams.get("view") === "guest"
   const role = getCurrentRole()
-  const readOnly = guestView || role === "guest" || role === "student"
+  const treeReadOnly = guestView || role === "guest" || role === "student"
+  const chatReadOnly = guestView || role === "guest"
   const canAttach =
-    !readOnly && (role === null || role === "admin" || role === "teacher")
+    !treeReadOnly && (role === null || role === "admin" || role === "teacher")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
     const link = `${window.location.origin}/research/${id}?view=guest`
@@ -1591,7 +1592,7 @@ export function Research() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="sources">
-          <SourcesTab runId={id} canAttach={canAttach} readOnly={readOnly} />
+          <SourcesTab runId={id} canAttach={canAttach} readOnly={treeReadOnly} />
         </TabsContent>
         <TabsContent value="tree">
           <TreeTab
@@ -1599,14 +1600,14 @@ export function Research() {
             active={isActive}
             focusNodeId={focusNodeId}
             onShowTranscript={showTranscript}
-            readOnly={readOnly}
+            readOnly={treeReadOnly}
           />
         </TabsContent>
         <TabsContent value="coverage">
           <CoverageTab runId={id} />
         </TabsContent>
         <TabsContent value="snapshots">
-          <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={readOnly} />
+          <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
         </TabsContent>
         <TabsContent value="conflicts">
           <ConflictsTab runId={id} onFocusNode={focusNode} />
@@ -1618,7 +1619,7 @@ export function Research() {
             runStatus={run?.status}
             stage={run?.stage}
             focus={chatFocus}
-            readOnly={readOnly}
+            readOnly={chatReadOnly}
           />
         </TabsContent>
       </Tabs>
