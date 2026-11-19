@@ -161,7 +161,7 @@ func (p *PGStore) listReviewQueue(ctx context.Context, status domain.EvidenceSta
 // @Security     BearerAuth
 // @Router       /api/v1/reviews/evidence [get]
 func (s *Server) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 	// Параметры проверяем до обращения к хранилищу: невалидный запрос — это

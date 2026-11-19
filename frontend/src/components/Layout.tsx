@@ -29,7 +29,7 @@ import {
 const NAV_ITEMS = [
   { to: "/", label: "Исследования", icon: FlaskConicalIcon, end: true },
   { to: "/research/new", label: "Новое исследование", icon: PlusIcon, end: false },
-  { to: "/compare", label: "Сравнение прогонов", icon: GitCompareIcon, end: false },
+  { to: "/compare", label: "Сравнение исследований", icon: GitCompareIcon, end: false },
 ]
 
 const ADMIN_ITEM = { to: "/admin", label: "Администрирование", icon: ShieldIcon, end: false }
@@ -49,7 +49,7 @@ function useBreadcrumbs() {
   if (pathname === "/compare") {
     return [
       { to: "/", label: "Исследования" },
-      { to: "/compare", label: "Сравнение прогонов" },
+      { to: "/compare", label: "Сравнение исследований" },
     ]
   }
   if (pathname.startsWith("/research/")) {

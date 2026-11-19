@@ -14,7 +14,7 @@
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -1569,9 +1569,13 @@ export function Research() {
   const guestView = searchParams.get("view") === "readonly"
   const role = getCurrentRole()
   const adminView = role === "admin" || (role === null && import.meta.env.MODE === "test")
+  const reviewerView =
+    role === "admin" ||
+    role === "specialist" ||
+    (role === null && import.meta.env.MODE === "test")
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
-  const canAttach = !treeReadOnly && (role === null || role === "admin")
+  const canAttach = !treeReadOnly && (role === null || role === "admin" || role === "specialist")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
     const link = `${window.location.origin}/research/${id}?view=readonly`
@@ -1585,6 +1589,7 @@ export function Research() {
     }
   }
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
+  const autoChatRef = useRef(false)
   const showTranscript = useCallback(
     async (item: Evidence) => {
       let refId = item.ref_id
@@ -1633,6 +1638,8 @@ export function Research() {
     onStatusChange: (previous, next) => {
       if (previous === next) return
       if (next === "done") {
+        autoChatRef.current = true
+        setTab("tree")
         toast.success("Запуск завершён", { description: "Дерево деятельности готово." })
       }
       if (next === "failed") {
@@ -1642,6 +1649,15 @@ export function Research() {
       }
     },
   })
+
+  useEffect(() => {
+    if (!run || autoChatRef.current) return
+    if (run.type === "chat" && (run.status === "running" || run.status === "pending")) {
+      autoChatRef.current = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTab("chat")
+    }
+  }, [run])
 
   return (
     <div className="space-y-6">
@@ -1744,9 +1760,11 @@ export function Research() {
               Покрытие
             </TabsTrigger>
           )}
-          <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
-            Снимки и проверка
-          </TabsTrigger>
+          {reviewerView && (
+            <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
+              Снимки и проверка
+            </TabsTrigger>
+          )}
           {adminView && (
             <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
               Конфликты
@@ -1773,7 +1791,9 @@ export function Research() {
           {adminView && <CoverageTab runId={id} />}
         </TabsContent>
         <TabsContent value="snapshots">
-          <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
+          {reviewerView && (
+            <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
+          )}
         </TabsContent>
         <TabsContent value="conflicts">
           {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
