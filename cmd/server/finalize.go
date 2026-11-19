@@ -46,7 +46,8 @@ type interviewAnalyst interface {
 	Analyze(ctx context.Context, in agent.AnalystInput) (agent.AnalystOutput, error)
 }
 
-// synthesisRunner is the deterministic merge step of the pipeline.
+// synthesisRunner is the synthesizer step of the pipeline: the deterministic
+// merge plus the optional best-effort LLM normalization of titles/descriptions.
 type synthesisRunner interface {
 	Synthesize(ctx context.Context, in agent.SynthesizerInput) (agent.SynthesizerOutput, error)
 }
@@ -79,10 +80,23 @@ type finalizerDeps struct {
 // and persistence of the resulting tree. An optional retriever injects RAG
 // context instead of sending every source to the model.
 func newTreeFinalizer(store finalizeStore, analystClient llm.ChatClient, retrievers ...sourceRetriever) chat.Finalizer {
-	return newTreeFinalizerWithVersions(store, analystClient, "", "", retrievers...)
+	return newTreeFinalizerWithClients(store, analystClient, nil, "", "", retrievers...)
 }
 
+// newTreeFinalizerWithVersions pins the prompt versions of the pipeline. It is
+// kept for callers (and tests) that only have an analyst client: without a
+// synthesizer client the synthesizer stays deterministic.
 func newTreeFinalizerWithVersions(store finalizeStore, analystClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
+	return newTreeFinalizerWithClients(store, analystClient, nil, analystVersion, synthesizerVersion, retrievers...)
+}
+
+// newTreeFinalizerWithClients builds the post-interview pipeline with one
+// per-agent model client. synthesizerClient is optional: when it is nil the
+// synthesizer runs the deterministic merge only. When it is set, the agent uses
+// it for the best-effort title/description normalization pass while the merge
+// itself remains the source of truth for ids, hierarchy, evidence and conflict
+// winners.
+func newTreeFinalizerWithClients(store finalizeStore, analystClient, synthesizerClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
 	return func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
 		analystOptions := []analyst.Option{}
 		if analystVersion != "" {
@@ -95,6 +109,9 @@ func newTreeFinalizerWithVersions(store finalizeStore, analystClient llm.ChatCli
 		synthesizerOptions := []synthesizer.Option{}
 		if synthesizerVersion != "" {
 			synthesizerOptions = append(synthesizerOptions, synthesizer.WithPromptVersion(synthesizerVersion))
+		}
+		if synthesizerClient != nil {
+			synthesizerOptions = append(synthesizerOptions, synthesizer.WithClient(synthesizerClient))
 		}
 		synthesizerAgent, err := synthesizer.New(synthesizerOptions...)
 		if err != nil {
@@ -110,8 +127,9 @@ func newTreeFinalizerWithVersions(store finalizeStore, analystClient llm.ChatCli
 	}
 }
 
-// finalizeInterview runs analysis, deterministic synthesis, persistence of the
-// review artifacts and the final tree for one finished interview.
+// finalizeInterview runs analysis, deterministic synthesis with optional LLM
+// title/description normalization, persistence of the review artifacts and the
+// final tree for one finished interview.
 func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
 	if deps.store == nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: store is required")

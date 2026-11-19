@@ -124,13 +124,16 @@ func run(ctx context.Context, c config) error {
 	var agentMetrics *agentmetrics.Registry
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
+	var synthesizerClient llm.ChatClient
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
 		logging.Logger.Info("LLM provider configured",
 			"base_url", cfg.BaseURL,
 			"interviewer_model", cfg.Agents[agents.Interviewer].Model,
 			"interviewer_fallback_model", cfg.Agents[agents.Interviewer].FallbackModel,
 			"analyst_model", cfg.Agents[agents.Analyst].Model,
-			"analyst_fallback_model", cfg.Agents[agents.Analyst].FallbackModel)
+			"analyst_fallback_model", cfg.Agents[agents.Analyst].FallbackModel,
+			"synthesizer_model", cfg.Agents[agents.Synthesizer].Model,
+			"synthesizer_fallback_model", cfg.Agents[agents.Synthesizer].FallbackModel)
 		// The pool wraps every per-model client with this decorator, so the
 		// llm_requests audit row names the model that actually answered. A
 		// fallback call therefore shows up as a second row with its own model
@@ -145,6 +148,14 @@ func run(ctx context.Context, c config) error {
 			}
 			if client, clientErr := agentPool.Client(agents.Analyst); clientErr == nil {
 				analystClient = client
+			}
+			// The synthesizer client powers the best-effort LLM normalization
+			// pass. Its calls are recorded by the pool metrics with
+			// agent="synthesizer", which is what the admin agent table reads.
+			if client, clientErr := agentPool.Client(agents.Synthesizer); clientErr == nil {
+				synthesizerClient = client
+			} else {
+				logging.Logger.Warn("synthesizer client unavailable; the synthesizer stays deterministic", "error", clientErr)
 			}
 		} else {
 			logging.Logger.Error("LLM provider pool setup failed; using fallback interview", "error", poolErr)
@@ -166,7 +177,13 @@ func run(ctx context.Context, c config) error {
 	// handed to both the create-run handler and the resume processor.
 	var batchSynth steps.Synthesizer
 	if analystClient != nil {
-		if synthAgent, synthErr := synthesizer.New(synthesizer.WithPromptVersion(synthesizerVersion)); synthErr != nil {
+		synthOptions := []synthesizer.Option{synthesizer.WithPromptVersion(synthesizerVersion)}
+		if synthesizerClient != nil {
+			// Batch synthesis keeps the deterministic merge as the source of
+			// truth and only uses the model to normalize titles/descriptions.
+			synthOptions = append(synthOptions, synthesizer.WithClient(synthesizerClient))
+		}
+		if synthAgent, synthErr := synthesizer.New(synthOptions...); synthErr != nil {
 			logging.Logger.Error("batch synthesizer setup failed; batch runs keep the vacancy pipeline", "error", synthErr)
 		} else {
 			batchSynth = synthAgent
@@ -187,6 +204,7 @@ func run(ctx context.Context, c config) error {
 		"ai", batchPlan.HasAI(),
 		"analyst_prompt_version", analystVersion,
 		"synthesizer_prompt_version", synthesizerVersion,
+		"synthesizer_llm_normalization", synthesizerClient != nil,
 		"ai_step_timeout", batchPlan.AITimeout,
 		"vacancy_step_timeout", batchPlan.FallbackTimeout)
 	st := store.New(pool)
@@ -210,7 +228,7 @@ func run(ctx context.Context, c config) error {
 	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
 	chatService.SetSessionStore(store.NewChatSessionStore(pool))
 	if analystClient != nil {
-		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
+		chatService.SetFinalizer(newTreeFinalizerWithClients(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)

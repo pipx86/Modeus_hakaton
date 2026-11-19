@@ -41,6 +41,14 @@ func TestFromEnvDefaults(t *testing.T) {
 	if cfg.Agents[Analyst].MaxTokens != 8000 {
 		t.Fatalf("analyst max tokens = %d", cfg.Agents[Analyst].MaxTokens)
 	}
+	// The synthesizer now performs a real (best-effort) model call to normalize
+	// titles/descriptions, so it must get a valid default model and budget.
+	if got := cfg.Agents[Synthesizer].Model; got != DefaultModel {
+		t.Fatalf("synthesizer model = %q, want %q", got, DefaultModel)
+	}
+	if cfg.Agents[Synthesizer].MaxTokens != 4000 {
+		t.Fatalf("synthesizer max tokens = %d", cfg.Agents[Synthesizer].MaxTokens)
+	}
 	for _, name := range Names() {
 		if cfg.Agents[name].FallbackModel != "" {
 			t.Fatalf("%s fallback model = %q, want disabled by default", name, cfg.Agents[name].FallbackModel)
@@ -130,6 +138,7 @@ func TestFromEnvPerAgentOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Setenv("OPENROUTER_MODEL", "default-model")
 	t.Setenv("LLM_INTERVIEWER_MODEL", "interviewer-model")
+	t.Setenv("LLM_SYNTHESIZER_MODEL", "synthesizer-model")
 	t.Setenv("LLM_INTERVIEWER_TEMPERATURE", "1.1")
 	t.Setenv("LLM_INTERVIEWER_MAX_TOKENS", "123")
 	t.Setenv("LLM_ANALYST_TIMEOUT_S", "42")
@@ -147,6 +156,9 @@ func TestFromEnvPerAgentOverrides(t *testing.T) {
 	}
 	if cfg.Agents[Interviewer].MaxTokens != 123 {
 		t.Fatalf("interviewer max tokens = %d", cfg.Agents[Interviewer].MaxTokens)
+	}
+	if cfg.Agents[Synthesizer].Model != "synthesizer-model" {
+		t.Fatalf("synthesizer model = %q", cfg.Agents[Synthesizer].Model)
 	}
 	if cfg.Agents[Analyst].Timeout.Seconds() != 42 {
 		t.Fatalf("analyst timeout = %s", cfg.Agents[Analyst].Timeout)

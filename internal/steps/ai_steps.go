@@ -26,8 +26,10 @@ const (
 	DataKeySourceIDs         = "source_ids"
 )
 
-// Synthesizer is the deterministic merge step of the agent pipeline. The
-// production implementation is *synthesizer.Agent; tests inject fakes.
+// Synthesizer is the synthesis step of the agent pipeline: it merges the
+// interview nodes deterministically and, when its LLM client is configured,
+// normalizes the human-readable titles/descriptions. The production
+// implementation is *synthesizer.Agent; tests inject fakes.
 type Synthesizer interface {
 	Synthesize(ctx context.Context, in agent.SynthesizerInput) (agent.SynthesizerOutput, error)
 }
@@ -178,8 +180,10 @@ func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID string, v
 // AgentSynthesisStep merges interview nodes into one tree and stores the result
 // in run.Data[DataKeyTree] and run.Data[DataKeyConflicts].
 type AgentSynthesisStep struct {
-	// Synthesizer is the deterministic merge agent. A nil value falls back to
-	// the default synthesizer, which keeps direct step construction working.
+	// Synthesizer is the hybrid synthesis agent: the deterministic merge always
+	// runs, and the optional LLM only normalizes titles/descriptions. A nil
+	// value falls back to the default synthesizer, which keeps direct step
+	// construction working.
 	Synthesizer Synthesizer
 	// ZunEnricher optionally fills knowledge/skills/abilities after synthesis.
 	ZunEnricher ZunEnricher
@@ -209,6 +213,10 @@ func (s *AgentSynthesisStep) Execute(ctx context.Context, run *domain.Run) error
 		}
 		synth = agentInstance
 	}
+	// Attribute the synthesizer's optional normalization call to this run, the
+	// same way the analyst step does, so llm_requests.run_id is populated for
+	// batch runs that now include a real synthesizer model call.
+	ctx = llmobs.WithRunID(ctx, run.ID)
 	out, err := synth.Synthesize(ctx, agent.SynthesizerInput{
 		Profession: run.Profession,
 		Interview:  nodes,

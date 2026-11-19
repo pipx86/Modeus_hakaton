@@ -153,6 +153,14 @@ func buildAgentClient(cfg Config, gate *Gate, name AgentName, spec Spec, registr
 // answerValidator returns the JSON-schema validator of the agent output
 // contract. It is used only to choose between two models; the repair layer
 // above the chain remains authoritative and reports terminal validation errors.
+//
+// The synthesizer is a hybrid agent whose deterministic merge contract is
+// produced in code, not by the model: the model only returns a best-effort
+// normalization envelope ({"nodes":[...]}) that the synthesizer validates
+// itself. Validating that answer against the deterministic synthesis schema
+// would wrongly reject every valid normalization and trigger a needless second
+// model call, so the synthesizer chain has no schema validator. Transport
+// fallback still works normally.
 func answerValidator(name AgentName) llm.AnswerValidator {
 	var kind agent.Kind
 	switch name {
@@ -161,7 +169,7 @@ func answerValidator(name AgentName) llm.AnswerValidator {
 	case Analyst:
 		kind = agent.KindAnalyst
 	case Synthesizer:
-		kind = agent.KindSynthesizer
+		return nil
 	default:
 		return nil
 	}
