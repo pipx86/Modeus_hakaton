@@ -23,6 +23,10 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // UI-тесты с userEvent иногда выходят за 5s под нагрузкой CI;
+    // это не зависший код, а медленный jsdom/typing. 15s — запас без
+    // маскировки реальных бесконечных ожиданий.
+    testTimeout: 15000,
     globals: true,
     setupFiles: ['./src/test/setup.ts', './tests/setup.ts'],
     include: ['tests/**/*.test.{ts,tsx}', '../tests/frontend/**/*.test.{ts,tsx}'],

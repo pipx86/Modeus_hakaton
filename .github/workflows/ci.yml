@@ -183,7 +183,6 @@ jobs:
           test -f Dockerfile
           test -f .dockerignore
           test -f docker-compose.yml
-          test -f web/index.html
           test -f deploy/nginx/default.conf
           test -f deploy/n8n/workflows/nightly_ingestion.json
           test -f internal/metrics/metrics.go

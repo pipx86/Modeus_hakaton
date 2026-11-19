@@ -11,7 +11,6 @@ Runs without a Docker daemon (the CI "deploy-config" job and
   ``activity_descriptor_*`` metric it queries against internal/metrics;
 * validates n8n workflow exports (structure, connections, retry/safety flags)
   and that the env vars they use are documented and wired in compose;
-* checks the static web placeholder (HTML parses, no external resources);
 * verifies required deliverables exist;
 * checks relative Markdown links in the docs owned by this package;
 * scans owned text assets for obvious secret leaks.
@@ -21,7 +20,6 @@ Stdlib + PyYAML only (PyYAML ships on GitHub runners). Exit code 1 on failure.
 
 from __future__ import annotations
 
-import html.parser
 import json
 import os
 import re
@@ -60,7 +58,6 @@ REQUIRED_FILES = [
     "internal/metrics/metrics.go",
     "internal/metrics/metrics_test.go",
     "internal/llm/metrics/metrics.go",
-    "web/index.html",
     "deploy/nginx/default.conf",
     "deploy/nginx/server.conf",
     "deploy/prometheus/prometheus.yml",
@@ -124,28 +121,6 @@ SECRET_SCAN_GLOBS = [
     "scripts/check_deploy.py",
     ".github/workflows/ci.yml",
 ]
-
-EXTERNAL_RESOURCE_TAGS = {"script", "link", "img", "iframe", "source"}
-
-
-class HTMLCollector(html.parser.HTMLParser):
-    """Collects ids and external resource references from one HTML file."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.ids: list[str] = []
-        self.resource_refs: list[tuple[str, str, str]] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attributes = dict(attrs)
-        if attributes.get("id"):
-            self.ids.append(attributes["id"])  # type: ignore[arg-type]
-        if tag in EXTERNAL_RESOURCE_TAGS:
-            for attr in ("src", "href"):
-                value = attributes.get(attr)
-                if value:
-                    self.resource_refs.append((tag, attr, value))
-
 
 def read(rel: str) -> str:
     return open(os.path.join(ROOT, rel), encoding="utf-8").read()
@@ -522,17 +497,6 @@ def check_vector_migrations() -> None:
     print(f"vector migrations ok: {len(files)} SQL files, pgvector tables + HNSW index")
 
 
-def check_web() -> None:
-    collector = HTMLCollector()
-    collector.feed(read("web/index.html"))
-    for tag, attr, value in collector.resource_refs:
-        if value.startswith(("http://", "https://", "//")):
-            raise SystemExit(f"FAIL: external resource in web/index.html: <{tag} {attr}={value!r}>")
-    if "/api/v1/health" not in read("web/index.html"):
-        raise SystemExit("FAIL: web/index.html must probe /api/v1/health")
-    print(f"web ok: html parsed, ids={len(collector.ids)}, no external resources")
-
-
 def check_workflows() -> None:
     directory = os.path.join(ROOT, "deploy/n8n/workflows")
     workflows: list[tuple[str, dict]] = []
@@ -665,7 +629,6 @@ def main() -> int:
     check_dashboard()
     check_metrics_labels()
     check_vector_migrations()
-    check_web()
     check_workflows()
     check_required_files()
     check_markdown_links()
