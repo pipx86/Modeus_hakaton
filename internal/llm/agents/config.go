@@ -85,7 +85,10 @@ func FromEnv() (Config, error) {
 		// Generic provider mode. A legacy key must never be paired with a
 		// custom base URL: that produces a misleading 401 at the provider.
 		if llmKey == "" {
-			return Config{}, fmt.Errorf("LLM_API_KEY is required when LLM_BASE_URL or LLM_MODEL is set; refusing to reuse OPENROUTER_API_KEY for another provider")
+			llmKey = readKeyFile(firstEnv("LLM_API_KEY_FILE"))
+		}
+		if llmKey == "" {
+			return Config{}, fmt.Errorf("LLM_API_KEY or LLM_API_KEY_FILE is required when LLM_BASE_URL or LLM_MODEL is set")
 		}
 		apiKey = llmKey
 		baseURL = llmBase
@@ -253,12 +256,17 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-// readSecretFile reads an API key from OPENROUTER_API_KEY_FILE or from the
-// conventional .secrets/openrouter.key path. The file never appears in logs.
 func readSecretFile() string {
 	path := firstEnv("LLM_API_KEY_FILE", "OPENROUTER_API_KEY_FILE")
 	if path == "" {
 		path = ".secrets/reformboss.key"
+	}
+	return readKeyFile(path)
+}
+
+func readKeyFile(path string) string {
+	if path == "" {
+		return ""
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

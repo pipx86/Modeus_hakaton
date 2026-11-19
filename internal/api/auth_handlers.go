@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
@@ -68,14 +69,14 @@ func validRegistration(req *registerRequest) string {
 	if !emailPattern.MatchString(req.Email) {
 		return "укажите корректный email"
 	}
-	if len(req.DisplayName) < 2 || len([]rune(req.DisplayName)) > 100 {
+	if n := utf8.RuneCountInString(req.DisplayName); n < 2 || n > 100 {
 		return "имя должно быть от 2 до 100 символов"
 	}
-	if len(req.Password) < 8 {
+	if utf8.RuneCountInString(req.Password) < 8 {
 		return "пароль должен содержать минимум 8 символов"
 	}
-	if len(req.Password) > 200 {
-		return "пароль слишком длинный"
+	if len(req.Password) > 72 {
+		return "пароль должен занимать не более 72 байт"
 	}
 	return ""
 }
@@ -112,25 +113,16 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать пароль")
 		return
 	}
-	role := auth.RoleUser
-	count, err := store.CountUsers(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось проверить пользователей")
-		return
-	}
-	if count == 0 {
-		role = auth.RoleAdmin
-	}
-	user, err := store.CreateUser(r.Context(), req.Email, req.DisplayName, string(hash), string(role))
+	user, err := store.RegisterUser(r.Context(), req.Email, req.DisplayName, string(hash))
 	if errors.Is(err, ErrEmailTaken) {
 		writeErr(w, http.StatusConflict, "EMAIL_TAKEN", "пользователь с таким email уже зарегистрирован")
 		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать пользователя")
+		writeErr(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "регистрация временно недоступна")
 		return
 	}
-	token, err := auth.Issue(user.ID, role, 24*time.Hour)
+	token, err := auth.Issue(user.ID, auth.Role(user.Role), 24*time.Hour)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось выпустить токен")
 		return
@@ -167,11 +159,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := store.UserByEmail(r.Context(), req.Email)
-	if err != nil {
-		writeErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "неверный email или пароль")
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		writeErr(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "вход временно недоступен")
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+	if user == nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		writeErr(w, http.StatusUnauthorized, "UNAUTHORIZED", "неверный email или пароль")
 		return
 	}

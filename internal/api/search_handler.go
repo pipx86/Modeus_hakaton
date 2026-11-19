@@ -98,8 +98,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
 		return
 	}
-	if _, err := s.store.GetRun(r.PathValue("id")); err != nil {
-		writeTreeError(w, err)
+	if !s.allowInterviewAccess(w, r, r.PathValue("id")) {
 		return
 	}
 	var id pgtype.UUID

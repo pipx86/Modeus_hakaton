@@ -72,7 +72,7 @@ func (s *Server) handleUploadSource(w http.ResponseWriter, r *http.Request) {
 		Content: content,
 	})
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить загруженный источник")
 		return
 	}
 	if created == nil {

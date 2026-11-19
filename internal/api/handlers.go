@@ -279,6 +279,12 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "chat pipeline is not available")
 		return
 	}
+	providedTranscript := strings.TrimSpace(req.Transcript)
+	if pg, ok := s.store.(*PGStore); ok && pg.Pool != nil && s.autoStart &&
+		runType == domain.RunTypeBatch && providedTranscript != "" && !s.batchPlan.HasAI() {
+		writeErr(w, http.StatusServiceUnavailable, "LLM_UNAVAILABLE", "анализ транскрипта недоступен: проверьте настройки модели")
+		return
+	}
 
 	var run *domain.Run
 	var err error
@@ -292,7 +298,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		if mapStoreError(w, err) {
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать исследование")
 		return
 	}
 
@@ -310,21 +316,21 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		if pgStore, ok := s.store.(*PGStore); ok {
 			if err := pgStore.SetRunType(run.ID, domain.RunTypeChat); err != nil {
 				logging.Logger.Error("chat_run_type_store_failed", "run_id", run.ID, "error", err)
-				writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+				writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать исследование")
 				return
 			}
 			run.Type = domain.RunTypeChat
 		}
 		if err := s.store.SetStage(run.ID, domain.StageInterview); err != nil {
 			logging.Logger.Error("chat_run_stage_store_failed", "run_id", run.ID, "error", err)
-			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать исследование")
 			return
 		}
 		run.Stage = domain.StageInterview
 		if err := s.chat.Start(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)
-			writeErr(w, http.StatusBadGateway, "BAD_GATEWAY", err.Error())
+			writeErr(w, http.StatusBadGateway, "BAD_GATEWAY", "не удалось начать интервью")
 			return
 		}
 		stageEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
@@ -342,7 +348,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	if pgStore, ok := s.store.(*PGStore); runType == domain.RunTypeBatch && ok {
 		if err := pgStore.SetRunType(run.ID, domain.RunTypeBatch); err != nil {
 			logging.Logger.Error("batch_run_type_store_failed", "run_id", run.ID, "error", err)
-			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать исследование")
 			return
 		}
 	}
@@ -351,7 +357,6 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		st := store.New(pgStore.Pool)
 		reader := store.NewVacancyAdapter(st)
 		plan := s.batchPipeline(pgStore)
-		providedTranscript := strings.TrimSpace(req.Transcript)
 
 		go func(id string) {
 			bgCtx := context.Background()
@@ -416,7 +421,7 @@ func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("get_run_internal_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось прочитать исследование")
 		return
 	}
 
@@ -473,7 +478,7 @@ func (s *Server) handlePutTree(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("save_tree_db_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить дерево")
 		return
 	}
 
@@ -510,7 +515,7 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("get_tree_internal_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось прочитать дерево")
 		return
 	}
 
@@ -560,7 +565,7 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("get_answers_internal_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось прочитать подтверждения")
 		return
 	}
 
@@ -598,7 +603,7 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusConflict, "ALREADY_REJECTED", "evidence already rejected")
 		default:
 			logging.Logger.Error("approve_evidence_internal_error", "evidence_id", id, "error", err)
-			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось подтвердить цитату")
 		}
 		return
 	}
@@ -634,7 +639,7 @@ func (s *Server) handleRejectEvidence(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusConflict, "ALREADY_APPROVED", "evidence already approved")
 		default:
 			logging.Logger.Error("reject_evidence_internal_error", "evidence_id", id, "error", err)
-			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось отклонить цитату")
 		}
 		return
 	}
@@ -711,7 +716,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("update_node_internal_error", "node_id", nodeID, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить узел")
 		return
 	}
 
@@ -752,7 +757,7 @@ func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
 	approved, skipped, err := s.store.BulkApproveEvidence(req.IDs)
 	if err != nil {
 		logging.Logger.Error("bulk_approve_internal_error", "count", len(req.IDs), "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось подтвердить цитаты")
 		return
 	}
 
@@ -785,7 +790,7 @@ func (s *Server) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("delete_source_internal_error", "source_id", sourceID, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось удалить источник")
 		return
 	}
 
@@ -812,7 +817,7 @@ func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось удалить исследование")
 		return
 	}
 	if role, _ := auth.FromContext(r.Context()); role != auth.RoleAdmin {
@@ -829,7 +834,7 @@ func (s *Server) handleDeleteRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("delete_run_internal_error", "run_id", runID, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось удалить исследование")
 		return
 	}
 
@@ -855,7 +860,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("list_runs_internal_error", "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось прочитать список исследований")
 		return
 	}
 
@@ -902,7 +907,7 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 	created, err := s.store.CreateSource(src)
 	if err != nil {
 		logging.Logger.Error("create_source_internal_error", "title", src.Title, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить источник")
 		return
 	}
 	// Индексируем в фоне так же, как загрузку файла: семантический поиск должен

@@ -136,3 +136,22 @@ func TestAdminOnlySourceDeleteNotWeakened(t *testing.T) {
 		t.Fatalf("admin должен проходить проверку роли на удаление источника, получили %d (%s)", rr.Code, rr.Body.String())
 	}
 }
+
+func TestInterviewBelongsToItsOwner(t *testing.T) {
+	store := newMemStore()
+	store.seedRun(domain.Run{ID: guestRunID, CreatedBy: "interview-owner", Status: domain.RunRunning})
+	handler := NewServerWithChat(store, guestChat{}).Routes()
+	for _, tc := range []struct{ method, suffix string }{
+		{http.MethodGet, "/messages"},
+		{http.MethodPost, "/messages"},
+		{http.MethodGet, "/events"},
+	} {
+		rec := do(t, handler, tc.method, "/api/v1/runs/"+guestRunID+tc.suffix, "user", `{"content":"тест"}`)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s %s status = %d, want 403", tc.method, tc.suffix, rec.Code)
+		}
+	}
+	if rec := do(t, handler, http.MethodGet, "/api/v1/runs/"+guestRunID+"/messages", "admin", ""); rec.Code != http.StatusOK {
+		t.Fatalf("admin: status = %d, want 200", rec.Code)
+	}
+}

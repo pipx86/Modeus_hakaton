@@ -169,3 +169,26 @@ func TestFromEnvInvalidConcurrency(t *testing.T) {
 		t.Fatal("expected an error for zero concurrency")
 	}
 }
+
+func TestFromEnvReadsGenericProviderKeyFile(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "fixture-*.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := f.Name()
+	if _, err := f.WriteString(fixture); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLM_API_KEY", "")
+	t.Setenv("LLM_API_KEY_FILE", fixture)
+	t.Setenv("LLM_BASE_URL", "http://localhost/v1")
+	t.Setenv("LLM_MODEL", "fixture")
+	t.Setenv("OPENROUTER_API_KEY", "")
+	cfg, err := FromEnv()
+	if err != nil || cfg.APIKey != fixture {
+		t.Fatalf("configured provider did not read its key file: %v", err)
+	}
+}

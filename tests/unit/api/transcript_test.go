@@ -61,15 +61,20 @@ func TestInterviewKeepsOriginalAnswerInSession(t *testing.T) {
 
 func TestChatHTTPTransmitsExactText(t *testing.T) {
 	token := testToken(t, auth.RoleAdmin)
-	service := chat.NewService(chat.UnavailableClient{}, nil)
-	if err := service.Start("literal-chat", "Техник"); err != nil {
+	store := api.NewMemoryStore()
+	run, err := store.CreateRun("Техник")
+	if err != nil {
 		t.Fatal(err)
 	}
-	h := api.NewServerWithChat(api.NewMemoryStore(), service).Routes()
-	path := "/api/v1/runs/literal-chat/messages"
+	service := chat.NewService(chat.UnavailableClient{}, nil)
+	if err := service.Start(run.ID, run.Profession); err != nil {
+		t.Fatal(err)
+	}
+	h := api.NewServerWithChat(store, service).Routes()
+	path := "/api/v1/runs/" + run.ID + "/messages"
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		items, err := service.Messages("literal-chat")
+		items, err := service.Messages(run.ID)
 		if err == nil && len(items) >= 2 {
 			break
 		}
@@ -101,5 +106,19 @@ func TestChatHTTPTransmitsExactText(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("в истории нет исходного ответа")
+	}
+}
+
+func TestBatchTranscriptRequiresConfiguredAnalyst(t *testing.T) {
+	_, pg := testPostgresAPI(t)
+	handler := api.NewServer(pg).Routes()
+	req := []byte(`{"type":"batch","profession":"Аналитик","transcript":"Исходный текст"}`)
+	response := callAPI(handler, http.MethodPost, "/api/v1/runs", testToken(t, auth.RoleUser), req)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("статус = %d, ожидался 503", response.Code)
+	}
+	var body struct{ Code string }
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Code != "LLM_UNAVAILABLE" {
+		t.Fatal("ожидалось объяснение недоступности аналитика")
 	}
 }

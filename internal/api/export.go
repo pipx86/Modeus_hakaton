@@ -131,7 +131,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("export_get_run_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось собрать экспорт исследования")
 		return
 	}
 	if run.Status != domain.RunDone {
@@ -145,7 +145,7 @@ func (s *Server) handleExportRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Logger.Error("export_get_tree_error", "run_id", id, "error", err)
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось собрать экспорт исследования")
 		return
 	}
 	if len(nodes) == 0 {

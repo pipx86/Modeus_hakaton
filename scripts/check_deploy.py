@@ -341,7 +341,9 @@ def check_nginx() -> None:
     full = read("deploy/nginx/server.conf")
     for marker in (
         "location /api/",
-        "proxy_pass http://server:8080",
+        "resolver 127.0.0.11 ",
+        "set $modeus_backend http://server:8080;",
+        "proxy_pass $modeus_backend;",
         "location /swagger/",
         "location = /metrics",
         "try_files $uri $uri/ /index.html",
@@ -349,8 +351,8 @@ def check_nginx() -> None:
     ):
         if marker not in full:
             raise SystemExit(f"FAIL: deploy/nginx/server.conf must contain {marker!r}")
-    if "api:8080" in full:
-        raise SystemExit("FAIL: deploy/nginx/server.conf must proxy the full backend (server:8080), not api:8080")
+    if "api:8080" in full or "proxy_pass http://server:" in full:
+        raise SystemExit("FAIL: deploy/nginx/server.conf must resolve the full backend through Docker DNS")
     print("nginx ok: demo api proxy + full-stack SPA/API/Swagger/metrics single-origin proxy")
 
 

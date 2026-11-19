@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"activity-descriptor/internal/chat"
+	"activity-descriptor/internal/domain"
 )
 
 // failingChatStub answers Messages/Post with a fixed error so the HTTP error
@@ -42,7 +43,9 @@ func TestPostMessageMapsExplicitChatSessionErrors(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			handler := NewServerWithChat(newMemStore(), failingChatStub{postErr: testCase.err}).Routes()
+			store := newMemStore()
+			store.seedRun(domain.Run{ID: "run-1"})
+			handler := NewServerWithChat(store, failingChatStub{postErr: testCase.err}).Routes()
 			rec := do(t, handler, http.MethodPost, "/api/v1/runs/run-1/messages", "teacher", `{"content":"ответ"}`)
 			if rec.Code != testCase.wantStatus {
 				t.Fatalf("status = %d, want %d (%s)", rec.Code, testCase.wantStatus, rec.Body.String())
@@ -61,7 +64,9 @@ func TestGetMessagesErrorMapping(t *testing.T) {
 	if rec := do(t, notFound, http.MethodGet, "/api/v1/runs/run-1/messages", "student", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("GET missing run = %d, want 404", rec.Code)
 	}
-	broken := NewServerWithChat(newMemStore(), failingChatStub{getErr: errors.New("database unavailable")}).Routes()
+	store := newMemStore()
+	store.seedRun(domain.Run{ID: "run-1"})
+	broken := NewServerWithChat(store, failingChatStub{getErr: errors.New("database unavailable")}).Routes()
 	if rec := do(t, broken, http.MethodGet, "/api/v1/runs/run-1/messages", "student", ""); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("GET with store error = %d, want 500", rec.Code)
 	}

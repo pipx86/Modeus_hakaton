@@ -54,8 +54,7 @@ type sseEvent struct {
 func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	if _, err := s.store.GetRun(id); err != nil {
-		writeErr(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+	if !s.allowInterviewAccess(w, r, id) {
 		return
 	}
 

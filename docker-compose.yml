@@ -35,6 +35,13 @@ name: activity-descriptor
 #     `server` profile), so the UI never lists an expected-DOWN api:8080 target.
 #     The default prometheus.yml scrapes the demo compose `api` service.
 
+# Goose и cmd/server используют pgx. Передаём реквизиты отдельно,
+# чтобы пароль PostgreSQL мог содержать символы, зарезервированные в URI.
+x-server-postgres: &server-postgres
+  PGUSER: "${POSTGRES_USER:-activity}"
+  PGPASSWORD: "${POSTGRES_PASSWORD:-activity_dev_password}"
+  PGDATABASE: "${POSTGRES_DB:-activity_descriptor}"
+
 services:
   api:
     build:
@@ -116,11 +123,12 @@ services:
       target: migrate
     image: activity-descriptor-migrate:local
     environment:
+      <<: *server-postgres
       # goose reads DRIVER/DBSTRING/MIGRATION_DIR from the environment when no
       # positional arguments are passed. The compose-network DSN is the default;
       # SERVER_DATABASE_URL overrides it (external/host database, CI, tests).
       GOOSE_DRIVER: "postgres"
-      GOOSE_DBSTRING: "${SERVER_DATABASE_URL:-postgres://activity:activity_dev_password@postgres:5432/activity_descriptor?sslmode=disable}"
+      GOOSE_DBSTRING: &server-database-url "${SERVER_DATABASE_URL:-postgres://postgres:5432?sslmode=disable}"
       GOOSE_MIGRATION_DIR: "/migrations"
     # Same host-gateway mapping as the monitoring profile, so
     # SERVER_DATABASE_URL=...@host.docker.internal:5432/... works on Linux.
@@ -146,8 +154,9 @@ services:
       target: migrate
     image: activity-descriptor-migrate:local
     environment:
+      <<: *server-postgres
       GOOSE_DRIVER: "postgres"
-      GOOSE_DBSTRING: "${SERVER_DATABASE_URL:-postgres://activity:activity_dev_password@postgres:5432/activity_descriptor?sslmode=disable}"
+      GOOSE_DBSTRING: *server-database-url
       GOOSE_MIGRATION_DIR: "/migrations_optional/vector"
     # Global goose flags must precede the `up` command; -table/-dir override the
     # GOOSE_MIGRATION_DIR default of the image so the separate history is used.
@@ -191,13 +200,14 @@ services:
       - path: .secrets/llm.env
         required: false
     environment:
+      <<: *server-postgres
       HTTP_ADDR: ":8080"
       APP_ENV: "${APP_ENV:-local}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
       # Keep the container on the compose-network PostgreSQL by default. Set
       # SERVER_DATABASE_URL to point at an external database (a host
       # `localhost` DSN is not reachable from inside the container).
-      DATABASE_URL: "${SERVER_DATABASE_URL:-postgres://activity:activity_dev_password@postgres:5432/activity_descriptor?sslmode=disable}"
+      DATABASE_URL: *server-database-url
       # Container-context tracing endpoint. The host values in
       # .secrets/llm.env point at 127.0.0.1 (the Docker host), which is the
       # container itself; export to the monitoring-profile collector with

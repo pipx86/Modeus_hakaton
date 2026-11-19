@@ -11,8 +11,19 @@ import (
 	"activity-descriptor/internal/domain"
 )
 
+// Сырые транскрипции принадлежат исследованию, включая старые записи с sources.run_id.
+const visibleSource = `($2::boolean OR s.type <> 'interview' OR NOT EXISTS (
+	SELECT 1 FROM runs r
+	WHERE r.created_by IS NOT NULL AND r.created_by::text <> $1
+		AND (r.id=s.run_id OR EXISTS (
+			SELECT 1 FROM run_sources rs WHERE rs.run_id=r.id AND rs.source_id=s.id
+		))
+))`
+
 func (p *PGStore) listSources(ctx context.Context) ([]domain.Source, error) {
-	rows, err := p.Pool.Query(ctx, `SELECT id::text,type,title,COALESCE(content,''),COALESCE(source_url,''),created_at FROM sources ORDER BY created_at DESC,id LIMIT 1000`)
+	rows, err := p.Pool.Query(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),s.created_at
+		FROM sources s WHERE `+visibleSource+` ORDER BY s.created_at DESC,s.id LIMIT 1000`,
+		auth.Subject(ctx), auth.RoleFromCtx(ctx) == auth.RoleAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +43,9 @@ func (p *PGStore) getSource(ctx context.Context, id string) (domain.Source, erro
 	if !validUUID(id) {
 		return item, ErrNotFound
 	}
-	err := p.Pool.QueryRow(ctx, `SELECT id::text,type,title,COALESCE(content,''),COALESCE(source_url,''),created_at FROM sources WHERE id=$1`, id).Scan(&item.ID, &item.Type, &item.Title, &item.Content, &item.SourceURL, &item.CreatedAt)
+	err := p.Pool.QueryRow(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),s.created_at
+		FROM sources s WHERE s.id=$3 AND `+visibleSource,
+		auth.Subject(ctx), auth.RoleFromCtx(ctx) == auth.RoleAdmin, id).Scan(&item.ID, &item.Type, &item.Title, &item.Content, &item.SourceURL, &item.CreatedAt)
 	return item, translate(err)
 }
 func (p *PGStore) listEvidences(ctx context.Context, nodeID, sourceID string) ([]domain.Evidence, error) {
@@ -240,7 +253,7 @@ func (s *Server) handleUpdateEvidence(w http.ResponseWriter, r *http.Request) {
 		if mapStoreError(w, err) {
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось обновить подтверждение")
 		return
 	}
 	writeJSON(w, http.StatusOK, item)

@@ -646,13 +646,13 @@ export interface paths {
         };
         /**
          * List chat messages of a run
-         * @description Returns the interview chat history, oldest first. Available while the chat service is configured.
+         * @description Returns the interview chat history, oldest first. Available to the owner and administrators for runs with an owner.
          */
         get: operations["listMessages"];
         put?: never;
         /**
          * Send a user message to the interviewer
-         * @description Records the respondent answer and schedules the next question. user role cannot post messages.
+         * @description Records the respondent answer and schedules the next question. Only the owner or an administrator may answer a run with an owner.
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -3779,6 +3779,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
@@ -3805,6 +3806,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             /** @description The run has no chat session. */
             404: {
                 headers: {
@@ -4360,6 +4362,7 @@ export interface operations {
                 };
             };
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     loginUser: {
@@ -4387,6 +4390,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listUsers: {

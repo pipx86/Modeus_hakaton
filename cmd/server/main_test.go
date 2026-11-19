@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"activity-descriptor/internal/domain"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -29,5 +31,12 @@ func TestRunRejectsBadDatabase(t *testing.T) {
 	err := run(context.Background(), config{address: "127.0.0.1:0", databaseURL: "not-a-postgres-url", jwtSecret: "test-token"})
 	if err == nil || strings.Contains(err.Error(), "not-a-postgres-url") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUnavailableChatTreeFailsInsteadOfReportingSuccess(t *testing.T) {
+	status, err := unavailableChatTree(context.Background(), "", "", domain.InterviewSession{})
+	if status != domain.RunFailed || err == nil {
+		t.Fatalf("status = %q, want failed with an error", status)
 	}
 }

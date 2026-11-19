@@ -457,3 +457,7 @@ func TestEvidenceContextPostgres(t *testing.T) {
 		t.Fatalf("невалидные id: ожидали 404, получили %d (%s)", malformed.Code, malformed.Body.String())
 	}
 }
+
+func (s *evidenceContextStub) GetRun(id string) (*domain.Run, error) {
+	return &domain.Run{ID: id}, nil
+}

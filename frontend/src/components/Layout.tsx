@@ -3,11 +3,11 @@
  * @description Каркас приложения: сайдбар, мобильное меню, шапка, переключатель темы и аккаунт.
  */
 
-import { useMemo, useState } from "react"
+import { useState, useSyncExternalStore } from "react"
 import { Link, Outlet, useLocation } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
-import { getCurrentRole } from "@/lib/auth"
+import { getCurrentRole, subscribeAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -178,8 +178,7 @@ export function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const breadcrumbs = useBreadcrumbs()
-  const { pathname } = useLocation()
-  const isAdmin = useMemo(() => getCurrentRole() === "admin", [pathname])
+  const isAdmin = useSyncExternalStore(subscribeAuth, getCurrentRole) === "admin"
 
   return (
     <TooltipProvider>

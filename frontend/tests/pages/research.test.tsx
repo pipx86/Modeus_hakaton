@@ -186,7 +186,7 @@ describe("Research", () => {
     expect(screen.queryByText("Добавить источник")).not.toBeInTheDocument()
   })
 
-  it("пустое дерево показывает подсказку ожидания на вкладке «Дерево»", async () => {
+  it("после завершения пустое дерево объясняет, как повторить обработку", async () => {
     stubRun({ tree: [] })
 
     renderPage()
@@ -200,7 +200,8 @@ describe("Research", () => {
       screen.getByRole("tab", { name: "Дерево" }).focus()
     })
 
-    expect(await screen.findByText("Дерево ещё не построено")).toBeInTheDocument()
+    expect(await screen.findByText("Дерево не построено")).toBeInTheDocument()
+    expect(screen.getByText(/Проверьте, что модель для анализа настроена/)).toBeInTheDocument()
   })
 
   it("берёт health из ответа /tree без отдельного /insights", async () => {

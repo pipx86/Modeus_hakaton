@@ -79,7 +79,8 @@ Open <http://localhost:8083> in a browser for the frontend.
 PowerShell equivalent:
 
 ```powershell
-Copy-Item .env.example .env -ErrorAction SilentlyContinue
+if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
+# Set a random JWT_SECRET in .env or .secrets/llm.env before starting.
 docker compose --profile server up -d --build server web-server
 curl.exe -fsS http://127.0.0.1:8083/api/v1/health
 ```
@@ -214,10 +215,11 @@ The same two commands are used by the CI `db-integration` job (`goose ... up` an
 
 ### Migrating an existing database
 
-The migration services point at the compose `postgres` service by default. To
-run migrations and the backend against another PostgreSQL, set
-`SERVER_DATABASE_URL` (it must be reachable **from the container**; a host
-`localhost` is the container itself):
+By default, both migration services and the backend use the compose
+`postgres` service with `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`.
+Set those variables before creating the Postgres volume. For an external
+database, set a complete `SERVER_DATABASE_URL` with its user, password, host
+and database. The host must be reachable **from the container**.
 
 ```bash
 # PostgreSQL on the Docker host (Docker Desktop / Linux with host-gateway):
@@ -434,7 +436,7 @@ config is secret-free.
 | `server` exits with `база не подготовлена: примените основные миграции...` | Migrations are missing/older than the code: `docker compose --profile server run --rm migrate up`, then restart `server`. |
 | `migrate` / `migrate-vector` exits non-zero | Check `docker compose --profile server logs migrate migrate-vector`; fix the DSN/DB and re-run. The backend correctly refuses to start in this case. |
 | `server` unhealthy / no HTTP | `docker compose --profile server logs server`; the startup order is Postgres healthy -> `migrate` exit 0 -> `migrate-vector` exit 0 -> `server`. |
-| `web-server` healthy but `/api/...` returns 502 | nginx cannot reach `server` yet or it crashed: `docker compose --profile server ps` / `logs server`. nginx `proxy_pass http://server:8080` requires the `server` container on the same compose network. |
+| `web-server` healthy but `/api/...` returns 502 | nginx cannot reach `server` yet or it crashed: `docker compose --profile server ps` / `logs server`. nginx resolves `server:8080` through Docker DNS and refreshes the address after the container is recreated. |
 | SPA route 404 after refresh | The image was built with an old nginx config: rebuild `web-server` (`docker compose --profile server build web-server`). The `try_files $uri $uri/ /index.html` fallback is baked into the image. |
 | `web` image build fails at `npm ci` | Registry/network problem in the Docker build. Reproduce with `cd frontend && npm ci && npm run build`; CI `frontend` job runs exactly these steps. |
 | Frontend loads but API calls fail | Check the browser network tab: calls must be relative `/api/v1/...` through port 8083. A build with a hard-coded `VITE_API_URL` pointing at the wrong origin breaks the same-origin setup. |

@@ -3,6 +3,8 @@ import {
   clearToken,
   decodeToken,
   getStoredToken,
+  getCurrentRole,
+  subscribeAuth,
   getValidToken,
   isTokenExpired,
   storeToken,
@@ -48,6 +50,17 @@ describe("локальная JWT-сессия", () => {
     clearToken()
     expect(getStoredToken()).toBeNull()
     expect(getValidToken()).toBeNull()
+  })
+
+  it("уведомляет интерфейс о входе и выходе на той же странице", () => {
+    const roles: (string | null)[] = []
+    const unsubscribe = subscribeAuth(() => roles.push(getCurrentRole()))
+    storeToken(makeToken({role: "admin", exp: 4102444800}))
+    clearToken()
+    unsubscribe()
+    clearToken()
+
+    expect(roles).toEqual(["admin", null])
   })
 
   it("не отдаёт просроченный токен как валидный", () => {

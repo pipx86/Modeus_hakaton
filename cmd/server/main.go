@@ -189,6 +189,8 @@ func run(ctx context.Context, c config) error {
 	chatService.SetSessionStore(store.NewChatSessionStore(pool))
 	if analystClient != nil {
 		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
+	} else {
+		chatService.SetFinalizer(unavailableChatTree)
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
@@ -272,6 +274,10 @@ func run(ctx context.Context, c config) error {
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
+func unavailableChatTree(context.Context, string, string, domain.InterviewSession) (domain.RunStatus, error) {
+	return domain.RunFailed, errors.New("построение дерева требует настроенного LLM-аналитика")
+}
+
 func main() {
 	c, err := loadConfig()
 	if err != nil {

@@ -3435,7 +3435,7 @@
                   },
                   "transcript": {
                     "type": "string",
-                    "description": "Optional interview transcript for a batch run. Chat runs ignore it."
+                    "description": "Optional interview transcript for a batch run. Chat runs ignore it. Batch runs with a transcript require a configured LLM analyst."
                   }
                 }
               },
@@ -5029,7 +5029,7 @@
           "runs"
         ],
         "summary": "Stream run progress (SSE)",
-        "description": "`text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`, `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously delivered events are skipped, and the stream closes when the run reaches done or failed.",
+        "description": "`text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`, `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously delivered events are skipped, and the stream closes when the run reaches done or failed. Access is limited to the owner and administrators for runs with an owner.",
         "operationId": "streamRunEvents",
         "parameters": [
           {
@@ -5059,6 +5059,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -5074,7 +5077,7 @@
           "chat"
         ],
         "summary": "List chat messages of a run",
-        "description": "Returns the interview chat history, oldest first. Available while the chat service is configured.",
+        "description": "Returns the interview chat history, oldest first. Available to the owner and administrators for runs with an owner.",
         "operationId": "listMessages",
         "parameters": [
           {
@@ -5097,6 +5100,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "description": "The run has no chat session.",
@@ -5136,7 +5142,7 @@
           "chat"
         ],
         "summary": "Send a user message to the interviewer",
-        "description": "Records the respondent answer and schedules the next question. user role cannot post messages.",
+        "description": "Records the respondent answer and schedules the next question. Only the owner or an administrator may answer a run with an owner.",
         "operationId": "sendMessage",
         "parameters": [
           {
@@ -5952,7 +5958,7 @@
           "auth"
         ],
         "summary": "Register a user",
-        "description": "Creates an account with email and password. The first registered user becomes admin, all following users get the user role. Returns a 24-hour JWT.",
+        "description": "Creates an account with email and password. The first registered user becomes admin, all following users get the user role. Returns a 24-hour JWT. Passwords must contain at least 8 characters and occupy at most 72 UTF-8 bytes.",
         "operationId": "registerUser",
         "requestBody": {
           "required": true,
@@ -5990,6 +5996,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
@@ -6031,6 +6040,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
@@ -7496,7 +7508,8 @@
           "password": {
             "type": "string",
             "minLength": 8,
-            "maxLength": 200
+            "maxLength": 72,
+            "description": "At most 72 UTF-8 bytes, including multibyte characters."
           }
         }
       },

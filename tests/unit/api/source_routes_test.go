@@ -27,24 +27,24 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 		return pgxmock.NewRows([]string{"id", "type", "title", "content", "source_url", "created_at"}).
 			AddRow(dbSource, domain.SourceStandard, "Документ", "Материал", "", &when)
 	}
-	pool.ExpectQuery("FROM sources ORDER BY").WillReturnRows(src())
+	pool.ExpectQuery("FROM sources s WHERE").WithArgs("transcript-test", false).WillReturnRows(src())
 	resp := callAPI(h, http.MethodGet, "/api/v1/sources", user, nil)
 	var sources []domain.Source
 	if err := json.Unmarshal(resp.Body.Bytes(), &sources); resp.Code != 200 || err != nil ||
 		len(sources) != 1 || sources[0].ID != dbSource || !sources[0].CreatedAt.Equal(when) {
 		t.Fatalf("список источников: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
-	pool.ExpectQuery("FROM sources WHERE id=").WithArgs(dbSource).WillReturnRows(src())
+	pool.ExpectQuery("FROM sources s WHERE s.id=").WithArgs("transcript-test", false, dbSource).WillReturnRows(src())
 	resp = callAPI(h, http.MethodGet, "/api/v1/sources/"+dbSource, user, nil)
 	var source domain.Source
 	if err := json.Unmarshal(resp.Body.Bytes(), &source); resp.Code != 200 || err != nil || source.Content != "Материал" {
 		t.Fatalf("источник: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
-	pool.ExpectQuery("FROM sources WHERE id=").WithArgs(dbSource).WillReturnError(pgx.ErrNoRows)
+	pool.ExpectQuery("FROM sources s WHERE s.id=").WithArgs("transcript-test", false, dbSource).WillReturnError(pgx.ErrNoRows)
 	if resp = callAPI(h, http.MethodGet, "/api/v1/sources/"+dbSource, user, nil); resp.Code != 404 {
 		t.Fatalf("отсутствующий источник: %d %s", resp.Code, resp.Body.String())
 	}
-	pool.ExpectQuery("FROM sources ORDER BY").WillReturnError(errTestDB)
+	pool.ExpectQuery("FROM sources s WHERE").WithArgs("transcript-test", false).WillReturnError(errTestDB)
 	if resp = callAPI(h, http.MethodGet, "/api/v1/sources", user, nil); resp.Code != 500 {
 		t.Fatalf("ошибка выдачи источников: %d %s", resp.Code, resp.Body.String())
 	}

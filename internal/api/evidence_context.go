@@ -658,6 +658,9 @@ func (s *Server) handleEvidenceContext(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "контекст подтверждения не поддерживается хранилищем")
 		return
 	}
+	if !s.allowInterviewAccess(w, r, runID) {
+		return
+	}
 	evidence, err := reader.getRunEvidenceContext(r.Context(), runID, evidenceID)
 	if errors.Is(err, ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "подтверждение не найдено")

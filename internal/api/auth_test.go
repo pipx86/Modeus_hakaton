@@ -92,3 +92,31 @@ func TestRegisterValidationAndDuplicate(t *testing.T) {
 		t.Fatalf("duplicate: %d %s", second.Code, second.Body.String())
 	}
 }
+
+func TestRegistrationBcryptPasswordLimit(t *testing.T) {
+	auth.EnsureTestSecret()
+	handler := NewServer(newMemStore()).Routes()
+	for _, tc := range []struct {
+		name   string
+		value  string
+		status int
+	}{
+		{"72 bytes", strings.Repeat("я", 36), http.StatusCreated},
+		{"73 ASCII bytes", strings.Repeat("x", 73), http.StatusBadRequest},
+		{"74 UTF-8 bytes", strings.Repeat("я", 37), http.StatusBadRequest},
+		{"7 Unicode characters", strings.Repeat("я", 7), http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request, err := json.Marshal(registerRequest{
+				Email: "limit@example.invalid", DisplayName: "Тест", Password: tc.value,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := authRequest(t, handler, "/api/v1/auth/register", string(request))
+			if response.Code != tc.status {
+				t.Fatalf("status = %d, want %d", response.Code, tc.status)
+			}
+		})
+	}
+}

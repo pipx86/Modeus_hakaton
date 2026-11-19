@@ -22,13 +22,16 @@ func (s *Server) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	runID := r.PathValue("id")
+	if !s.allowInterviewAccess(w, r, runID) {
+		return
+	}
 	messages, err := s.chat.Messages(runID)
 	if errors.Is(err, chat.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "chat session not found")
 		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось прочитать интервью")
 		return
 	}
 	writeJSON(w, http.StatusOK, messages)
@@ -47,7 +50,11 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
 		return
 	}
-	message, err := s.chat.Post(r.PathValue("id"), req.Content)
+	runID := r.PathValue("id")
+	if !s.allowInterviewAccess(w, r, runID) {
+		return
+	}
+	message, err := s.chat.Post(runID, req.Content)
 	switch {
 	case errors.Is(err, chat.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "chat session not found")
@@ -68,7 +75,7 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		// retry after the agent_message event arrives.
 		writeErr(w, http.StatusConflict, "CHAT_CONFLICT", "интервьюер готовит следующий вопрос; повторите отправку после его появления")
 	case err != nil:
-		writeErr(w, http.StatusConflict, "CHAT_CONFLICT", err.Error())
+		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить ответ")
 	default:
 		writeJSON(w, http.StatusCreated, message)
 	}

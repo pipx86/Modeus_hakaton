@@ -3,12 +3,23 @@
  * @description Работа с локальной сессией по JWT: декодирование payload,
  * проверка срока действия и хранение токена в localStorage.
  *
- * Бэкенд не имеет эндпоинтов регистрации/логина: токен выдаётся администратором
- * (`go run ./cmd/local-token`), а фронтенд только принимает его и использует
- * в заголовке Authorization.
+ * Токен выдаёт API при регистрации или входе. Фронтенд передаёт его в Authorization.
  */
 
 const STORAGE_KEY = "modeus.jwt"
+const AUTH_CHANGED = "modeus:auth-changed"
+
+export function subscribeAuth(listener: () => void) {
+  const storageChanged = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === null) listener()
+  }
+  window.addEventListener(AUTH_CHANGED, listener)
+  window.addEventListener("storage", storageChanged)
+  return () => {
+    window.removeEventListener(AUTH_CHANGED, listener)
+    window.removeEventListener("storage", storageChanged)
+  }
+}
 
 export interface TokenPayload {
   sub?: string
@@ -56,10 +67,12 @@ export function getValidToken(): string | null {
 
 export function storeToken(token: string) {
   window.localStorage.setItem(STORAGE_KEY, token.trim())
+  window.dispatchEvent(new Event(AUTH_CHANGED))
 }
 
 export function clearToken() {
   window.localStorage.removeItem(STORAGE_KEY)
+  window.dispatchEvent(new Event(AUTH_CHANGED))
 }
 
 /** Роль текущей сессии или null, если токена нет/он просрочен. */

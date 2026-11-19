@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -16,8 +17,7 @@ var ErrEmailTaken = errors.New("EMAIL_TAKEN")
 // authUserStore — операции с учётными записями, нужные регистрации/логину.
 // Store не расширяем, чтобы не ломать существующие in-memory фейки.
 type authUserStore interface {
-	CountUsers(ctx context.Context) (int, error)
-	CreateUser(ctx context.Context, email, displayName, passwordHash, role string) (*domain.User, error)
+	RegisterUser(ctx context.Context, email, displayName, passwordHash string) (*domain.User, error)
 	UserByEmail(ctx context.Context, email string) (*domain.User, error)
 	ListUsers(ctx context.Context) ([]domain.User, error)
 }
@@ -25,25 +25,34 @@ type authUserStore interface {
 var _ authUserStore = (*PGStore)(nil)
 var _ authUserStore = (*memStore)(nil)
 
-func (p *PGStore) CountUsers(_ context.Context) (int, error) {
-	ctx, cancel := operation()
-	defer cancel()
-	var count int
-	if err := p.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE password_hash <> ''`).Scan(&count); err != nil {
-		return 0, translate(err)
+func (p *PGStore) RegisterUser(ctx context.Context, email, displayName, passwordHash string) (*domain.User, error) {
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return count, nil
-}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, `SET TRANSACTION ISOLATION LEVEL READ COMMITTED`); err != nil {
+		return nil, err
+	}
+	// Параллельные регистрации получают роль последовательно, включая запуск нескольких экземпляров API.
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('modeus.auth.register'))`); err != nil {
+		return nil, err
+	}
 
-func (p *PGStore) CreateUser(_ context.Context, email, displayName, passwordHash, role string) (*domain.User, error) {
-	ctx, cancel := operation()
-	defer cancel()
-	var user domain.User
-	err := p.Pool.QueryRow(ctx, `
+	role := auth.RoleUser
+	var hasRegisteredUsers bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE password_hash <> '')`).Scan(&hasRegisteredUsers); err != nil {
+		return nil, err
+	}
+	if !hasRegisteredUsers {
+		role = auth.RoleAdmin
+	}
+	user := domain.User{Role: string(role)}
+	err = tx.QueryRow(ctx, `
 		INSERT INTO users (email, display_name, role_id, password_hash)
 		SELECT $1, $2, r.id, $3 FROM roles r WHERE r.code = $4
 		RETURNING id::text, email, display_name`,
-		email, displayName, passwordHash, role,
+		email, displayName, passwordHash, string(role),
 	).Scan(&user.ID, &user.Email, &user.DisplayName)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -52,7 +61,9 @@ func (p *PGStore) CreateUser(_ context.Context, email, displayName, passwordHash
 		}
 		return nil, translate(err)
 	}
-	user.Role = role
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	return &user, nil
 }
 
@@ -113,13 +124,7 @@ func (m *memStore) ListUsers(_ context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
-func (m *memStore) CountUsers(_ context.Context) (int, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.users), nil
-}
-
-func (m *memStore) CreateUser(_ context.Context, email, displayName, passwordHash, role string) (*domain.User, error) {
+func (m *memStore) RegisterUser(_ context.Context, email, displayName, passwordHash string) (*domain.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, existing := range m.users {
@@ -127,12 +132,16 @@ func (m *memStore) CreateUser(_ context.Context, email, displayName, passwordHas
 			return nil, ErrEmailTaken
 		}
 	}
+	role := auth.RoleUser
+	if len(m.users) == 0 {
+		role = auth.RoleAdmin
+	}
 	m.seq++
 	user := domain.User{
 		ID:           fmt.Sprintf("user-%d", m.seq),
 		Email:        email,
 		DisplayName:  displayName,
-		Role:         role,
+		Role:         string(role),
 		PasswordHash: passwordHash,
 	}
 	m.users[user.ID] = user

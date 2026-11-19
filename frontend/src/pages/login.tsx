@@ -93,8 +93,12 @@ export function Login() {
       setError("Пароли не совпадают")
       return
     }
-    if (password.length < 8) {
+    if (mode === "register" && Array.from(password).length < 8) {
       setError("Пароль должен содержать минимум 8 символов")
+      return
+    }
+    if (mode === "register" && new TextEncoder().encode(password).length > 72) {
+      setError("Пароль должен занимать не более 72 байт")
       return
     }
     setSubmitting(true)

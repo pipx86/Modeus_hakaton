@@ -2100,7 +2100,8 @@ paths:
                 transcript:
                   type: string
                   description: Optional interview transcript for a batch run. Chat
-                    runs ignore it.
+                    runs ignore it. Batch runs with a transcript require a configured
+                    LLM analyst.
             example:
               profession: Аналитик данных
               type: batch
@@ -3300,7 +3301,8 @@ paths:
         `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and
         `run_status` events. Heartbeats are sent as `event: heartbeat`. The client
         may reconnect with `Last-Event-ID`; previously delivered events are skipped,
-        and the stream closes when the run reaches done or failed.'
+        and the stream closes when the run reaches done or failed. Access is limited
+        to the owner and administrators for runs with an owner.'
       operationId: streamRunEvents
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3320,6 +3322,8 @@ paths:
                 type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -3329,8 +3333,8 @@ paths:
       tags:
       - chat
       summary: List chat messages of a run
-      description: Returns the interview chat history, oldest first. Available while
-        the chat service is configured.
+      description: Returns the interview chat history, oldest first. Available to
+        the owner and administrators for runs with an owner.
       operationId: listMessages
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3345,6 +3349,8 @@ paths:
                   $ref: '#/components/schemas/ChatMessage'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: The run has no chat session.
           content:
@@ -3370,7 +3376,7 @@ paths:
       - chat
       summary: Send a user message to the interviewer
       description: Records the respondent answer and schedules the next question.
-        user role cannot post messages.
+        Only the owner or an administrator may answer a run with an owner.
       operationId: sendMessage
       parameters:
       - $ref: '#/components/parameters/RunId'
@@ -3928,7 +3934,8 @@ paths:
       summary: Register a user
       description: Creates an account with email and password. The first registered
         user becomes admin, all following users get the user role. Returns a 24-hour
-        JWT.
+        JWT. Passwords must contain at least 8 characters and occupy at most 72 UTF-8
+        bytes.
       operationId: registerUser
       requestBody:
         required: true
@@ -3953,6 +3960,8 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /auth/login:
     post:
       tags:
@@ -3979,6 +3988,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /users:
     get:
       tags:
@@ -5060,7 +5071,8 @@ components:
         password:
           type: string
           minLength: 8
-          maxLength: 200
+          maxLength: 72
+          description: At most 72 UTF-8 bytes, including multibyte characters.
     LoginRequest:
       type: object
       required:
