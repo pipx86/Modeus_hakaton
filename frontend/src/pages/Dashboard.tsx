@@ -268,39 +268,33 @@ export function Dashboard() {
 
       {!loading && !error && runs.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-            <Card size="sm" className="h-[88px]">
-              <CardContent className="flex h-full flex-col justify-between gap-1">
-                <p className="text-xs text-muted-foreground">Всего исследований</p>
-                <p className="text-xl font-semibold">{runs.length}</p>
-              </CardContent>
-            </Card>
-            <Card size="sm" className="h-[88px]">
-              <CardContent className="flex h-full flex-col justify-between gap-1">
-                <p className="text-xs text-muted-foreground">Активных</p>
-                <p className="text-xl font-semibold">{active}</p>
-              </CardContent>
-            </Card>
-            <Card size="sm" className="h-[88px]">
-              <CardContent className="flex h-full flex-col justify-between gap-1">
-                <p className="text-xs text-muted-foreground">
+          <Card className="p-0">
+            <CardContent className="grid grid-cols-2 divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">Всего исследований</p>
+                <p className="text-xl font-semibold tabular-nums">{runs.length}</p>
+              </div>
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">Активных</p>
+                <p className="text-xl font-semibold tabular-nums">{active}</p>
+              </div>
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">
                   Успешных{" "}
                   <span className="text-[10px]">
                     {stats.done} из {stats.done + stats.failed}
                   </span>
                 </p>
-                <p className="text-xl font-semibold">
+                <p className="text-xl font-semibold tabular-nums">
                   {stats.successRate === null ? "-" : `${Math.round(stats.successRate)}%`}
                 </p>
-              </CardContent>
-            </Card>
-            <Card size="sm" className="h-[88px]">
-              <CardContent className="flex h-full flex-col justify-between gap-1">
-                <p className="text-xs text-muted-foreground">Средняя длительность</p>
-                <p className="text-xl font-semibold">{formatDuration(stats.average)}</p>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+              <div className="space-y-0.5 px-3 py-3 text-center">
+                <p className="text-[11px] text-muted-foreground">Средняя длительность</p>
+                <p className="text-xl font-semibold tabular-nums">{formatDuration(stats.average)}</p>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-3 lg:grid-cols-3">
             <Card className="lg:col-span-2">
