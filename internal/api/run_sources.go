@@ -211,5 +211,10 @@ func (s *Server) handleAttachRunSource(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if created != nil {
+		// Источник, привязанный к исследованию, тоже должен попадать в
+		// семантический индекс: иначе поиск по run не найдёт его до backfill.
+		s.indexSourceAsync(created.ID)
+	}
 	writeJSON(w, http.StatusCreated, created)
 }

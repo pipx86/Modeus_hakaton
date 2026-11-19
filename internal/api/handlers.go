@@ -39,6 +39,10 @@ type Server struct {
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 	batchPlan    steps.BatchPlan
+	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
+	// nil означает, что автоиндексация не включена (in-memory store, demo API
+	// или явно отключённая настройка SOURCE_AUTO_INDEX).
+	indexSource sourceIndexFunc
 }
 
 func NewServer(store Store) *Server {
@@ -874,6 +878,12 @@ func (s *Server) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		logging.Logger.Error("create_source_internal_error", "title", src.Title, "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 		return
+	}
+	// Индексируем в фоне так же, как загрузку файла: семантический поиск должен
+	// работать для источника, созданного через API, без отдельного вызова
+	// POST /sources/{id}/index.
+	if created != nil {
+		s.indexSourceAsync(created.ID)
 	}
 
 	writeJSON(w, http.StatusCreated, created)
