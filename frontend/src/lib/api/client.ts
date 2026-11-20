@@ -285,52 +285,6 @@ export async function createLearningPlan(profession: string): Promise<LearningPl
   })
 }
 
-export interface GitHubLanguage {
-  name: string
-  repositories: number
-}
-
-export interface GitHubProject {
-  name: string
-  url: string
-  description?: string
-  language?: string
-  topics?: string[]
-  stars: number
-  forks: number
-  updated_at?: string
-}
-
-export interface GitHubAssessment {
-  username: string
-  name?: string
-  profile_url: string
-  avatar_url?: string
-  profession?: string
-  score: number
-  profession_match: number
-  repositories: number
-  original_repositories: number
-  total_stars: number
-  total_forks: number
-  languages: GitHubLanguage[]
-  skills: string[]
-  projects: GitHubProject[]
-  summary: string
-  warnings?: string[]
-  fetched_at: string
-  profession_matched: boolean
-}
-
-/** Читает публичные репозитории GitHub и оценивает профиль специалиста. */
-export async function evaluateGitHub(username: string, profession: string): Promise<GitHubAssessment> {
-  return requestApi<GitHubAssessment>("/github/evaluate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, profession }),
-  })
-}
-
 export interface InterviewProgress {
   asked: number
   total: number

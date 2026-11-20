@@ -14,7 +14,6 @@ import { NewResearch } from "@/pages/NewResearch"
 import { NotFound } from "@/pages/not-found"
 import { Research } from "@/pages/Research"
 import { CompareRuns } from "@/pages/CompareRuns"
-import { GitHubProfile } from "@/pages/GitHubProfile"
 
 function App() {
   return (
@@ -58,16 +57,6 @@ function App() {
                 <RequireAuth>
                   <ErrorBoundary key="compare" variant="inline">
                     <CompareRuns />
-                  </ErrorBoundary>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="github"
-              element={
-                <RequireAuth>
-                  <ErrorBoundary key="github" variant="inline">
-                    <GitHubProfile />
                   </ErrorBoundary>
                 </RequireAuth>
               }

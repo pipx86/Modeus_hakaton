@@ -175,7 +175,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/profile/resume", s.handleImportResume)
 	mux.HandleFunc("POST /api/v1/profile/hh", s.handleImportHHProfile)
 	mux.HandleFunc("POST /api/v1/runs/{id}/attachments", s.handleInterviewAttachment)
-	mux.HandleFunc("POST /api/v1/github/evaluate", s.handleEvaluateGitHub)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
 	mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
