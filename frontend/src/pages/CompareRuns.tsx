@@ -185,15 +185,6 @@ export function CompareRuns() {
                   Экспорт JSON
                 </Button>
               </div>
-              {diff.story && (
-                <p className="rounded-xl bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  {diff.story}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Сопоставлено: по id {diff.match.by_id}, по названию/пути {diff.match.by_title},
-                без пары {diff.match.unmatched}.
-              </p>
               {!diff.same_profession && (
                 <p className="flex items-center gap-2 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm text-warning">
                   <AlertTriangleIcon className="size-4 shrink-0" />

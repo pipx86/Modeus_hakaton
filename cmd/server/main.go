@@ -20,6 +20,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/githubprofile"
 	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/llm/agents"
@@ -219,6 +220,7 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
+	chatService.SetPromptVersionB(os.Getenv("INTERVIEWER_PROMPT_VERSION_B"))
 	chatService.SetSourceContextLoader(newInterviewSourceContext(pgStore, vacancyReader))
 	// Persist the dialog and the interviewer session cursor, so chat history
 	// survives restarts and an active interview resumes instead of hanging.
@@ -233,6 +235,7 @@ func run(ctx context.Context, c config) error {
 		chatService.SetFinalizer(unavailableChatTree)
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
+	app.SetGitHubEvaluator(githubprofile.New(os.Getenv("GITHUB_TOKEN")))
 	app.SetBatchPlan(batchPlan)
 	if learningPlanner != nil {
 		app.SetLearningPlanner(learningPlanner)

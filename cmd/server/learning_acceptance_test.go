@@ -54,8 +54,9 @@ func TestLearningAcceptanceFlow(t *testing.T) {
 	}}
 	finalizer := newHybridFinalizer(store, nil, planner)
 	session := domain.InterviewSession{
-		Questions: []domain.Question{{ID: "q-1", Text: "Что вы уже умеете?"}},
-		Answers:   []domain.Answer{{QuestionID: "q-1", Text: "Знаю Docker, Git и Linux, Kubernetes пока не изучал."}},
+		Questions:      []domain.Question{{ID: "q-1", Text: "Что вы уже умеете?"}},
+		Answers:        []domain.Answer{{QuestionID: "q-1", Text: "Знаю Docker, Git и Linux, Kubernetes пока не изучал."}},
+		ProfileContext: "GitHub @user: навыки Docker, Git, Linux.",
 	}
 	status, err := finalizer(context.Background(), "run-learning", "DevOps-инженер", session)
 	if err != nil {
@@ -64,8 +65,8 @@ func TestLearningAcceptanceFlow(t *testing.T) {
 	if status != domain.RunDone || store.stage != domain.StageDone {
 		t.Fatalf("status=%s stage=%s, want done", status, store.stage)
 	}
-	if !strings.Contains(planner.transcript, "Docker") {
-		t.Fatalf("planner did not receive interview answers: %q", planner.transcript)
+	if !strings.Contains(planner.transcript, "Docker") || !strings.Contains(planner.transcript, "GitHub @user") {
+		t.Fatalf("planner did not receive interview answers and GitHub context: %q", planner.transcript)
 	}
 	if store.plan.Profession != "DevOps-инженер" || len(store.plan.Stages) != 1 {
 		t.Fatalf("plan was not saved: %+v", store.plan)

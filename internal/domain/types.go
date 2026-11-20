@@ -291,6 +291,10 @@ type Answer struct {
 	QuestionID string `json:"question_id"`
 	Text       string `json:"text"`
 	Vague      bool   `json:"vague,omitempty"`
+	// Quality is a deterministic 0-100 score of how specific and verifiable
+	// the answer is. It guides the next question and is shown to the user.
+	Quality      int      `json:"quality,omitempty"`
+	QualityNotes []string `json:"quality_notes,omitempty"`
 }
 
 // SessionStatus is the lifecycle state of an interview session.
@@ -310,10 +314,17 @@ type InterviewSession struct {
 	Respondent Respondent    `json:"respondent"`
 	Profession string        `json:"profession,omitempty"`
 	Status     SessionStatus `json:"status"`
-	Questions  []Question    `json:"questions,omitempty"`
-	Answers    []Answer      `json:"answers,omitempty"`
-	StartedAt  *time.Time    `json:"started_at,omitempty"`
-	FinishedAt *time.Time    `json:"finished_at,omitempty"`
+	// ProfileContext is optional public GitHub data used to ask better
+	// questions and to personalise a learning plan. It is not interview
+	// evidence and must not be quoted as an answer.
+	ProfileContext string   `json:"profile_context,omitempty"`
+	ProfileSkills  []string `json:"profile_skills,omitempty"`
+	// Contradictions lists claims that conflict with the public GitHub profile.
+	Contradictions []string   `json:"contradictions,omitempty"`
+	Questions      []Question `json:"questions,omitempty"`
+	Answers        []Answer   `json:"answers,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
 }
 
 // ConflictValue is one competing value for a node field.

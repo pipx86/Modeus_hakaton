@@ -200,9 +200,10 @@ export class ApiRequestError extends Error {
  * @param init Дополнительные опции fetch (метод, тело).
  */
 async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" }
+  const headers = new Headers(init.headers)
+  headers.set("Accept", "application/json")
   const token = getValidToken() ?? apiToken
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (token) headers.set("Authorization", `Bearer ${token}`)
 
   let response: Response
   try {
@@ -281,6 +282,157 @@ export async function createLearningPlan(profession: string): Promise<LearningPl
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ profession }),
+  })
+}
+
+export interface InterviewProgress {
+  asked: number
+  total: number
+  remaining: number
+  average_quality: number
+  last_quality: number
+  covered_topics: string[]
+  uncovered_topics: string[]
+  contradictions?: string[]
+}
+
+/** Возвращает живой прогресс активного интервью. */
+export async function getInterviewProgress(runId: string): Promise<InterviewProgress> {
+  return requestApi<InterviewProgress>(`/runs/${encodeURIComponent(runId)}/interview-progress`)
+}
+
+export interface InterviewABVariant {
+  prompt_version: string
+  sessions: number
+  completed: number
+  questions: number
+  answers: number
+  average_quality: number
+  completion_rate: number
+}
+
+/** Сравнение основной и B-версии промпта интервьюера. */
+export async function getInterviewABStats(): Promise<{ variants: InterviewABVariant[] }> {
+  return requestApi<{ variants: InterviewABVariant[] }>("/interview/ab-stats")
+}
+
+export interface SkillTrend {
+  skill: string
+  current_frequency?: number
+  predicted_change_pct?: number
+  confidence?: number
+  trend_direction?: string
+  method?: string
+}
+
+export interface SkillTrendsResponse {
+  series: string
+  direction: string
+  months: number
+  total: number
+  forecasts: SkillTrend[]
+}
+
+export async function getSkillTrends(direction: "growing" | "declining", limit = 15): Promise<SkillTrendsResponse> {
+  return requestApi<SkillTrendsResponse>(`/forecast/top?direction=${direction}&n=${limit}`)
+}
+
+export interface RegressionCoefficient {
+  name: string
+  estimate: number
+  std_error: number
+  t_stat: number
+}
+
+export interface RegressionSkill {
+  skill: string
+  samples: number
+  r2: number
+  intercept: number
+  coefficients: RegressionCoefficient[]
+}
+
+export interface RegressionResponse {
+  target: string
+  description: string
+  samples: number
+  skills: RegressionSkill[]
+}
+
+export async function getSkillRegression(skill?: string): Promise<RegressionResponse> {
+  const query = skill ? `?skill=${encodeURIComponent(skill)}` : ""
+  return requestApi<RegressionResponse>(`/forecast/regression${query}`)
+}
+
+export interface TreeForecastNode {
+  id: string
+  title: string
+  type: string
+  status: "grow" | "decline" | "stable"
+  confidence: number
+  reason: string
+  trend_pct?: number
+}
+
+export interface TreeForecastNewNode {
+  title: string
+  type: string
+  reason: string
+  confidence: number
+}
+
+export interface TreeForecastResponse {
+  profession: string
+  run_id?: string
+  horizon_months: number
+  scenario: boolean
+  generated_at: string
+  nodes: TreeForecastNode[]
+  new_nodes: TreeForecastNewNode[]
+  summary: string
+}
+
+export async function getTreeForecast(profession: string): Promise<TreeForecastResponse> {
+  return requestApi<TreeForecastResponse>(`/forecast/tree?profession=${encodeURIComponent(profession)}`)
+}
+
+export interface ProfileImport {
+  source: string
+  filename?: string
+  url?: string
+  title?: string
+  text: string
+}
+
+/** Извлекает текст резюме PDF/DOCX для персонализации интервью. */
+export async function importResume(file: File): Promise<ProfileImport> {
+  const body = new FormData()
+  body.append("file", file)
+  return requestApi<ProfileImport>("/profile/resume", { method: "POST", body })
+}
+
+/** Загружает публичный профиль HH по ссылке на резюме. */
+export async function importHHProfile(url: string): Promise<ProfileImport> {
+  return requestApi<ProfileImport>("/profile/hh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  })
+}
+
+/** Прикрепляет файл-доказательство к текущему ответу интервью. */
+export async function attachInterviewEvidence(runId: string, file: File): Promise<void> {
+  const body = new FormData()
+  body.append("file", file)
+  await requestApi(`/runs/${encodeURIComponent(runId)}/attachments`, { method: "POST", body })
+}
+
+/** Прикрепляет ссылку-доказательство к текущему ответу интервью. */
+export async function attachInterviewLink(runId: string, url: string, title: string): Promise<void> {
+  await requestApi(`/runs/${encodeURIComponent(runId)}/attachments/link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, title }),
   })
 }
 

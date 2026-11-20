@@ -2518,6 +2518,14 @@ export interface operations {
                     type?: "chat" | "batch" | "learning";
                     /** @description Optional interview transcript for a batch run. Chat runs ignore it. */
                     transcript?: string;
+                    /** @description Optional public GitHub username; adds project skills to a chat or learning interview. */
+                    github_username?: string;
+                    /** @description Explicit consent for using the public GitHub profile. */
+                    github_consent?: boolean;
+                    /** @description Optional resume or HH profile text used to personalise the interview. */
+                    profile_context?: string;
+                    /** @description Public GitHub repositories that must be excluded from the interview profile. */
+                    github_exclude?: string[];
                 };
             };
         };

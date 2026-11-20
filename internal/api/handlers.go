@@ -5,6 +5,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/githubprofile"
 	"activity-descriptor/internal/idempotency"
 	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
@@ -29,6 +30,16 @@ type chatStarter interface {
 	Subscribe(runID string) (<-chan chat.Event, func(), error)
 }
 
+// profileContextChat is an optional chat capability: the API supplies public
+// GitHub data before starting a chat or learning interview.
+type profileContextChat interface {
+	SetProfileContext(runID, context string)
+}
+
+type profileSkillsChat interface {
+	SetProfileSkills(runID string, skills []string)
+}
+
 type Server struct {
 	importFiles  ingestion.ImportFiles
 	store        Store
@@ -41,6 +52,7 @@ type Server struct {
 	batchPlan    steps.BatchPlan
 	deferredAPI  bool
 	learningPlan LearningPlanner
+	github       githubEvaluator
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
 	// или явно отключённая настройка SOURCE_AUTO_INDEX).
@@ -150,6 +162,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
+	mux.HandleFunc("GET /api/v1/runs/{id}/interview-progress", s.handleInterviewProgress)
+	mux.HandleFunc("POST /api/v1/profile/resume", s.handleImportResume)
+	mux.HandleFunc("POST /api/v1/profile/hh", s.handleImportHHProfile)
+	mux.HandleFunc("POST /api/v1/runs/{id}/attachments", s.handleInterviewAttachment)
+	mux.HandleFunc("POST /api/v1/runs/{id}/attachments/link", s.handleInterviewLink)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/admin/sources/quality", s.handleSourceQuality)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
@@ -162,6 +179,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/evidences", s.handleCreateEvidence)
 
 	if s.deferredAPI {
+		mux.HandleFunc("GET /api/v1/interview/ab-stats", s.handleInterviewABStats)
+		mux.HandleFunc("GET /api/v1/forecast/regression", s.handleRegression)
+		mux.HandleFunc("GET /api/v1/forecast/tree", s.handleTreeForecast)
 		mux.HandleFunc("GET /api/v1/forecast/observed", s.handleObservedSkills)
 		mux.HandleFunc("GET /api/v1/forecast/all", s.handleAllSkillForecasts)
 		mux.HandleFunc("GET /api/v1/forecast/top", s.handleTopSkillForecasts)
@@ -201,6 +221,17 @@ type createRunRequest struct {
 	// tree goes through the same synthesizer/review stages as the vacancy
 	// pipeline. Chat runs ignore it (the chat service collects the dialog).
 	Transcript string `json:"transcript,omitempty"`
+	// GitHubUsername optionally adds public repositories to a chat or learning
+	// interview. The interviewer uses the skills to ask better questions.
+	GitHubUsername string `json:"github_username,omitempty"`
+	// GitHubConsent is an explicit opt-in for using the public GitHub profile.
+	// Nil keeps backward-compatible behaviour (allowed when a username is set).
+	GitHubConsent *bool `json:"github_consent,omitempty"`
+	// ProfileContext is optional resume or HH profile text used to personalise
+	// the interview. It is reference data, not interview evidence.
+	ProfileContext string `json:"profile_context,omitempty"`
+	// GitHubExclude lists public repository names that must not be used.
+	GitHubExclude []string `json:"github_exclude,omitempty"`
 }
 
 type errorBody struct {
@@ -238,6 +269,24 @@ func mapStoreError(w http.ResponseWriter, err error) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (s *Server) setProfileContext(runID, context string) {
+	if strings.TrimSpace(context) == "" || s.chat == nil {
+		return
+	}
+	if setter, ok := s.chat.(profileContextChat); ok {
+		setter.SetProfileContext(runID, context)
+	}
+}
+
+func (s *Server) setProfileSkills(runID string, skills []string) {
+	if len(skills) == 0 || s.chat == nil {
+		return
+	}
+	if setter, ok := s.chat.(profileSkillsChat); ok {
+		setter.SetProfileSkills(runID, skills)
 	}
 }
 
@@ -308,6 +357,46 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	githubContext := ""
+	githubSkills := []string(nil)
+	githubUsername := strings.TrimSpace(req.GitHubUsername)
+	githubAllowed := req.GitHubConsent == nil || *req.GitHubConsent
+	if githubUsername != "" && githubAllowed && (runType == domain.RunTypeChat || runType == domain.RunTypeLearning) {
+		if s.github == nil {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "оценка GitHub не настроена")
+			return
+		}
+		assessment, githubErr := s.github.Evaluate(r.Context(), githubUsername, req.Profession)
+		if githubErr != nil {
+			switch {
+			case errors.Is(githubErr, githubprofile.ErrNotFound):
+				writeErr(w, http.StatusNotFound, "NOT_FOUND", "пользователь GitHub не найден")
+			case errors.Is(githubErr, githubprofile.ErrRateLimited):
+				writeErr(w, http.StatusTooManyRequests, "RATE_LIMITED", "лимит GitHub исчерпан, попробуйте позже")
+			case strings.Contains(githubErr.Error(), "invalid username"):
+				writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "некорректное имя пользователя GitHub")
+			default:
+				writeErr(w, http.StatusBadGateway, "GITHUB_UNAVAILABLE", "не удалось получить данные GitHub")
+			}
+			return
+		}
+		githubContext = githubprofile.Context(assessment)
+		githubSkills = assessment.Skills
+		if len(req.GitHubExclude) > 0 {
+			filtered := githubprofile.ExcludeProjects(assessment, req.GitHubExclude)
+			githubContext = githubprofile.Context(filtered)
+			githubSkills = filtered.Skills
+		}
+	}
+	if profile := strings.TrimSpace(req.ProfileContext); profile != "" {
+		profile = truncateProfileText(profile, 12000)
+		if githubContext != "" {
+			githubContext = githubContext + "\n\n" + profile
+		} else {
+			githubContext = profile
+		}
+	}
+
 	var run *domain.Run
 	var err error
 	if creator, ok := s.store.(runOwnerCreator); ok {
@@ -349,6 +438,8 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		run.Stage = domain.StageInterview
+		s.setProfileContext(run.ID, githubContext)
+		s.setProfileSkills(run.ID, githubSkills)
 		if err := s.chat.Start(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)
@@ -389,6 +480,8 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		run.Stage = domain.StageInterview
+		s.setProfileContext(run.ID, githubContext)
+		s.setProfileSkills(run.ID, githubSkills)
 		if err := starter.StartLearning(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("learning_chat_start_failed", "run_id", run.ID, "error", err)

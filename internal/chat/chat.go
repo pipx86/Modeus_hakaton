@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"strings"
 	"sync"
@@ -108,16 +109,19 @@ const (
 
 // Service owns one interviewer session per run.
 type Service struct {
-	client        llm.ChatClient
-	finalizer     Finalizer
-	onFinish      func(runID string, status domain.RunStatus)
-	promptVersion string
-	sourceContext SourceContextLoader
+	client         llm.ChatClient
+	finalizer      Finalizer
+	onFinish       func(runID string, status domain.RunStatus)
+	promptVersion  string
+	promptVersionB string
+	sourceContext  SourceContextLoader
 
-	mu           sync.Mutex
-	sessions     map[string]*session
-	store        MessageStore
-	sessionStore SessionStore
+	mu            sync.Mutex
+	sessions      map[string]*session
+	profileData   map[string]string
+	profileSkills map[string][]string
+	store         MessageStore
+	sessionStore  SessionStore
 	// startedAt is the instant this service was created. Startup recovery only
 	// considers runs and sessions that predate it.
 	startedAt time.Time
@@ -151,10 +155,12 @@ func NewService(client llm.ChatClient, onFinish func(string, domain.RunStatus)) 
 		client = UnavailableClient{}
 	}
 	return &Service{
-		client:    client,
-		onFinish:  onFinish,
-		sessions:  make(map[string]*session),
-		startedAt: time.Now().UTC(),
+		client:        client,
+		onFinish:      onFinish,
+		sessions:      make(map[string]*session),
+		profileData:   make(map[string]string),
+		profileSkills: make(map[string][]string),
+		startedAt:     time.Now().UTC(),
 	}
 }
 
@@ -219,6 +225,29 @@ func (s *Service) SetPromptVersion(version string) {
 	s.promptVersion = version
 }
 
+// SetPromptVersionB enables a deterministic A/B split: even run ids use the
+// primary prompt version, odd run ids use version B. Empty B keeps one version.
+func (s *Service) SetPromptVersionB(version string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.promptVersionB = version
+}
+
+func (s *Service) promptVersionFor(runID string) string {
+	s.mu.Lock()
+	primary, variant := s.promptVersion, s.promptVersionB
+	s.mu.Unlock()
+	if variant == "" || len(runID) == 0 {
+		return primary
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(runID))
+	if hash.Sum32()%2 == 0 {
+		return primary
+	}
+	return variant
+}
+
 // SetSourceContextLoader installs a best-effort provider of vacancy/material
 // context for new and restored interviewer sessions.
 func (s *Service) SetSourceContextLoader(loader SourceContextLoader) {
@@ -235,6 +264,50 @@ func (s *Service) sourceContextFor(runID, profession string) string {
 		return ""
 	}
 	return loader(runID, profession)
+}
+
+// SetProfileContext attaches public GitHub data to the next interview started
+// for runID. The API calls it before Start or StartLearning; the context is
+// consumed once and then persisted inside the interviewer snapshot.
+func (s *Service) SetProfileContext(runID, context string) {
+	if strings.TrimSpace(runID) == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.profileData == nil {
+		s.profileData = make(map[string]string)
+	}
+	s.profileData[runID] = strings.TrimSpace(context)
+}
+
+func (s *Service) takeProfileContext(runID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	context := s.profileData[runID]
+	delete(s.profileData, runID)
+	return context
+}
+
+// SetProfileSkills attaches the skills found in the public GitHub profile.
+func (s *Service) SetProfileSkills(runID string, skills []string) {
+	if strings.TrimSpace(runID) == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.profileSkills == nil {
+		s.profileSkills = make(map[string][]string)
+	}
+	s.profileSkills[runID] = append([]string(nil), skills...)
+}
+
+func (s *Service) takeProfileSkills(runID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	skills := s.profileSkills[runID]
+	delete(s.profileSkills, runID)
+	return skills
 }
 
 // newAgent builds the interviewer agent for one session.
@@ -266,9 +339,7 @@ func (s *Service) start(runID, profession string, learning bool) error {
 	if runID == "" {
 		return fmt.Errorf("chat: run id is required")
 	}
-	s.mu.Lock()
-	promptVersion := s.promptVersion
-	s.mu.Unlock()
+	promptVersion := s.promptVersionFor(runID)
 	agent, err := s.newAgent(promptVersion)
 	if err != nil {
 		return err
@@ -283,6 +354,8 @@ func (s *Service) start(runID, profession string, learning bool) error {
 	}
 	interview.SetLearning(learning)
 	interview.SetSourceContext(s.sourceContextFor(runID, profession))
+	interview.SetProfileContext(s.takeProfileContext(runID))
+	interview.SetProfileSkills(s.takeProfileSkills(runID))
 
 	s.mu.Lock()
 	if _, exists := s.sessions[runID]; exists {
@@ -323,6 +396,17 @@ func (s *Service) start(runID, profession string, learning bool) error {
 	s.publish(runID, Event{Type: "agent_thinking"})
 	go s.askNext(sess)
 	return nil
+}
+
+// Progress returns live interview coverage and answer quality.
+func (s *Service) Progress(runID string) (interviewer.Progress, error) {
+	sess, err := s.lookup(runID)
+	if err != nil {
+		return interviewer.Progress{}, err
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.session.Progress(), nil
 }
 
 // Messages returns a copy of the chat history. When the active session is not

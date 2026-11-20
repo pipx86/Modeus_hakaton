@@ -59,6 +59,24 @@ func (s *Session) SetSourceContext(context string) {
 	s.sourceContext = strings.TrimSpace(context)
 }
 
+// SetProfileContext attaches public GitHub project data to the session. It is
+// used to ask better questions and is persisted with the interview snapshot.
+func (s *Session) SetProfileContext(context string) {
+	if s == nil {
+		return
+	}
+	s.state.ProfileContext = strings.TrimSpace(context)
+}
+
+// SetProfileSkills stores the skills confirmed by the public GitHub profile so
+// the interviewer can notice contradictions and ask about them.
+func (s *Session) SetProfileSkills(skills []string) {
+	if s == nil {
+		return
+	}
+	s.state.ProfileSkills = append([]string(nil), skills...)
+}
+
 // NewSession starts an interview session for respondent. id must be unique.
 func NewSession(agentInstance *Agent, id string, respondent domain.Respondent) (*Session, error) {
 	if agentInstance == nil {
@@ -98,7 +116,19 @@ func (s *Session) LastError() error { return s.lastErr }
 // Done reports whether the question plan is exhausted or the model has
 // degraded to the fallback limit.
 func (s *Session) Done() bool {
-	return len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions
+	if len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions {
+		return true
+	}
+	// Adaptive finish: once all profession topics are grounded by answers,
+	// extra questions would only repeat evidence. Keep a small minimum so the
+	// tree still has role/function/task/action context.
+	if len(s.state.Questions) >= 4 && len(s.state.Answers) >= 4 {
+		progress := s.Progress()
+		if len(progress.UncoveredTopics) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Next asks the model for the next question and records it. Model errors are
@@ -114,6 +144,7 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 
 	level := s.plan[len(s.state.Questions)]
 	clarify := s.needsClarification()
+	progress := s.Progress()
 	in := agent.InterviewerInput{
 		SessionID:         s.state.ID,
 		Respondent:        s.state.Respondent,
@@ -124,6 +155,12 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 		NextLevel:         level,
 		NeedClarification: clarify,
 		MaxQuestions:      len(s.plan),
+		ProfileContext:    s.state.ProfileContext,
+		ProfileSkills:     append([]string(nil), s.state.ProfileSkills...),
+		LastQuality:       progress.LastQuality,
+		UncoveredTopics:   progress.UncoveredTopics,
+		Contradictions:    progress.Contradictions,
+		TopicTemplate:     TemplateFor(s.state.Profession).Topics,
 		Learning:          s.learning,
 	}
 
@@ -151,10 +188,26 @@ func (s *Session) Answer(text string) error {
 		return ErrNoOpenQuestion
 	}
 	lastQuestion := s.state.Questions[len(s.state.Questions)-1]
+	quality, notes := ScoreAnswer(text)
+	contradictions := Contradictions(s.state.ProfileSkills, text)
+	for _, skill := range contradictions {
+		found := false
+		for _, existing := range s.state.Contradictions {
+			if existing == skill {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.state.Contradictions = append(s.state.Contradictions, skill)
+		}
+	}
 	s.state.Answers = append(s.state.Answers, domain.Answer{
-		QuestionID: lastQuestion.ID,
-		Text:       text,
-		Vague:      IsVague(text),
+		QuestionID:   lastQuestion.ID,
+		Text:         text,
+		Vague:        IsVague(text),
+		Quality:      quality.Total,
+		QualityNotes: notes,
 	})
 	if s.state.Status == domain.SessionPending {
 		s.state.Status = domain.SessionInProgress

@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
-import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
+import { apiBaseUrl, apiClient, apiToken, getInterviewABStats, type InterviewABVariant, type Run } from "@/lib/api/client"
 import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
 import { scoreSource, scoreTone, type SourceQualityItem } from "@/lib/source-quality"
@@ -149,6 +149,7 @@ export function Admin() {
   const [sources, setSources] = useState<AdminSource[]>([])
   const [sourceQuality, setSourceQuality] = useState<SourceQualityItem[]>([])
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [abVariants, setAbVariants] = useState<InterviewABVariant[]>([])
   const [userRoleSaving, setUserRoleSaving] = useState<string | null>(null)
   const [materialsOpen, setMaterialsOpen] = useState(true)
   const [sourceType, setSourceType] = useState("document")
@@ -196,6 +197,15 @@ export function Admin() {
       )
     } catch {
       setUsers([])
+    }
+  }, [])
+
+  const loadABStats = useCallback(async () => {
+    try {
+      const result = await getInterviewABStats()
+      setAbVariants(result.variants ?? [])
+    } catch {
+      setAbVariants([])
     }
   }, [])
 
@@ -308,6 +318,7 @@ export function Admin() {
       await loadPromptVersions()
       await loadSourceQuality()
       await loadUsers()
+      await loadABStats()
       if (cancelled) return
       if (runsResponse.data) setRuns(runsResponse.data)
       if (sourcesResponse.data) setSources(sourcesResponse.data)
@@ -317,7 +328,7 @@ export function Admin() {
     return () => {
       cancelled = true
     }
-  }, [isAdmin, loadMetrics, loadPromptVersions, loadSourceQuality, loadUsers])
+  }, [isAdmin, loadMetrics, loadPromptVersions, loadSourceQuality, loadUsers, loadABStats])
   useEffect(() => {
     if (!isAdmin) return
     const timer = window.setTimeout(() => {
@@ -694,6 +705,45 @@ export function Admin() {
                           </SelectContent>
                         </Select>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">A/B интервьюера</CardTitle>
+          <CardDescription>
+            Сравнение основной и B-версии промпта по завершённым сессиям и качеству ответов.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {abVariants.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Нет данных: B-версия не включена или сессий ещё нет.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Версия</th>
+                    <th className="py-2 pr-3 font-medium">Сессии</th>
+                    <th className="py-2 pr-3 font-medium">Завершено</th>
+                    <th className="py-2 pr-3 font-medium">Вопросы</th>
+                    <th className="py-2 pr-3 font-medium">Качество</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {abVariants.map((variant) => (
+                    <tr key={variant.prompt_version} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3 font-mono text-xs">{variant.prompt_version}</td>
+                      <td className="py-2 pr-3">{variant.sessions}</td>
+                      <td className="py-2 pr-3">{variant.completion_rate.toFixed(0)}%</td>
+                      <td className="py-2 pr-3">{variant.questions}</td>
+                      <td className="py-2 pr-3">{variant.average_quality.toFixed(0)}/100</td>
                     </tr>
                   ))}
                 </tbody>
