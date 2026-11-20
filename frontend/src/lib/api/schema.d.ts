@@ -2518,6 +2518,8 @@ export interface operations {
                     type?: "chat" | "batch" | "learning";
                     /** @description Optional interview transcript for a batch run. Chat runs ignore it. */
                     transcript?: string;
+                    /** @description Optional public GitHub username; adds project skills to a chat or learning interview. */
+                    github_username?: string;
                 };
             };
         };

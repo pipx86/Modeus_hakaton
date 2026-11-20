@@ -395,3 +395,47 @@ func languageList(languages []Language, limit int) string {
 	}
 	return strings.Join(names, ", ")
 }
+
+// Context builds a compact, prompt-safe description of a GitHub profile. It
+// deliberately contains facts and project names, not model instructions or
+// interview answers.
+func Context(assessment Assessment) string {
+	parts := []string{
+		fmt.Sprintf("GitHub @%s: публичных проектов %d, звёзд %d.", assessment.Username, assessment.OriginalRepos, assessment.TotalStars),
+	}
+	if len(assessment.Languages) > 0 {
+		parts = append(parts, "Языки: "+languageList(assessment.Languages, 6)+".")
+	}
+	if len(assessment.Skills) > 0 {
+		skills := assessment.Skills
+		if len(skills) > 12 {
+			skills = skills[:12]
+		}
+		parts = append(parts, "Навыки и темы: "+strings.Join(skills, ", ")+".")
+	}
+	projects := make([]string, 0, 5)
+	for _, project := range assessment.Projects {
+		if len(projects) >= 5 {
+			break
+		}
+		description := strings.TrimSpace(project.Description)
+		if len([]rune(description)) > 160 {
+			description = string([]rune(description)[:160]) + "..."
+		}
+		line := project.Name
+		if project.Language != "" {
+			line += " (" + project.Language + ")"
+		}
+		if description != "" {
+			line += ": " + description
+		}
+		projects = append(projects, line)
+	}
+	if len(projects) > 0 {
+		parts = append(parts, "Проекты: "+strings.Join(projects, "; ")+".")
+	}
+	if assessment.ProfessionMatched {
+		parts = append(parts, fmt.Sprintf("Совпадение с профессией: %d%%.", assessment.ProfessionMatch))
+	}
+	return strings.Join(parts, " ")
+}

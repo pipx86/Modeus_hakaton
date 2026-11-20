@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
@@ -36,6 +37,10 @@ func newHybridFinalizer(pgStore learningFinalizeStore, treeFinalizer chat.Finali
 		}
 
 		transcript := transcriptFromSession(session)
+		if profile := strings.TrimSpace(session.ProfileContext); profile != "" {
+			transcript = "Публичные проекты GitHub (справочные данные, не цитаты интервью):\n" +
+				profile + "\n\n" + transcript
+		}
 		plan, err := planner.PlanFromTranscript(ctx, profession, transcript)
 		if err != nil {
 			_ = pgStore.SetStage(runID, domain.StageFailed)

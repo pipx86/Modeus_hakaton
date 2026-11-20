@@ -116,6 +116,7 @@ type Service struct {
 
 	mu           sync.Mutex
 	sessions     map[string]*session
+	profileData  map[string]string
 	store        MessageStore
 	sessionStore SessionStore
 	// startedAt is the instant this service was created. Startup recovery only
@@ -151,10 +152,11 @@ func NewService(client llm.ChatClient, onFinish func(string, domain.RunStatus)) 
 		client = UnavailableClient{}
 	}
 	return &Service{
-		client:    client,
-		onFinish:  onFinish,
-		sessions:  make(map[string]*session),
-		startedAt: time.Now().UTC(),
+		client:      client,
+		onFinish:    onFinish,
+		sessions:    make(map[string]*session),
+		profileData: make(map[string]string),
+		startedAt:   time.Now().UTC(),
 	}
 }
 
@@ -237,6 +239,29 @@ func (s *Service) sourceContextFor(runID, profession string) string {
 	return loader(runID, profession)
 }
 
+// SetProfileContext attaches public GitHub data to the next interview started
+// for runID. The API calls it before Start or StartLearning; the context is
+// consumed once and then persisted inside the interviewer snapshot.
+func (s *Service) SetProfileContext(runID, context string) {
+	if strings.TrimSpace(runID) == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.profileData == nil {
+		s.profileData = make(map[string]string)
+	}
+	s.profileData[runID] = strings.TrimSpace(context)
+}
+
+func (s *Service) takeProfileContext(runID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	context := s.profileData[runID]
+	delete(s.profileData, runID)
+	return context
+}
+
 // newAgent builds the interviewer agent for one session.
 func (s *Service) newAgent(version string) (*interviewer.Agent, error) {
 	opts := []interviewer.Option{}
@@ -283,6 +308,7 @@ func (s *Service) start(runID, profession string, learning bool) error {
 	}
 	interview.SetLearning(learning)
 	interview.SetSourceContext(s.sourceContextFor(runID, profession))
+	interview.SetProfileContext(s.takeProfileContext(runID))
 
 	s.mu.Lock()
 	if _, exists := s.sessions[runID]; exists {

@@ -310,10 +310,14 @@ type InterviewSession struct {
 	Respondent Respondent    `json:"respondent"`
 	Profession string        `json:"profession,omitempty"`
 	Status     SessionStatus `json:"status"`
-	Questions  []Question    `json:"questions,omitempty"`
-	Answers    []Answer      `json:"answers,omitempty"`
-	StartedAt  *time.Time    `json:"started_at,omitempty"`
-	FinishedAt *time.Time    `json:"finished_at,omitempty"`
+	// ProfileContext is optional public GitHub data used to ask better
+	// questions and to personalise a learning plan. It is not interview
+	// evidence and must not be quoted as an answer.
+	ProfileContext string     `json:"profile_context,omitempty"`
+	Questions      []Question `json:"questions,omitempty"`
+	Answers        []Answer   `json:"answers,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
 }
 
 // ConflictValue is one competing value for a node field.

@@ -5,6 +5,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/githubprofile"
 	"activity-descriptor/internal/idempotency"
 	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
@@ -27,6 +28,12 @@ type chatStarter interface {
 	Messages(runID string) ([]chat.Message, error)
 	Post(runID, content string) (chat.Message, error)
 	Subscribe(runID string) (<-chan chat.Event, func(), error)
+}
+
+// profileContextChat is an optional chat capability: the API supplies public
+// GitHub data before starting a chat or learning interview.
+type profileContextChat interface {
+	SetProfileContext(runID, context string)
 }
 
 type Server struct {
@@ -198,6 +205,9 @@ type createRunRequest struct {
 	// tree goes through the same synthesizer/review stages as the vacancy
 	// pipeline. Chat runs ignore it (the chat service collects the dialog).
 	Transcript string `json:"transcript,omitempty"`
+	// GitHubUsername optionally adds public repositories to a chat or learning
+	// interview. The interviewer uses the skills to ask better questions.
+	GitHubUsername string `json:"github_username,omitempty"`
 }
 
 type errorBody struct {
@@ -235,6 +245,15 @@ func mapStoreError(w http.ResponseWriter, err error) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (s *Server) setProfileContext(runID, context string) {
+	if strings.TrimSpace(context) == "" || s.chat == nil {
+		return
+	}
+	if setter, ok := s.chat.(profileContextChat); ok {
+		setter.SetProfileContext(runID, context)
 	}
 }
 
@@ -301,6 +320,30 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	githubContext := ""
+	githubUsername := strings.TrimSpace(req.GitHubUsername)
+	if githubUsername != "" && (runType == domain.RunTypeChat || runType == domain.RunTypeLearning) {
+		if s.github == nil {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "оценка GitHub не настроена")
+			return
+		}
+		assessment, githubErr := s.github.Evaluate(r.Context(), githubUsername, req.Profession)
+		if githubErr != nil {
+			switch {
+			case errors.Is(githubErr, githubprofile.ErrNotFound):
+				writeErr(w, http.StatusNotFound, "NOT_FOUND", "пользователь GitHub не найден")
+			case errors.Is(githubErr, githubprofile.ErrRateLimited):
+				writeErr(w, http.StatusTooManyRequests, "RATE_LIMITED", "лимит GitHub исчерпан, попробуйте позже")
+			case strings.Contains(githubErr.Error(), "invalid username"):
+				writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "некорректное имя пользователя GitHub")
+			default:
+				writeErr(w, http.StatusBadGateway, "GITHUB_UNAVAILABLE", "не удалось получить данные GitHub")
+			}
+			return
+		}
+		githubContext = githubprofile.Context(assessment)
+	}
+
 	var run *domain.Run
 	var err error
 	if creator, ok := s.store.(runOwnerCreator); ok {
@@ -342,6 +385,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		run.Stage = domain.StageInterview
+		s.setProfileContext(run.ID, githubContext)
 		if err := s.chat.Start(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)
@@ -382,6 +426,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		run.Stage = domain.StageInterview
+		s.setProfileContext(run.ID, githubContext)
 		if err := starter.StartLearning(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("learning_chat_start_failed", "run_id", run.ID, "error", err)

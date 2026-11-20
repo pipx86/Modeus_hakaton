@@ -60,6 +60,43 @@ func TestServiceStartsAndPosts(t *testing.T) {
 	})
 }
 
+func TestServicePassesGitHubProfileToBothInterviews(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		start func(*Service, string, string) error
+	}{
+		{name: "chat", start: (*Service).Start},
+		{name: "learning", start: (*Service).StartLearning},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewService(fakeInterviewer{}, nil)
+			service.SetProfileContext("run-profile", "GitHub @octocat: Go, PostgreSQL")
+			if err := test.start(service, "run-profile", "Backend-разработчик"); err != nil {
+				t.Fatalf("start: %v", err)
+			}
+			waitFor(t, time.Second, func() bool {
+				service.mu.Lock()
+				session := service.sessions["run-profile"]
+				service.mu.Unlock()
+				if session == nil {
+					return false
+				}
+				session.mu.Lock()
+				defer session.mu.Unlock()
+				return session.session.State().ProfileContext != ""
+			})
+			service.mu.Lock()
+			session := service.sessions["run-profile"]
+			service.mu.Unlock()
+			session.mu.Lock()
+			defer session.mu.Unlock()
+			if got := session.session.State().ProfileContext; got != "GitHub @octocat: Go, PostgreSQL" {
+				t.Fatalf("profile = %q", got)
+			}
+		})
+	}
+}
+
 func TestServiceFallsBackWithoutProvider(t *testing.T) {
 	service := NewService(nil, nil)
 	if err := service.Start("run-2", "Аналитик"); err != nil {

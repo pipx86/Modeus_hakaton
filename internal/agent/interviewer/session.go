@@ -59,6 +59,15 @@ func (s *Session) SetSourceContext(context string) {
 	s.sourceContext = strings.TrimSpace(context)
 }
 
+// SetProfileContext attaches public GitHub project data to the session. It is
+// used to ask better questions and is persisted with the interview snapshot.
+func (s *Session) SetProfileContext(context string) {
+	if s == nil {
+		return
+	}
+	s.state.ProfileContext = strings.TrimSpace(context)
+}
+
 // NewSession starts an interview session for respondent. id must be unique.
 func NewSession(agentInstance *Agent, id string, respondent domain.Respondent) (*Session, error) {
 	if agentInstance == nil {
@@ -124,6 +133,7 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 		NextLevel:         level,
 		NeedClarification: clarify,
 		MaxQuestions:      len(s.plan),
+		ProfileContext:    s.state.ProfileContext,
 		Learning:          s.learning,
 	}
 

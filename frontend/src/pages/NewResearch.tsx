@@ -71,6 +71,7 @@ const PROFESSION_MAX = 120
 export function NewResearch() {
   const navigate = useNavigate()
   const [profession, setProfession] = useState("")
+  const [githubUsername, setGithubUsername] = useState("")
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [estimate, setEstimate] = useState<RunEstimate | null>(null)
@@ -138,7 +139,11 @@ export function NewResearch() {
     try {
       if (learningMode) {
         const { data: run, error: runError } = await apiClient.POST("/runs", {
-          body: { profession: stripControlChars(profession).trim(), type: "learning" },
+          body: {
+            profession: stripControlChars(profession).trim(),
+            type: "learning",
+            github_username: stripControlChars(githubUsername).trim() || undefined,
+          },
         })
         if (runError) {
           setApiError(runError.message)
@@ -150,7 +155,11 @@ export function NewResearch() {
         return
       }
       const { data: run, error: runError } = await apiClient.POST("/runs", {
-        body: { profession: stripControlChars(profession).trim(), type: "chat" },
+        body: {
+          profession: stripControlChars(profession).trim(),
+          type: "chat",
+          github_username: stripControlChars(githubUsername).trim() || undefined,
+        },
       })
       if (runError) {
         setApiError(runError.message)
@@ -278,6 +287,21 @@ export function NewResearch() {
                     {professionError}
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="github-username">GitHub username (необязательно)</Label>
+                <Input
+                  id="github-username"
+                  value={githubUsername}
+                  onChange={(event) => setGithubUsername(event.target.value)}
+                  placeholder="например, octocat"
+                  autoComplete="off"
+                  disabled={submitting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Публичные проекты помогут агенту точнее спросить о ваших навыках. Данные используются только для интервью.
+                </p>
               </div>
 
               <div className="space-y-2">
