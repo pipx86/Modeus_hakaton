@@ -173,6 +173,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
 	mux.HandleFunc("GET /api/v1/runs/{id}/interview-progress", s.handleInterviewProgress)
 	mux.HandleFunc("GET /api/v1/interview/ab-stats", s.handleInterviewABStats)
+	mux.HandleFunc("GET /api/v1/forecast/regression", s.handleRegression)
+	mux.HandleFunc("GET /api/v1/forecast/tree", s.handleTreeForecast)
 	mux.HandleFunc("POST /api/v1/profile/resume", s.handleImportResume)
 	mux.HandleFunc("POST /api/v1/profile/hh", s.handleImportHHProfile)
 	mux.HandleFunc("POST /api/v1/runs/{id}/attachments", s.handleInterviewAttachment)

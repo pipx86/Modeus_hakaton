@@ -316,6 +316,86 @@ export async function getInterviewABStats(): Promise<{ variants: InterviewABVari
   return requestApi<{ variants: InterviewABVariant[] }>("/interview/ab-stats")
 }
 
+export interface SkillTrend {
+  skill: string
+  current_frequency?: number
+  predicted_change_pct?: number
+  confidence?: number
+  trend_direction?: string
+  method?: string
+}
+
+export interface SkillTrendsResponse {
+  series: string
+  direction: string
+  months: number
+  total: number
+  forecasts: SkillTrend[]
+}
+
+export async function getSkillTrends(direction: "growing" | "declining", limit = 15): Promise<SkillTrendsResponse> {
+  return requestApi<SkillTrendsResponse>(`/forecast/top?direction=${direction}&n=${limit}`)
+}
+
+export interface RegressionCoefficient {
+  name: string
+  estimate: number
+  std_error: number
+  t_stat: number
+}
+
+export interface RegressionSkill {
+  skill: string
+  samples: number
+  r2: number
+  intercept: number
+  coefficients: RegressionCoefficient[]
+}
+
+export interface RegressionResponse {
+  target: string
+  description: string
+  samples: number
+  skills: RegressionSkill[]
+}
+
+export async function getSkillRegression(skill?: string): Promise<RegressionResponse> {
+  const query = skill ? `?skill=${encodeURIComponent(skill)}` : ""
+  return requestApi<RegressionResponse>(`/forecast/regression${query}`)
+}
+
+export interface TreeForecastNode {
+  id: string
+  title: string
+  type: string
+  status: "grow" | "decline" | "stable"
+  confidence: number
+  reason: string
+  trend_pct?: number
+}
+
+export interface TreeForecastNewNode {
+  title: string
+  type: string
+  reason: string
+  confidence: number
+}
+
+export interface TreeForecastResponse {
+  profession: string
+  run_id?: string
+  horizon_months: number
+  scenario: boolean
+  generated_at: string
+  nodes: TreeForecastNode[]
+  new_nodes: TreeForecastNewNode[]
+  summary: string
+}
+
+export async function getTreeForecast(profession: string): Promise<TreeForecastResponse> {
+  return requestApi<TreeForecastResponse>(`/forecast/tree?profession=${encodeURIComponent(profession)}`)
+}
+
 export interface ProfileImport {
   source: string
   filename?: string
