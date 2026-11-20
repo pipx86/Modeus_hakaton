@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   FlaskConicalIcon,
   GitCompareIcon,
+  GitBranchIcon,
   GraduationCapIcon,
   KeyRoundIcon,
   MenuIcon,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Исследования", icon: FlaskConicalIcon, end: true },
   { to: "/research/new", label: "Новое исследование", icon: PlusIcon, end: false },
   { to: "/compare", label: "Сравнение исследований", icon: GitCompareIcon, end: false },
+  { to: "/github", label: "GitHub-профиль", icon: GitBranchIcon, end: false },
 ]
 
 const ADMIN_ITEM = { to: "/admin", label: "Администрирование", icon: ShieldIcon, end: false }
@@ -50,6 +52,12 @@ function useBreadcrumbs() {
     return [
       { to: "/", label: "Исследования" },
       { to: "/compare", label: "Сравнение исследований" },
+    ]
+  }
+  if (pathname === "/github") {
+    return [
+      { to: "/", label: "Исследования" },
+      { to: "/github", label: "GitHub-профиль" },
     ]
   }
   if (pathname.startsWith("/research/")) {

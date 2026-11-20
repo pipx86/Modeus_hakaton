@@ -200,9 +200,10 @@ export class ApiRequestError extends Error {
  * @param init Дополнительные опции fetch (метод, тело).
  */
 async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" }
+  const headers = new Headers(init.headers)
+  headers.set("Accept", "application/json")
   const token = getValidToken() ?? apiToken
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (token) headers.set("Authorization", `Bearer ${token}`)
 
   let response: Response
   try {
@@ -281,6 +282,52 @@ export async function createLearningPlan(profession: string): Promise<LearningPl
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ profession }),
+  })
+}
+
+export interface GitHubLanguage {
+  name: string
+  repositories: number
+}
+
+export interface GitHubProject {
+  name: string
+  url: string
+  description?: string
+  language?: string
+  topics?: string[]
+  stars: number
+  forks: number
+  updated_at?: string
+}
+
+export interface GitHubAssessment {
+  username: string
+  name?: string
+  profile_url: string
+  avatar_url?: string
+  profession?: string
+  score: number
+  profession_match: number
+  repositories: number
+  original_repositories: number
+  total_stars: number
+  total_forks: number
+  languages: GitHubLanguage[]
+  skills: string[]
+  projects: GitHubProject[]
+  summary: string
+  warnings?: string[]
+  fetched_at: string
+  profession_matched: boolean
+}
+
+/** Читает публичные репозитории GitHub и оценивает профиль специалиста. */
+export async function evaluateGitHub(username: string, profession: string): Promise<GitHubAssessment> {
+  return requestApi<GitHubAssessment>("/github/evaluate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, profession }),
   })
 }
 

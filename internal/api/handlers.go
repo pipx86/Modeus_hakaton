@@ -40,6 +40,7 @@ type Server struct {
 	sseHeartbeat time.Duration
 	batchPlan    steps.BatchPlan
 	learningPlan LearningPlanner
+	github       githubEvaluator
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
 	// или явно отключённая настройка SOURCE_AUTO_INDEX).
@@ -159,6 +160,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
+	mux.HandleFunc("POST /api/v1/github/evaluate", s.handleEvaluateGitHub)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
 	mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
