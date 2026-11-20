@@ -10,12 +10,10 @@ import (
 )
 
 // «История» сравнения деревьев — детерминированное человекочитаемое описание
-// diff'а, одинаковое для обоих сравнительных эндпоинтов:
+// diff'а для сравнения версий дерева в одном исследовании:
 //
 //   - GET /api/v1/runs/{id}/snapshots/{snapshot_id}/diff?against={base_snapshot_id}
 //     (поля story и story_lines);
-//   - GET /api/v1/runs/{id}/compare?against={other_run_id} (поле story).
-//
 // Текст на русском языке (UI проекта русскоязычный) и строится только из
 // структурированного diff'а, поэтому:
 //   - counts в заголовке всегда совпадают с len(added)/len(removed)/len(changed),

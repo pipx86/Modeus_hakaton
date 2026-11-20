@@ -41,6 +41,7 @@ import { RunStageStepper } from "@/components/run-stage"
 import { ProgramLinksTab } from "@/components/program-links-tab"
 import { InterviewsTab } from "@/components/interviews-tab"
 import { RunSourcesPanel } from "@/components/run-sources-panel"
+import { SourceChanges } from "@/components/source-changes"
 import { ProgramCoverageReport } from "@/components/program-coverage-report"
 import { ReviewSummary } from "@/components/review-summary"
 import { useRunPolling } from "@/hooks/use-run-polling"
@@ -1603,6 +1604,7 @@ export function Research() {
         </TabsList>
         <TabsContent value="sources">
           <div className="space-y-4">
+            <SourceChanges runId={id} onFocusNode={focusNode} />
             <RunSourcesPanel runId={id} onFocusNode={focusNode} />
             <SourcesTab runId={id} readOnly={treeReadOnly} />
           </div>

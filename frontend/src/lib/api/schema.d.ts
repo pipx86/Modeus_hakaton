@@ -960,7 +960,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs/{id}/compare": {
+    "/runs/{id}/source-changes": {
         parameters: {
             query?: never;
             header?: never;
@@ -968,10 +968,47 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Compare two research runs
-         * @description Compares the current saved trees of two research runs of the same profession. The path run `{id}` is the head (newer) side and `against` is the base, so `added` contains nodes only in the head and `removed` nodes only in the base. Nodes are matched first by node id (as in the snapshot diff) and then semantically by type + normalized title + normalized ancestor-title path; only unambiguous semantic pairs are matched and the rest stay added/removed (`match.unmatched` equals added + removed). `changed` lists the changed fields in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`; for semantic pairs evidence is compared without the run-specific UUIDs (`ref_id`/`quote`/`status`) and `parent_id` by the normalized ancestor path. Both runs must have a saved tree; the run status does not block the comparison. `story` is a deterministic Russian human-readable summary that always agrees with `summary`. Read-only. user may read.
+         * List changed sources potentially affecting evidence
+         * @description Returns evidence whose source content changed after it was created. Changes are recorded after the tracking migration; the result requires human review.
          */
-        get: operations["compareRuns"];
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                    id: components["parameters"]["RunId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Potentially affected evidence and nodes. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            source_id: string;
+                            source_title: string;
+                            /** Format: uuid */
+                            node_id: string;
+                            node_title: string;
+                            /** Format: uuid */
+                            evidence_id: string;
+                            /** Format: date-time */
+                            changed_at: string;
+                        }[];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                500: components["responses"]["InternalError"];
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -2363,33 +2400,6 @@ export interface components {
             run_id: string;
             columns: ("interview" | "standard" | "vacancy" | "document")[];
             rows: components["schemas"]["CoverageRow"][];
-        };
-        /** @description Node-matching counters of a run-to-run comparison. */
-        RunCompareMatch: {
-            /** @description Number of pairs matched by node id. */
-            by_id: number;
-            /** @description Number of pairs matched semantically by type, normalized title and ancestor path. */
-            by_title: number;
-            /** @description Number of nodes that could not be matched (equals added + removed). */
-            unmatched: number;
-        };
-        /** @description JSON body of GET /runs/{id}/compare?against={other_run_id}. */
-        RunCompare: {
-            run_id: string;
-            against_run_id: string;
-            profession: string;
-            /** @description True when the profession matches after normalization either by runs.profession or by the normalized title of the root role node of both trees. */
-            same_profession: boolean;
-            match: components["schemas"]["RunCompareMatch"];
-            /** @description Nodes that exist only in the head run, sorted by id. */
-            added: components["schemas"]["Node"][];
-            /** @description Nodes that exist only in the base run, sorted by id. */
-            removed: components["schemas"]["Node"][];
-            /** @description Nodes matched between the runs whose fields changed, sorted by id. */
-            changed: components["schemas"]["SnapshotNodeChange"][];
-            summary: components["schemas"]["SnapshotDiffSummary"];
-            /** @description Deterministic one-line human-readable description of the diff in Russian; its counts always agree with summary. */
-            story: string;
         };
         /** @description JSON body of GET /reviews/evidence/progress. */
         ReviewProgress: {
@@ -5761,163 +5771,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            500: components["responses"]["InternalError"];
-            501: components["responses"]["NotImplemented"];
-            503: components["responses"]["ServiceUnavailable"];
-            504: components["responses"]["GatewayTimeout"];
-        };
-    };
-    compareRuns: {
-        parameters: {
-            query: {
-                /** @description Base run id; must be a UUID and must differ from the path run id. The path run is the head of the comparison. */
-                against: string;
-            };
-            header?: never;
-            path: {
-                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
-                id: components["parameters"]["RunId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Run-to-run tree diff with match counters and a story. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "run_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
-                     *       "against_run_id": "4d7d3a8e-1b2c-4d5e-8f90-1a2b3c4d5e6f",
-                     *       "profession": "Аналитик данных",
-                     *       "same_profession": true,
-                     *       "match": {
-                     *         "by_id": 0,
-                     *         "by_title": 2,
-                     *         "unmatched": 2
-                     *       },
-                     *       "added": [
-                     *         {
-                     *           "id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
-                     *           "type": "action",
-                     *           "title": "Собирать требования еженедельно",
-                     *           "parent_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
-                     *           "evidence": [
-                     *             {
-                     *               "id": "e1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-                     *               "node_id": "7c6b5a49-3d2e-4f1a-8b9c-0d1e2f3a4b5c",
-                     *               "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
-                     *               "ref_id": "frag-12",
-                     *               "quote": "Каждую неделю я собираю требования у заказчика.",
-                     *               "status": "pending"
-                     *             }
-                     *           ]
-                     *         }
-                     *       ],
-                     *       "removed": [
-                     *         {
-                     *           "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
-                     *           "type": "task",
-                     *           "title": "Готовить отчёты",
-                     *           "evidence": [
-                     *             {
-                     *               "id": "b2c3d4e5-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
-                     *               "node_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
-                     *               "source_id": "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d",
-                     *               "ref_id": "frag-7",
-                     *               "quote": "Готовлю еженедельные отчёты для руководителя.",
-                     *               "status": "approved"
-                     *             }
-                     *           ]
-                     *         }
-                     *       ],
-                     *       "changed": [
-                     *         {
-                     *           "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
-                     *           "before": {
-                     *             "id": "3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d",
-                     *             "type": "task",
-                     *             "title": "Собирать требования",
-                     *             "evidence": [
-                     *               {
-                     *                 "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-                     *                 "node_id": "3a4b5c6d-7e8f-4a9b-8c1d-2e3f4a5b6c7d",
-                     *                 "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
-                     *                 "ref_id": "frag-7",
-                     *                 "quote": "Собираю требования у заказчика.",
-                     *                 "status": "approved"
-                     *               }
-                     *             ]
-                     *           },
-                     *           "after": {
-                     *             "id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
-                     *             "type": "task",
-                     *             "title": "Собирать требования к интеграции",
-                     *             "evidence": [
-                     *               {
-                     *                 "id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-                     *                 "node_id": "6f1c5f2e-6c58-4a1b-9a9e-2f4f5c8f0a11",
-                     *                 "source_id": "3b2d7c90-2f47-4d3b-a1c0-8e1f2d4c6b7a",
-                     *                 "ref_id": "frag-7",
-                     *                 "quote": "Собираю требования у заказчика.",
-                     *                 "status": "approved"
-                     *               }
-                     *             ]
-                     *           },
-                     *           "fields": [
-                     *             "title"
-                     *           ]
-                     *         }
-                     *       ],
-                     *       "summary": {
-                     *         "added": 1,
-                     *         "removed": 1,
-                     *         "changed": 1
-                     *       },
-                     *       "story": "Узлов добавлено: 1, удалено: 1, изменено: 1. Добавлен узел «Собирать требования еженедельно». Удалён узел «Готовить отчёты». Изменён узел «Собирать требования к интеграции»: название."
-                     *     }
-                     */
-                    "application/json": components["schemas"]["RunCompare"];
-                };
-            };
-            /** @description against is missing, is not a UUID, or equals the path run id. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description One of the runs does not exist (including an invalid UUID in the path). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "code": "NOT_FOUND",
-                     *       "message": "run not found"
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description The runs have different professions or one run has no saved tree. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             500: components["responses"]["InternalError"];
             501: components["responses"]["NotImplemented"];
             503: components["responses"]["ServiceUnavailable"];

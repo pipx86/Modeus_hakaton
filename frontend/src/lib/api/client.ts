@@ -99,7 +99,6 @@ export type Conflict = components["schemas"]["Conflict"]
 export type RunEvent = components["schemas"]["RunEvent"]
 export type Insights = components["schemas"]["Insights"]
 export type CoverageResponse = components["schemas"]["CoverageResponse"]
-export type RunCompare = components["schemas"]["RunCompare"]
 export type RunEstimate = components["schemas"]["RunEstimate"]
 export type RunCost = components["schemas"]["RunCost"]
 export type CorrelationResponse = components["schemas"]["CorrelationResponse"]
@@ -756,6 +755,20 @@ export async function listRunSources(runId: string): Promise<RunSource[]> {
   const data = await requestApi<RunSource[]>(`/runs/${encodeURIComponent(runId)}/sources`)
   // Старый бэкенд мог отвечать объектом вместо массива: экран покажет пустое состояние.
   return Array.isArray(data) ? data : []
+}
+
+export interface SourceChange {
+  source_id: string
+  source_title: string
+  node_id: string
+  node_title: string
+  evidence_id: string
+  changed_at: string
+}
+
+export async function listSourceChanges(runId: string): Promise<SourceChange[]> {
+  const result = await requestApi<SourceChange[]>(`/runs/${encodeURIComponent(runId)}/source-changes`)
+  return Array.isArray(result) ? result : []
 }
 
 /**
