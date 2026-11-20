@@ -12,8 +12,10 @@ import (
 )
 
 const insertRunChatMessage = `-- name: InsertRunChatMessage :execrows
-INSERT INTO run_chat_messages (id, run_id, role, content, sequence, citations, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO run_chat_messages (id, run_id, interview_id, role, content, sequence, citations, created_at)
+VALUES ($1, $2,
+        (SELECT interview_id FROM run_chat_sessions WHERE run_id = $2),
+        $3, $4, $5, $6, $7)
 ON CONFLICT (run_id, sequence) DO NOTHING
 `
 
@@ -27,6 +29,9 @@ type InsertRunChatMessageParams struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+// interview_id наследуется от курсора активного интервью исследования, поэтому
+// каждая реплика автоматически принадлежит тому респонденту, с которым ведётся
+// текущий диалог.
 func (q *Queries) InsertRunChatMessage(ctx context.Context, arg InsertRunChatMessageParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertRunChatMessage,
 		arg.ID,
@@ -50,15 +55,25 @@ WHERE run_id = $1
 ORDER BY sequence
 `
 
-func (q *Queries) ListRunChatMessages(ctx context.Context, runID pgtype.UUID) ([]RunChatMessage, error) {
+type ListRunChatMessagesRow struct {
+	ID        string             `json:"id"`
+	RunID     pgtype.UUID        `json:"run_id"`
+	Role      string             `json:"role"`
+	Content   string             `json:"content"`
+	Sequence  int32              `json:"sequence"`
+	Citations []byte             `json:"citations"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListRunChatMessages(ctx context.Context, runID pgtype.UUID) ([]ListRunChatMessagesRow, error) {
 	rows, err := q.db.Query(ctx, listRunChatMessages, runID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []RunChatMessage
+	var items []ListRunChatMessagesRow
 	for rows.Next() {
-		var i RunChatMessage
+		var i ListRunChatMessagesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RunID,

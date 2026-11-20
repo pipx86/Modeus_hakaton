@@ -7,8 +7,16 @@ FROM run_chat_sessions
 WHERE run_id = $1;
 
 -- name: InsertRunChatSession :execrows
-INSERT INTO run_chat_sessions (run_id, schema_version, profession, prompt_version, status, state, version)
-VALUES ($1, $2, $3, $4, $5, $6, 1)
+-- interview_id берётся из активного интервью исследования, поэтому новый диалог
+-- сразу привязывается к респонденту, для которого он начат (см.
+-- 20261121100000_run_interviews.sql).
+INSERT INTO run_chat_sessions (run_id, schema_version, profession, prompt_version, status, state, version, interview_id)
+VALUES ($1, $2, $3, $4, $5, $6, 1,
+        (SELECT i.id
+         FROM run_interviews i
+         WHERE i.run_id = $1 AND i.status = 'active'
+         ORDER BY i.started_at DESC
+         LIMIT 1))
 ON CONFLICT (run_id) DO NOTHING;
 
 -- name: UpdateRunChatSession :execrows

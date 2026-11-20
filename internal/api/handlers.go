@@ -161,6 +161,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
 	mux.HandleFunc("POST /api/v1/runs/{id}/messages", s.handlePostMessage)
+	// Интервью одного исследования: несколько респондентов, у каждого своя
+	// история ответов (карточка 12 плана MVP).
+	mux.HandleFunc("GET /api/v1/runs/{id}/interviews", s.handleListRunInterviews)
+	mux.HandleFunc("POST /api/v1/runs/{id}/interviews", s.handleStartRunInterview)
+	mux.HandleFunc("GET /api/v1/runs/{id}/interviews/{interview_id}/messages", s.handleRunInterviewMessages)
 	mux.HandleFunc("GET /api/v1/runs/{id}/conflicts", s.handleRunConflicts)
 	mux.HandleFunc("GET /api/v1/runs/{id}/agent-messages", s.handleRunAgentMessages)
 	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)
@@ -431,6 +436,13 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		run.Stage = domain.StageInterview
 		s.setProfileContext(run.ID, githubContext)
 		s.setProfileSkills(run.ID, githubSkills)
+		// The first dialog of a chat run gets its own interview record, so the
+		// research can collect several respondents without mixing their answers.
+		if err := s.ensureRunInterview(r.Context(), run.ID); err != nil {
+			logging.Logger.Error("chat_run_interview_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать интервью")
+			return
+		}
 		if err := s.chat.Start(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)

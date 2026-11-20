@@ -13,7 +13,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ChatSessionStore is the PostgreSQL implementation of chat.SessionStore. It
@@ -24,12 +23,13 @@ import (
 // It also implements chat.MessageStore, so the same adapter serves the
 // read-only history fallback for completed and legacy runs.
 type ChatSessionStore struct {
-	pool     *pgxpool.Pool
+	pool     Database
 	messages *ChatMessageStore
 }
 
-// NewChatSessionStore accepts the shared pgx pool used by the server.
-func NewChatSessionStore(pool *pgxpool.Pool) *ChatSessionStore {
+// NewChatSessionStore accepts the shared database handle used by the server
+// (*pgxpool.Pool in production, a transaction or an in-memory fake in tests).
+func NewChatSessionStore(pool Database) *ChatSessionStore {
 	return &ChatSessionStore{pool: pool, messages: NewChatMessageStore(pool)}
 }
 

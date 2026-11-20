@@ -248,13 +248,14 @@ type Run struct {
 }
 
 type RunChatMessage struct {
-	ID        string             `json:"id"`
-	RunID     pgtype.UUID        `json:"run_id"`
-	Role      string             `json:"role"`
-	Content   string             `json:"content"`
-	Sequence  int32              `json:"sequence"`
-	Citations []byte             `json:"citations"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID          string             `json:"id"`
+	RunID       pgtype.UUID        `json:"run_id"`
+	Role        string             `json:"role"`
+	Content     string             `json:"content"`
+	Sequence    int32              `json:"sequence"`
+	Citations   []byte             `json:"citations"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	InterviewID pgtype.UUID        `json:"interview_id"`
 }
 
 type RunChatSession struct {
@@ -267,6 +268,20 @@ type RunChatSession struct {
 	Version       int64              `json:"version"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	InterviewID   pgtype.UUID        `json:"interview_id"`
+}
+
+type RunInterview struct {
+	ID             pgtype.UUID        `json:"id"`
+	RunID          pgtype.UUID        `json:"run_id"`
+	RespondentName string             `json:"respondent_name"`
+	RespondentRole string             `json:"respondent_role"`
+	RespondentRef  string             `json:"respondent_ref"`
+	Status         string             `json:"status"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RunLearningPlan struct {

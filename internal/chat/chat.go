@@ -866,6 +866,15 @@ func (s *Service) forgetSession(runID string) {
 	s.mu.Unlock()
 }
 
+// ResetSession drops the in-memory interviewer session of a run. It is used
+// when a new respondent interview starts in the same research: the durable
+// cursor is dropped by the store, and this method drops the cached session so
+// the next Start asks the first question again instead of resuming the
+// previous respondent's dialog.
+func (s *Service) ResetSession(runID string) {
+	s.forgetSession(runID)
+}
+
 // failSession marks an active session as failed after an unrecoverable
 // interviewer error, so the run cannot silently hang.
 func (s *Service) failSession(sess *session) {

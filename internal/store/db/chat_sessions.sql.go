@@ -30,12 +30,24 @@ FROM run_chat_sessions
 WHERE run_id = $1
 `
 
+type GetRunChatSessionRow struct {
+	RunID         pgtype.UUID        `json:"run_id"`
+	SchemaVersion int32              `json:"schema_version"`
+	Profession    string             `json:"profession"`
+	PromptVersion string             `json:"prompt_version"`
+	Status        string             `json:"status"`
+	State         []byte             `json:"state"`
+	Version       int64              `json:"version"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Durable chat/interview session snapshots. run_chat_messages stores the dialog
 // history; run_chat_sessions stores the interviewer cursor so a restarted
 // backend can resume an active interview (see internal/chat).
-func (q *Queries) GetRunChatSession(ctx context.Context, runID pgtype.UUID) (RunChatSession, error) {
+func (q *Queries) GetRunChatSession(ctx context.Context, runID pgtype.UUID) (GetRunChatSessionRow, error) {
 	row := q.db.QueryRow(ctx, getRunChatSession, runID)
-	var i RunChatSession
+	var i GetRunChatSessionRow
 	err := row.Scan(
 		&i.RunID,
 		&i.SchemaVersion,
@@ -64,8 +76,13 @@ func (q *Queries) GetRunHasTree(ctx context.Context, id pgtype.UUID) (bool, erro
 }
 
 const insertRunChatSession = `-- name: InsertRunChatSession :execrows
-INSERT INTO run_chat_sessions (run_id, schema_version, profession, prompt_version, status, state, version)
-VALUES ($1, $2, $3, $4, $5, $6, 1)
+INSERT INTO run_chat_sessions (run_id, schema_version, profession, prompt_version, status, state, version, interview_id)
+VALUES ($1, $2, $3, $4, $5, $6, 1,
+        (SELECT i.id
+         FROM run_interviews i
+         WHERE i.run_id = $1 AND i.status = 'active'
+         ORDER BY i.started_at DESC
+         LIMIT 1))
 ON CONFLICT (run_id) DO NOTHING
 `
 
@@ -78,6 +95,9 @@ type InsertRunChatSessionParams struct {
 	State         []byte      `json:"state"`
 }
 
+// interview_id берётся из активного интервью исследования, поэтому новый диалог
+// сразу привязывается к респонденту, для которого он начат (см.
+// 20261121100000_run_interviews.sql).
 func (q *Queries) InsertRunChatSession(ctx context.Context, arg InsertRunChatSessionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, insertRunChatSession,
 		arg.RunID,

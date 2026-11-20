@@ -3365,6 +3365,128 @@ paths:
               example:
                 code: CHAT_DISABLED
                 message: chat is not configured
+  /runs/{id}/interviews:
+    get:
+      tags: [interviews]
+      summary: List respondent interviews of a run
+      description: >-
+        Returns every respondent interview of the research run, oldest first. A
+        run keeps at most one active interview; finished interviews stay as
+        history with their own dialog, so the answers of different specialists
+        are never mixed.
+      operationId: listRunInterviews
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Array of interviews.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RunInterview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [interviews]
+      summary: Start a new respondent interview
+      description: >-
+        Closes the active interview of the run, opens a new one for the given
+        respondent and resets the interviewer cursor, so the dialog starts from
+        the first question instead of resuming the previous respondent. Only
+        chat runs that are not finished accept a new interview.
+      operationId: startRunInterview
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RespondentInput"
+      responses:
+        "201":
+          description: The new interview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunInterview"
+        "400":
+          description: Malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The run is not a chat run or is already finished.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: RUN_FINISHED
+                message: нельзя начать интервью в завершённом исследовании
+        "422":
+          description: The respondent descriptor is too long.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          description: The interview was created but the dialog could not be started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /runs/{id}/interviews/{interview_id}/messages:
+    get:
+      tags: [interviews]
+      summary: Read the dialog of one interview
+      description: >-
+        Returns the messages of exactly one respondent interview, so the dialogs
+        of several respondents of the same run never mix.
+      operationId: listInterviewMessages
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: interview_id
+          in: path
+          required: true
+          description: Interview id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Array of chat messages of that interview.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /runs/{id}/conflicts:
     get:
       tags: [runs]
@@ -4793,6 +4915,50 @@ components:
         skipped:
           type: integer
           minimum: 0
+    RunInterview:
+      type: object
+      required: [id, run_id, status, started_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        respondent_name:
+          type: string
+          maxLength: 120
+        respondent_role:
+          type: string
+          maxLength: 120
+        respondent_ref:
+          type: string
+          maxLength: 120
+          description: Anonymised external label of the respondent (channel or code), never personal contact data.
+        status:
+          type: string
+          enum: [active, completed, failed]
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+    RespondentInput:
+      type: object
+      additionalProperties: false
+      description: Anonymised respondent descriptor. All fields are optional and at most 120 characters long.
+      properties:
+        respondent_name:
+          type: string
+          maxLength: 120
+        respondent_role:
+          type: string
+          maxLength: 120
+        respondent_ref:
+          type: string
+          maxLength: 120
     ChatMessage:
       type: object
       required: [id, role, content, created_at]
