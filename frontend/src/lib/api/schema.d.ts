@@ -2524,6 +2524,8 @@ export interface operations {
                     github_consent?: boolean;
                     /** @description Optional resume or HH profile text used to personalise the interview. */
                     profile_context?: string;
+                    /** @description Public GitHub repositories that must be excluded from the interview profile. */
+                    github_exclude?: string[];
                 };
             };
         };

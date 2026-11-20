@@ -396,7 +396,50 @@ func languageList(languages []Language, limit int) string {
 	return strings.Join(names, ", ")
 }
 
-// Context builds a compact, prompt-safe description of a GitHub profile. It
+// ExcludeProjects removes explicitly excluded repositories from the profile.
+// It is used when the respondent edits the public GitHub data before an
+// interview; the aggregate counters and languages are recalculated.
+func ExcludeProjects(assessment Assessment, excluded []string) Assessment {
+	skip := make(map[string]bool, len(excluded))
+	for _, name := range excluded {
+		skip[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	if len(skip) == 0 {
+		return assessment
+	}
+	projects := make([]Project, 0, len(assessment.Projects))
+	languageCounts := make(map[string]int)
+	for _, project := range assessment.Projects {
+		if skip[strings.ToLower(project.Name)] {
+			continue
+		}
+		projects = append(projects, project)
+		if project.Language != "" {
+			languageCounts[canonicalSkill(project.Language)]++
+		}
+	}
+	if len(projects) == 0 {
+		assessment.Projects = nil
+		assessment.Languages = nil
+		assessment.OriginalRepos = 0
+		assessment.Repositories = 0
+		assessment.TotalStars = 0
+		assessment.TotalForks = 0
+		assessment.Skills = nil
+		return assessment
+	}
+	assessment.Projects = projects
+	assessment.Languages = languageStats(languageCounts)
+	assessment.TotalStars = 0
+	assessment.TotalForks = 0
+	for _, project := range projects {
+		assessment.TotalStars += project.Stars
+		assessment.TotalForks += project.Forks
+	}
+	assessment.OriginalRepos = len(projects)
+	return assessment
+}
+
 // deliberately contains facts and project names, not model instructions or
 // interview answers.
 func Context(assessment Assessment) string {

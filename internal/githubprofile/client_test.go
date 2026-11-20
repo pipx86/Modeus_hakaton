@@ -46,6 +46,29 @@ func TestEvaluateGitHubProfile(t *testing.T) {
 	}
 }
 
+func TestExcludeProjectsRecalculatesProfile(t *testing.T) {
+	assessment := Assessment{
+		Username:      "octocat",
+		OriginalRepos: 2,
+		TotalStars:    50,
+		Languages:     []Language{{Name: "Go", Repositories: 1}, {Name: "TypeScript", Repositories: 1}},
+		Projects: []Project{
+			{Name: "backend", Language: "Go", Stars: 42},
+			{Name: "frontend", Language: "TypeScript", Stars: 8},
+		},
+	}
+	filtered := ExcludeProjects(assessment, []string{"backend"})
+	if filtered.OriginalRepos != 1 || filtered.TotalStars != 8 {
+		t.Fatalf("filtered = %+v", filtered)
+	}
+	if len(filtered.Projects) != 1 || filtered.Projects[0].Name != "frontend" {
+		t.Fatalf("projects = %+v", filtered.Projects)
+	}
+	if len(filtered.Languages) != 1 || filtered.Languages[0].Name != "TypeScript" {
+		t.Fatalf("languages = %+v", filtered.Languages)
+	}
+}
+
 func TestEvaluateGitHubProfileErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/users/missing" {

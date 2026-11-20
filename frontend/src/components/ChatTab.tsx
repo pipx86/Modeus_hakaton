@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { type Run, type RunStatus } from "@/lib/api/client"
-import { getInterviewProgress, type InterviewProgress, attachInterviewEvidence } from "@/lib/api/client"
+import { getInterviewProgress, type InterviewProgress, attachInterviewEvidence, attachInterviewLink } from "@/lib/api/client"
 import { downloadText } from "@/lib/export-tree"
 import { chatTranscriptToMarkdown } from "@/lib/export-chat"
 import { useChatStream } from "@/hooks/use-chat-stream"
@@ -19,6 +19,7 @@ import {
   InfoIcon,
   Loader2Icon,
   PaperclipIcon,
+  LinkIcon,
   RefreshCwIcon,
   SendIcon,
   WifiOffIcon,
@@ -168,6 +169,23 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
     } finally {
       setAttaching(false)
       if (fileInput.current) fileInput.current.value = ""
+    }
+  }
+
+  const attachLink = async () => {
+    const value = window.prompt("Ссылка на доказательство: коммит, merge request, документ или портфолио")
+    if (!value?.trim()) return
+    setAttaching(true)
+    try {
+      await attachInterviewLink(runId, value.trim(), "")
+      await retry()
+      toast.success("Ссылка добавлена в интервью")
+    } catch (cause) {
+      toast.error("Не удалось добавить ссылку", {
+        description: cause instanceof Error ? cause.message : "Проверьте ссылку.",
+      })
+    } finally {
+      setAttaching(false)
     }
   }
 
@@ -353,6 +371,18 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
           className="hidden"
           onChange={(event) => void attachFile(event.target.files?.[0])}
         />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          onClick={() => void attachLink()}
+          disabled={attaching || chatClosed}
+          aria-label="Прикрепить ссылку"
+          title="Прикрепить ссылку на доказательство"
+        >
+          <LinkIcon className="size-4" />
+        </Button>
         <Button
           type="button"
           variant="outline"

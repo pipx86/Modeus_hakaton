@@ -301,6 +301,21 @@ export async function getInterviewProgress(runId: string): Promise<InterviewProg
   return requestApi<InterviewProgress>(`/runs/${encodeURIComponent(runId)}/interview-progress`)
 }
 
+export interface InterviewABVariant {
+  prompt_version: string
+  sessions: number
+  completed: number
+  questions: number
+  answers: number
+  average_quality: number
+  completion_rate: number
+}
+
+/** Сравнение основной и B-версии промпта интервьюера. */
+export async function getInterviewABStats(): Promise<{ variants: InterviewABVariant[] }> {
+  return requestApi<{ variants: InterviewABVariant[] }>("/interview/ab-stats")
+}
+
 export interface ProfileImport {
   source: string
   filename?: string
@@ -330,6 +345,15 @@ export async function attachInterviewEvidence(runId: string, file: File): Promis
   const body = new FormData()
   body.append("file", file)
   await requestApi(`/runs/${encodeURIComponent(runId)}/attachments`, { method: "POST", body })
+}
+
+/** Прикрепляет ссылку-доказательство к текущему ответу интервью. */
+export async function attachInterviewLink(runId: string, url: string, title: string): Promise<void> {
+  await requestApi(`/runs/${encodeURIComponent(runId)}/attachments/link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, title }),
+  })
 }
 
 /**

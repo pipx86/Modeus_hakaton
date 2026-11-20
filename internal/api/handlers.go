@@ -172,9 +172,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
 	mux.HandleFunc("GET /api/v1/runs/{id}/interview-progress", s.handleInterviewProgress)
+	mux.HandleFunc("GET /api/v1/interview/ab-stats", s.handleInterviewABStats)
 	mux.HandleFunc("POST /api/v1/profile/resume", s.handleImportResume)
 	mux.HandleFunc("POST /api/v1/profile/hh", s.handleImportHHProfile)
 	mux.HandleFunc("POST /api/v1/runs/{id}/attachments", s.handleInterviewAttachment)
+	mux.HandleFunc("POST /api/v1/runs/{id}/attachments/link", s.handleInterviewLink)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
 	mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
@@ -221,6 +223,8 @@ type createRunRequest struct {
 	// ProfileContext is optional resume or HH profile text used to personalise
 	// the interview. It is reference data, not interview evidence.
 	ProfileContext string `json:"profile_context,omitempty"`
+	// GitHubExclude lists public repository names that must not be used.
+	GitHubExclude []string `json:"github_exclude,omitempty"`
 }
 
 type errorBody struct {
@@ -367,6 +371,11 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		}
 		githubContext = githubprofile.Context(assessment)
 		githubSkills = assessment.Skills
+		if len(req.GitHubExclude) > 0 {
+			filtered := githubprofile.ExcludeProjects(assessment, req.GitHubExclude)
+			githubContext = githubprofile.Context(filtered)
+			githubSkills = filtered.Skills
+		}
 	}
 	if profile := strings.TrimSpace(req.ProfileContext); profile != "" {
 		profile = truncateProfileText(profile, 12000)

@@ -40,6 +40,22 @@ var templates = []struct {
 		Topics: []string{"контейнеры", "CI/CD", "мониторинг", "инциденты", "инфраструктура как код"},
 		Levels: []string{"junior", "middle", "senior"},
 	}},
+	{match: "frontend", value: professionTemplate{
+		Topics: []string{"UI", "состояние приложения", "доступность", "производительность", "тестирование"},
+		Levels: []string{"junior", "middle", "senior"},
+	}},
+	{match: "qa", value: professionTemplate{
+		Topics: []string{"тест-дизайн", "автотесты", "регрессия", "баг-репорты", "качество релиза"},
+		Levels: []string{"junior", "middle", "senior"},
+	}},
+	{match: "product", value: professionTemplate{
+		Topics: []string{"исследование", "гипотезы", "метрики", "приоритизация", "запуск"},
+		Levels: []string{"junior", "middle", "senior"},
+	}},
+	{match: "дизайнер", value: professionTemplate{
+		Topics: []string{"исследование", "прототипы", "дизайн-система", "пользовательские сценарии", "тестирование"},
+		Levels: []string{"junior", "middle", "senior"},
+	}},
 }
 
 // TemplateFor returns the competency template for a profession. Unknown

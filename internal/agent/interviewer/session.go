@@ -116,7 +116,19 @@ func (s *Session) LastError() error { return s.lastErr }
 // Done reports whether the question plan is exhausted or the model has
 // degraded to the fallback limit.
 func (s *Session) Done() bool {
-	return len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions
+	if len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions {
+		return true
+	}
+	// Adaptive finish: once all profession topics are grounded by answers,
+	// extra questions would only repeat evidence. Keep a small minimum so the
+	// tree still has role/function/task/action context.
+	if len(s.state.Questions) >= 4 && len(s.state.Answers) >= 4 {
+		progress := s.Progress()
+		if len(progress.UncoveredTopics) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Next asks the model for the next question and records it. Model errors are

@@ -75,6 +75,7 @@ export function NewResearch() {
   const [profession, setProfession] = useState("")
   const [githubUsername, setGithubUsername] = useState("")
   const [githubConsent, setGithubConsent] = useState(true)
+  const [githubExclude, setGithubExclude] = useState("")
   const [profileContext, setProfileContext] = useState("")
   const [profileLabel, setProfileLabel] = useState("")
   const [hhURL, setHhURL] = useState("")
@@ -185,6 +186,7 @@ export function NewResearch() {
             type: "learning",
             github_username: stripControlChars(githubUsername).trim() || undefined,
             github_consent: githubConsent,
+            github_exclude: githubExclude.split(",").map((item) => item.trim()).filter(Boolean),
             profile_context: profileContext || undefined,
           },
         })
@@ -203,6 +205,7 @@ export function NewResearch() {
           type: "chat",
           github_username: stripControlChars(githubUsername).trim() || undefined,
           github_consent: githubConsent,
+          github_exclude: githubExclude.split(",").map((item) => item.trim()).filter(Boolean),
           profile_context: profileContext || undefined,
         },
       })
@@ -358,6 +361,14 @@ export function NewResearch() {
                     />
                     <span>Разрешаю использовать публичный GitHub-профиль для этого интервью.</span>
                   </label>
+                )}
+                {githubUsername.trim() && (
+                  <Input
+                    value={githubExclude}
+                    onChange={(event) => setGithubExclude(event.target.value)}
+                    placeholder="Исключить репозитории через запятую"
+                    disabled={submitting}
+                  />
                 )}
               </div>
 
