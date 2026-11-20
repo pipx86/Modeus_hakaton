@@ -2692,6 +2692,38 @@ paths:
           $ref: "#/components/responses/ServiceUnavailable"
         "504":
           $ref: "#/components/responses/GatewayTimeout"
+  /runs/{id}/source-changes:
+    get:
+      tags: [runs]
+      summary: List changed sources potentially affecting evidence
+      description: Returns evidence whose source content changed after it was created. Changes are recorded after the tracking migration; the result requires human review.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Potentially affected evidence and nodes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [source_id, source_title, node_id, node_title, evidence_id, changed_at]
+                  properties:
+                    source_id: { type: string, format: uuid }
+                    source_title: { type: string }
+                    node_id: { type: string, format: uuid }
+                    node_title: { type: string }
+                    evidence_id: { type: string, format: uuid }
+                    changed_at: { type: string, format: date-time }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /runs/{id}/zun/suggestions:
     get:
       tags: [runs]

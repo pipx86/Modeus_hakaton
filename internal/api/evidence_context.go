@@ -673,7 +673,7 @@ func matchEvidenceToTranscript(refID, quote string, messages []chatTranscriptMes
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/evidence/{evidence_id}/context [get]
 func (s *Server) handleEvidenceContext(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser, auth.RoleSpecialist) {
 		return
 	}
 	runID := strings.TrimSpace(r.PathValue("id"))

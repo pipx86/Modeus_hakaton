@@ -757,6 +757,20 @@ export async function listRunSources(runId: string): Promise<RunSource[]> {
   return Array.isArray(data) ? data : []
 }
 
+export interface SourceChange {
+  source_id: string
+  source_title: string
+  node_id: string
+  node_title: string
+  evidence_id: string
+  changed_at: string
+}
+
+export async function listSourceChanges(runId: string): Promise<SourceChange[]> {
+  const result = await requestApi<SourceChange[]>(`/runs/${encodeURIComponent(runId)}/source-changes`)
+  return Array.isArray(result) ? result : []
+}
+
 /**
  * Обоснование, которое интервью дало дереву деятельности
  * (`GET /runs/{id}/interviews/{interview_id}/evidence`).

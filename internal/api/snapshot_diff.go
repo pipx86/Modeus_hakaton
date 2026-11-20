@@ -132,8 +132,7 @@ type snapshotDiffResponse struct {
 	Changed []snapshotNodeChange `json:"changed"`
 	Summary snapshotDiffSummary  `json:"summary"`
 	// Story — одна строка человекочитаемого описания diff'а на русском языке.
-	// Строится хендлером из тех же Added/Removed/Changed через общий с
-	// run-to-run сравнением helper buildComparisonStory (comparison_story.go).
+	// Строится хендлером из тех же Added/Removed/Changed.
 	Story string `json:"story"`
 	// StoryLines — то же описание построчно: заголовок с количествами и по
 	// строке на каждое изменение; длинные истории обрезаются с пометкой

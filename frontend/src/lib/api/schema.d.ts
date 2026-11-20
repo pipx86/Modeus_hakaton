@@ -960,6 +960,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{id}/source-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List changed sources potentially affecting evidence
+         * @description Returns evidence whose source content changed after it was created. Changes are recorded after the tracking migration; the result requires human review.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                    id: components["parameters"]["RunId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Potentially affected evidence and nodes. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            source_id: string;
+                            source_title: string;
+                            /** Format: uuid */
+                            node_id: string;
+                            node_title: string;
+                            /** Format: uuid */
+                            evidence_id: string;
+                            /** Format: date-time */
+                            changed_at: string;
+                        }[];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                500: components["responses"]["InternalError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{id}/zun/suggestions": {
         parameters: {
             query?: never;

@@ -138,6 +138,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
 	// Состав использованных материалов (карточка 10 плана MVP).
 	mux.HandleFunc("GET /api/v1/runs/{id}/sources", s.handleListRunSources)
+	mux.HandleFunc("GET /api/v1/runs/{id}/source-changes", s.handleSourceChanges)
 	mux.HandleFunc("GET /api/v1/runs/estimate", s.handleRunEstimate)
 	mux.HandleFunc("GET /api/v1/runs/{id}/cost", s.handleRunCost)
 	mux.HandleFunc("GET /api/v1/runs/{id}/insights", s.handleRunInsights)

@@ -195,6 +195,7 @@ func TestEvidenceContextHandlerAuth(t *testing.T) {
 		want int
 	}{
 		{"admin", http.StatusOK},
+		{"specialist", http.StatusOK},
 		{"teacher", http.StatusOK},
 		{"rop", http.StatusOK},
 		{"student", http.StatusOK},
@@ -213,11 +214,24 @@ func TestEvidenceContextHandlerAuth(t *testing.T) {
 	}
 }
 
+func TestEvidenceContextDocumentDoesNotExposeInterview(t *testing.T) {
+	stub := &evidenceContextStub{item: evidenceContextItem{ID: "ev-1", SourceType: domain.SourceDocument, Quote: "SQL"}, messages: transcriptMessages()}
+	server := NewServer(stub)
+	recorder := doMentorHandler(t, server.handleEvidenceContext, http.MethodGet, "/", "specialist", "", map[string]string{"id": "run-1", "evidence_id": "ev-1"})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status: %d", recorder.Code)
+	}
+	response := decodeMentorJSON[evidenceContextResponse](t, recorder)
+	if len(response.Messages) != 0 || response.Match != nil {
+		t.Fatalf("document must not expose unrelated transcript: %+v", response)
+	}
+}
+
 func TestEvidenceContextHandlerSuccess(t *testing.T) {
 	stub := &evidenceContextStub{
 		item: evidenceContextItem{
 			ID: "ev-1", NodeID: "node-1", NodeTitle: "Роль", SourceID: "src-1",
-			SourceTitle: "Интервью", SourceURL: "https://example.org/interview",
+			SourceTitle: "Интервью", SourceType: domain.SourceInterview, SourceURL: "https://example.org/interview",
 			RefID: "answer-2", Quote: "PostgreSQL", Status: domain.EvidencePending,
 		},
 		messages: transcriptMessages(),
@@ -301,7 +315,7 @@ func TestEvidenceContextHandlerErrors(t *testing.T) {
 		}
 	})
 	t.Run("messages error", func(t *testing.T) {
-		server := NewServer(&evidenceContextStub{item: evidenceContextItem{ID: "ev-1"}, messagesErr: errors.New("boom")})
+		server := NewServer(&evidenceContextStub{item: evidenceContextItem{ID: "ev-1", SourceType: domain.SourceInterview}, messagesErr: errors.New("boom")})
 		recorder := doMentorHandler(t, server.handleEvidenceContext, http.MethodGet, "/", "admin", "",
 			map[string]string{"id": "run-1", "evidence_id": "ev-1"})
 		if recorder.Code != http.StatusInternalServerError {
@@ -322,6 +336,7 @@ func TestEvidenceContextHandlerErrors(t *testing.T) {
 // отдают сообщения (in-memory demo): durable-таблицы там нет.
 func TestEvidenceContextChatFallback(t *testing.T) {
 	store := newMemStore()
+	store.sources["55555555-5555-5555-5555-555555555555"] = domain.Source{Type: domain.SourceInterview}
 	runID := zunSeedRun(t, store, "Аналитик данных",
 		domain.Node{ID: "node-1", Type: domain.NodeRole, Title: "Роль"},
 	)
