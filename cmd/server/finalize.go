@@ -614,7 +614,12 @@ func saveInterviewTree(ctx context.Context, store finalizeStore, runID, professi
 	if err != nil {
 		return fmt.Errorf("repair tree: %w", err)
 	}
-	converted := assignUUIDsPreservingSources(repaired, sourceID, keepSources)
+	converted, ids := assignUUIDsPreservingSourcesWithIDs(repaired, sourceID, keepSources)
+	for _, extra := range interviewData[2:] {
+		if out, ok := extra.(*map[string]string); ok && out != nil {
+			*out = ids
+		}
+	}
 	interviewID := ""
 	interviewSourceIDs := map[string]bool{}
 	if len(interviewData) > 0 {
@@ -672,6 +677,13 @@ func knownInterviewSourceIDs(sources []domain.Source) map[string]bool {
 // evidence item whose source id is a known real source keeps it, so the saved
 // tree still shows which standard/vacancy material backs the node.
 func assignUUIDsPreservingSources(nodes []domain.Node, interviewSourceID pgtype.UUID, keepSources map[string]bool) []domain.Node {
+	out, _ := assignUUIDsPreservingSourcesWithIDs(nodes, interviewSourceID, keepSources)
+	return out
+}
+
+// assignUUIDsPreservingSourcesWithIDs — то же, но возвращает карту
+// synth-id → UUID, чтобы переписать ссылки в конфликтах.
+func assignUUIDsPreservingSourcesWithIDs(nodes []domain.Node, interviewSourceID pgtype.UUID, keepSources map[string]bool) ([]domain.Node, map[string]string) {
 	ids := make(map[string]string, len(nodes))
 	for _, node := range nodes {
 		ids[node.ID] = newUUID().String()
@@ -705,7 +717,7 @@ func assignUUIDsPreservingSources(nodes []domain.Node, interviewSourceID pgtype.
 		}
 		out = append(out, converted)
 	}
-	return out
+	return out, ids
 }
 
 func assignUUIDs(nodes []domain.Node, sourceID pgtype.UUID) []domain.Node {

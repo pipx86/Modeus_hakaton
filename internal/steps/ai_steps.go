@@ -367,7 +367,7 @@ func (s *SaveAITreeStep) Execute(ctx context.Context, run *domain.Run) error {
 		return fmt.Errorf("save AI tree step: repair tree: %w", err)
 	}
 	sourceIDs, _ := run.Data[DataKeySourceIDs].(map[string]string)
-	converted := assignAITreeUUIDs(repaired, sourceID, sourceIDs, s.nextID)
+	converted, ids := assignAITreeUUIDsWithIDs(repaired, sourceID, sourceIDs, s.nextID)
 	roots := 0
 	for _, node := range converted {
 		if node.ParentID == nil {
@@ -380,6 +380,7 @@ func (s *SaveAITreeStep) Execute(ctx context.Context, run *domain.Run) error {
 	if err := s.Store.SaveTree(ctx, run.ID, converted); err != nil {
 		return fmt.Errorf("save AI tree step: save: %w", err)
 	}
+	s.saveSynthesisReviewWithIDs(ctx, run, ids)
 	return nil
 }
 
@@ -414,7 +415,14 @@ func (s *SaveAITreeStep) saveSynthesisReview(ctx context.Context, run *domain.Ru
 // expects: UUID node ids, UUID evidence ids and the run's interview source id on
 // every evidence item (the analyst emits a synthetic interview source id that is
 // not a database row). Title, description, type, hierarchy and quotes survive.
+// assignAITreeUUIDs переписывает дерево аналитика в форму БД. Обёртка над
+// assignAITreeUUIDsWithIDs для вызовов, которым карта id не нужна.
 func assignAITreeUUIDs(nodes []domain.Node, sourceID string, sourceIDs map[string]string, newID func() string) []domain.Node {
+	out, _ := assignAITreeUUIDsWithIDs(nodes, sourceID, sourceIDs, newID)
+	return out
+}
+
+func assignAITreeUUIDsWithIDs(nodes []domain.Node, sourceID string, sourceIDs map[string]string, newID func() string) ([]domain.Node, map[string]string) {
 	ids := make(map[string]string, len(nodes))
 	for _, node := range nodes {
 		ids[node.ID] = newID()
@@ -447,7 +455,7 @@ func assignAITreeUUIDs(nodes []domain.Node, sourceID string, sourceIDs map[strin
 		}
 		out = append(out, converted)
 	}
-	return out
+	return out, ids
 }
 
 // newUUIDString returns a random RFC 4122 version 4 UUID in canonical form.
@@ -459,4 +467,25 @@ func newUUIDString() string {
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// saveSynthesisReviewWithIDs переписывает review с реальными UUID узлов:
+// конфликты сохраняются до дерева, чтобы не потерять разногласия при сбое записи.
+func (s *SaveAITreeStep) saveSynthesisReviewWithIDs(ctx context.Context, run *domain.Run, ids map[string]string) {
+	if len(ids) == 0 {
+		return
+	}
+	conflicts, synthesized := run.Data[DataKeyConflicts].([]domain.Conflict)
+	if !synthesized || len(conflicts) == 0 {
+		return
+	}
+	store, ok := s.Store.(synthesisReviewStore)
+	if !ok {
+		return
+	}
+	messages, _ := run.Data[DataKeyMessages].([]agent.AgentMessage)
+	remapped := RemapConflictNodeIDs(conflicts, ids)
+	if err := store.SaveSynthesisReview(ctx, run.ID, remapped, messages); err != nil {
+		log.Printf("save AI tree step: remap synthesis review for run %s: %v", run.ID, err)
+	}
 }

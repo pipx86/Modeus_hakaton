@@ -22,7 +22,7 @@ func DetectConflicts(groups map[string][]sourcedNode, ids []string) []domain.Con
 		if len(items) < 2 {
 			continue
 		}
-		for _, field := range []string{"title", "description"} {
+		for _, field := range []string{"title", "description", "type"} {
 			values := make([]domain.ConflictValue, 0, len(items))
 			seen := make(map[string]bool, len(items))
 			for _, item := range items {
@@ -85,6 +85,8 @@ func fieldValue(node domain.Node, field string) string {
 		return node.Title
 	case "description":
 		return node.Description
+	case "type":
+		return string(node.Type)
 	default:
 		return ""
 	}
