@@ -8,6 +8,7 @@ import {
   AlertTriangleIcon,
   ArrowDownIcon,
   ArrowUpIcon,
+  ChevronDownIcon,
   Loader2Icon,
   SparklesIcon,
   TrendingUpIcon,
@@ -35,12 +36,14 @@ function percent(value?: number): string {
 }
 
 function TrendRows({ items }: { items: SkillTrendsResponse["forecasts"] }) {
+  const [expanded, setExpanded] = useState(false)
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">Нет накопленной истории навыков. Нужны месячные срезы вакансий.</p>
   }
+  const visible = expanded ? items : items.slice(0, 6)
   return (
     <div className="space-y-2">
-      {items.map((item) => {
+      {visible.map((item) => {
         const change = item.predicted_change_pct ?? 0
         return (
           <div key={item.skill} className="rounded-lg border px-3 py-2">
@@ -61,6 +64,16 @@ function TrendRows({ items }: { items: SkillTrendsResponse["forecasts"] }) {
           </div>
         )
       })}
+      {items.length > 6 && (
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-1 rounded-md py-1 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ChevronDownIcon className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          {expanded ? "Свернуть" : `Показать все (${items.length})`}
+        </button>
+      )}
     </div>
   )
 }
@@ -75,6 +88,7 @@ export function Forecast() {
   const [tree, setTree] = useState<TreeForecastResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showAllRegression, setShowAllRegression] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -220,31 +234,43 @@ export function Forecast() {
                 {regression.skills.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Недостаточно размеченных вакансий для модели.</p>
                 ) : (
-                  <table className="w-full text-left text-sm">
-                    <thead className="text-xs text-muted-foreground">
-                      <tr className="border-b">
-                        <th className="py-2 pr-3 font-medium">Навык</th>
-                        <th className="py-2 pr-3 font-medium">R²</th>
-                        <th className="py-2 pr-3 font-medium">Опыт middle</th>
-                        <th className="py-2 pr-3 font-medium">Опыт senior</th>
-                        <th className="py-2 pr-3 font-medium">Зарплата</th>
-                        <th className="py-2 pr-3 font-medium">Москва</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {regression.skills.map((item) => (
-                        <tr key={item.skill} className="border-b last:border-b-0">
-                          <td className="py-2 pr-3 font-medium">{item.skill}</td>
-                          <td className="py-2 pr-3">{item.r2.toFixed(2)}</td>
-                          {item.coefficients.map((coefficient) => (
-                            <td key={coefficient.name} className={coefficient.estimate >= 0 ? "py-2 pr-3 text-success" : "py-2 pr-3 text-destructive"} title={`t = ${coefficient.t_stat.toFixed(2)}`}>
-                              {coefficient.estimate >= 0 ? "+" : ""}{coefficient.estimate.toFixed(3)}
-                            </td>
-                          ))}
+                  <>
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-xs text-muted-foreground">
+                        <tr className="border-b">
+                          <th className="py-2 pr-3 font-medium">Навык</th>
+                          <th className="py-2 pr-3 font-medium">R²</th>
+                          <th className="py-2 pr-3 font-medium">Опыт middle</th>
+                          <th className="py-2 pr-3 font-medium">Опыт senior</th>
+                          <th className="py-2 pr-3 font-medium">Зарплата</th>
+                          <th className="py-2 pr-3 font-medium">Москва</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {(showAllRegression ? regression.skills : regression.skills.slice(0, 8)).map((item) => (
+                          <tr key={item.skill} className="border-b last:border-b-0">
+                            <td className="py-2 pr-3 font-medium">{item.skill}</td>
+                            <td className="py-2 pr-3">{item.r2.toFixed(2)}</td>
+                            {item.coefficients.map((coefficient) => (
+                              <td key={coefficient.name} className={coefficient.estimate >= 0 ? "py-2 pr-3 text-success" : "py-2 pr-3 text-destructive"} title={`t = ${coefficient.t_stat.toFixed(2)}`}>
+                                {coefficient.estimate >= 0 ? "+" : ""}{coefficient.estimate.toFixed(3)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {regression.skills.length > 8 && (
+                      <button
+                        type="button"
+                        className="mt-2 flex w-full items-center justify-center gap-1 rounded-md py-1 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowAllRegression((value) => !value)}
+                      >
+                        <ChevronDownIcon className={`size-3 transition-transform ${showAllRegression ? "rotate-180" : ""}`} />
+                        {showAllRegression ? "Свернуть" : `Показать все (${regression.skills.length})`}
+                      </button>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
