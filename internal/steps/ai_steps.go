@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"strings"
 
 	"activity-descriptor/internal/agent"
@@ -12,6 +13,7 @@ import (
 	"activity-descriptor/internal/domain"
 	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/llmobs"
+	"activity-descriptor/internal/sourcecluster"
 )
 
 // Data keys used by the AI batch steps. run.Data is ephemeral: it exists only
@@ -93,7 +95,7 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	// llm_requests.run_id is populated for the run cost endpoint instead of
 	// depending on a time-window guess.
 	ctx = llmobs.WithRunID(ctx, run.ID)
-	sources := s.analysisSources(ctx, run.ID, vacancies)
+	sources := s.analysisSources(ctx, run.ID, run.Profession, vacancies)
 	analysis, err := agentInstance.Analyze(ctx, agent.AnalystInput{
 		SessionID:  run.ID,
 		Profession: run.Profession,
@@ -125,11 +127,14 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 	return nil
 }
 
-// analysisSources merges admin materials, linked run sources and vacancies.
+// analysisSources merges admin materials, linked run sources and vacancies,
+// then keeps only the profession cluster. Explicitly linked run sources are
+// trusted; global materials and HH vacancies must mention the profession.
 // Duplicate ids are collapsed; the interview transcript is not repeated because
 // the analyst receives it in a dedicated field.
-func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID string, vacancies []domain.VacancyRecord) []domain.Source {
+func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID, profession string, vacancies []domain.VacancyRecord) []domain.Source {
 	sources := make([]domain.Source, 0, len(vacancies)+8)
+	explicit := make(map[string]bool)
 	if s.GlobalSources != nil {
 		if global, err := s.GlobalSources.ListGlobalSources(5); err == nil {
 			sources = append(sources, global...)
@@ -137,6 +142,11 @@ func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID string, v
 	}
 	if s.RunSources != nil {
 		if linked, err := s.RunSources.ListRunSourceContents(ctx, runID); err == nil {
+			for _, source := range linked {
+				if source.ID != "" {
+					explicit[source.ID] = true
+				}
+			}
 			sources = append(sources, linked...)
 		}
 	}
@@ -158,23 +168,11 @@ func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID string, v
 		})
 	}
 
-	unique := make([]domain.Source, 0, len(sources))
-	seen := make(map[string]bool, len(sources))
-	for _, source := range sources {
-		if source.Type == domain.SourceInterview || strings.TrimSpace(source.Content) == "" {
-			continue
-		}
-		key := source.ID
-		if key == "" {
-			key = source.Title + "\x00" + source.Content
-		}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		unique = append(unique, source)
+	clustered := sourcecluster.Select(profession, sources, explicit)
+	if clustered.Excluded > 0 {
+		log.Printf("steps: excluded %d sources outside profession %q for run %s", clustered.Excluded, profession, runID)
 	}
-	return unique
+	return clustered.Sources
 }
 
 // AgentSynthesisStep merges interview nodes into one tree and stores the result

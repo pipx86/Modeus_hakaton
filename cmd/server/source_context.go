@@ -7,6 +7,7 @@ import (
 	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/sourcecluster"
 )
 
 // newInterviewSourceContext loads admin materials and profession-matched
@@ -44,5 +45,5 @@ func professionSources(pgStore *api.PGStore, vacancies domain.VacancyReader, pro
 			}
 		}
 	}
-	return sources
+	return sourcecluster.Select(profession, sources, nil).Sources
 }
