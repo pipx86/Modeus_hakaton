@@ -232,7 +232,14 @@ func run(ctx context.Context, c config) error {
 	var learningPlanner *learningPlannerAdapter
 	if analystClient != nil {
 		learningPlanner = newLearningPlanner(pgStore, vacancyReader, analystClient)
-		treeFinalizer := newTreeFinalizerWithClients(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore))
+		// The analyst fallback selects materials from the existing source base by
+		// profession, using the same matching as the interviewer context, so a
+		// run that starts without attached sources is not analysed against admin
+		// materials only (карточка 7 плана MVP).
+		baseSources := baseSourceSelector(func(_ context.Context, profession string) []domain.Source {
+			return professionSources(pgStore, vacancyReader, profession)
+		})
+		treeFinalizer := newTreeFinalizerWithSelector(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, baseSources, newRAGRetriever(pgStore))
 		chatService.SetFinalizer(newHybridFinalizer(pgStore, treeFinalizer, learningPlanner))
 	} else {
 		chatService.SetFinalizer(unavailableChatTree)

@@ -74,6 +74,10 @@ type finalizerDeps struct {
 	synthesizer synthesisRunner
 	zunClient   llm.ChatClient
 	retrievers  []sourceRetriever
+	// baseSources selects materials of the existing source base by profession.
+	// Without it an interview run that starts with no attached sources reaches
+	// the analyst with admin materials only (карточка 7 плана MVP).
+	baseSources baseSourceSelector
 }
 
 // newTreeFinalizer builds the post-interview pipeline: analyst, synthesizer
@@ -97,6 +101,14 @@ func newTreeFinalizerWithVersions(store finalizeStore, analystClient llm.ChatCli
 // itself remains the source of truth for ids, hierarchy, evidence and conflict
 // winners.
 func newTreeFinalizerWithClients(store finalizeStore, analystClient, synthesizerClient llm.ChatClient, analystVersion, synthesizerVersion string, retrievers ...sourceRetriever) chat.Finalizer {
+	return newTreeFinalizerWithSelector(store, analystClient, synthesizerClient, analystVersion, synthesizerVersion, nil, retrievers...)
+}
+
+// newTreeFinalizerWithSelector is the production wiring. Besides the optional
+// run-scoped retrievers it receives the profession-based selector over the
+// existing source base, so an interview run without attached sources is still
+// analysed against the materials the platform already has.
+func newTreeFinalizerWithSelector(store finalizeStore, analystClient, synthesizerClient llm.ChatClient, analystVersion, synthesizerVersion string, baseSources baseSourceSelector, retrievers ...sourceRetriever) chat.Finalizer {
 	return func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error) {
 		analystOptions := []analyst.Option{}
 		if analystVersion != "" {
@@ -123,6 +135,7 @@ func newTreeFinalizerWithClients(store finalizeStore, analystClient, synthesizer
 			synthesizer: synthesizerAgent,
 			zunClient:   analystClient,
 			retrievers:  retrievers,
+			baseSources: baseSources,
 		}, runID, profession, session)
 	}
 }
@@ -148,6 +161,14 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 	analystSources := loadRunSourceContents(ctx, deps.store, runID)
 	if len(analystSources) == 0 {
 		analystSources = retrieveSources(ctx, deps, runID, profession, transcript)
+	}
+	// A fresh interview run has no attached sources, and the retriever above
+	// filters fragments by run_sources, so it structurally returns nothing for
+	// exactly this case. The profession selector closes that hole: the analyst
+	// now sees the materials the source base already holds for the profession,
+	// and linkRunSources below keeps their provenance on the run.
+	if len(analystSources) == 0 {
+		analystSources = selectBaseSources(ctx, deps, profession)
 	}
 	if len(analystSources) == 0 {
 		analystSources = loadGlobalSources(ctx, deps.store)
@@ -240,6 +261,47 @@ func retrieveSources(ctx context.Context, deps finalizerDeps, runID, profession,
 		return nil
 	}
 	return sources
+}
+
+// baseSourceSelector returns the materials of the existing source base that
+// match a profession. cmd/server wires it to the same profession matching that
+// builds the interviewer context, so the interviewer and the analyst reason
+// about the same materials.
+type baseSourceSelector func(ctx context.Context, profession string) []domain.Source
+
+// maxBaseSourceCount caps how many base materials reach the analyst. The analyst
+// applies its own, smaller cap per source; this one bounds the request size.
+const maxBaseSourceCount = 8
+
+// selectBaseSources picks the profession-matched materials from the source base.
+// It deduplicates by source id, skips empty rows and truncates content to the
+// same limit as the other fallbacks, so the analyst cannot receive a different
+// shape of source depending on where it came from.
+func selectBaseSources(ctx context.Context, deps finalizerDeps, profession string) []domain.Source {
+	if deps.baseSources == nil || strings.TrimSpace(profession) == "" {
+		return nil
+	}
+	sources := deps.baseSources(ctx, profession)
+	if len(sources) == 0 {
+		return nil
+	}
+	selected := make([]domain.Source, 0, maxBaseSourceCount)
+	seen := make(map[string]bool, len(sources))
+	for _, source := range sources {
+		if strings.TrimSpace(source.ID) == "" || seen[source.ID] {
+			continue
+		}
+		if strings.TrimSpace(source.Content) == "" && strings.TrimSpace(source.Title) == "" {
+			continue
+		}
+		seen[source.ID] = true
+		source.Content = truncateRunes(source.Content, maxFinalizeSourceRunes)
+		selected = append(selected, source)
+		if len(selected) == maxBaseSourceCount {
+			break
+		}
+	}
+	return selected
 }
 
 // loadGlobalSources returns the admin-uploaded materials shared by all runs.
