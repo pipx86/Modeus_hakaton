@@ -86,6 +86,8 @@ func (UnavailableClient) Chat(context.Context, []llm.Message) (string, error) {
 // after all questions are answered and before the run is marked done.
 type Finalizer func(ctx context.Context, runID, profession string, session domain.InterviewSession) (domain.RunStatus, error)
 
+var ErrAnalysisUnavailable = errors.New("chat: AI analysis unavailable")
+
 const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
 
 // resumeMode records what the dialog still owes when a session was restored
@@ -737,10 +739,11 @@ func (s *Service) failSession(sess *session) {
 
 func (s *Service) complete(sess *session) {
 	status := domain.RunDone
+	fallbackRecommendations := false
+	sess.mu.Lock()
+	state := sess.session.State()
+	sess.mu.Unlock()
 	if finalizer := s.finalizerFn(); finalizer != nil {
-		sess.mu.Lock()
-		state := sess.session.State()
-		sess.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 		// The finalizer makes the analyst (and optional ZUN) LLM calls; the run
 		// id in the context attributes them to this run.
@@ -750,6 +753,7 @@ func (s *Service) complete(sess *session) {
 		if err != nil {
 			log.Printf("chat: finalizer failed for run %s: %v", sess.runID, err)
 			status = domain.RunFailed
+			fallbackRecommendations = errors.Is(err, ErrAnalysisUnavailable)
 			// A restart may interrupt the pipeline after the tree transaction was
 			// committed but before this snapshot was written. Re-running the
 			// finalizer then fails with TREE_ALREADY_EXISTS; the saved tree is the
@@ -766,6 +770,8 @@ func (s *Service) complete(sess *session) {
 	finalText := ""
 	if status == domain.RunDone || status == domain.RunDegraded {
 		finalText = interviewer.FinalCoursesMessage(sess.profession)
+	} else if status == domain.RunFailed && fallbackRecommendations {
+		finalText = interviewer.FallbackRecommendationsMessage(state)
 	}
 
 	sess.mu.Lock()

@@ -90,7 +90,7 @@ func newTreeFinalizerWithVersions(store finalizeStore, analystClient llm.ChatCli
 		}
 		analystAgent, err := analyst.New(analystClient, analystOptions...)
 		if err != nil {
-			return domain.RunFailed, fmt.Errorf("finalizer: analyst: %w", err)
+			return domain.RunFailed, fmt.Errorf("finalizer: analyst: %w: %w", chat.ErrAnalysisUnavailable, err)
 		}
 		synthesizerOptions := []synthesizer.Option{}
 		if synthesizerVersion != "" {
@@ -146,7 +146,7 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 	}
 	analysis, err := deps.analyst.Analyze(ctx, input)
 	if err != nil {
-		return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w", err)
+		return domain.RunFailed, fmt.Errorf("finalizer: analyze: %w: %w", chat.ErrAnalysisUnavailable, err)
 	}
 
 	// The sources linked to this run are what recovers the provenance of the

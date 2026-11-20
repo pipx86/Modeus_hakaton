@@ -275,7 +275,7 @@ func run(ctx context.Context, c config) error {
 // @in header
 // @name Authorization
 func unavailableChatTree(context.Context, string, string, domain.InterviewSession) (domain.RunStatus, error) {
-	return domain.RunFailed, errors.New("построение дерева требует настроенного LLM-аналитика")
+	return domain.RunFailed, fmt.Errorf("%w: построение дерева требует настроенного LLM-аналитика", chat.ErrAnalysisUnavailable)
 }
 
 func main() {
