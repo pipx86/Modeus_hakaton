@@ -2,9 +2,10 @@
  * @file activity-tree.tsx
  * @description Интерактивное представление дерева деятельности запуска: панель поиска и
  * фильтров, раскрытие/сворачивание веток, ленивый рендер свёрнутых поддеревьев и диалог
- * обоснований по клику на узел. Компонент не ходит в сеть и не владеет мутациями -
- * загрузку дерева, подтверждение цитат и диалоги редактирования/прикрепления держит
- * страница Research; сюда они передаются колбэками и множествами состояний.
+ * обоснований по клику на узел. Компонент не владеет загрузкой дерева - только данными и
+ * колбэками страницы: загрузку дерева, подтверждение цитат и диалоги редактирования/прикрепления
+ * держит страница Research. Проверка узла вынесена в {@link NodeReview} и сама отправляет
+ * решение методиста, после чего ActivityTree запоминает новое состояние узла локально.
  *
  * Экспорты: {@link ActivityTree} (основной компонент), {@link buildTree} (сборка
  * иерархии из плоского списка контракта), {@link NODE_TYPE_LABELS} (подписи типов узлов),
@@ -26,6 +27,7 @@ import {
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  GraduationCapIcon,
   HeartPulseIcon,
   MessageSquareIcon,
   PencilIcon,
@@ -35,11 +37,20 @@ import {
   XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
-import type { ActivityNode, Evidence, Insights, NodeType, Source } from "@/lib/api/client"
+import type {
+  ActivityNode,
+  Evidence,
+  Insights,
+  NodeReviewFields,
+  NodeType,
+  ReviewableNode,
+  Source,
+} from "@/lib/api/client"
 import { SOURCE_PRIORITY, explainNode, provenanceFor, provenanceLabel, type ProvenanceInfo } from "@/lib/provenance"
 import { computeTreeFlags, type TreeFlag, type TreeFlagCode } from "@/lib/tree-flags"
 import { SOURCE_TYPE_LABEL } from "@/lib/status"
 import { buildTree, NODE_TYPE_LABELS, type TreeNode } from "./activity-tree-model"
+import { NodeReview } from "./node-review"
 
 /** Порядок типов для чипов-фильтров: от общего к частному, как в самой методологии дерева. */
 const TYPE_ORDER: NodeType[] = ["role", "function", "task", "action"]
@@ -411,6 +422,8 @@ export interface ActivityTreeProps {
   sourcesById?: Map<string, Source>
   /** Перейти к цитате в интервью (вкладка чата и подсветка сообщения). */
   onShowTranscript?: (item: Evidence, source?: Source) => void
+  /** Открыть вкладку «Программа» с фильтром по узлу (связка дерева и сопоставлений). */
+  onShowProgramLinks?: (nodeId: string) => void
   /** Серверные инсайты: здоровье дерева, происхождение данных, флаги и объяснения узлов. */
   insights?: Insights | null
   /** Просмотр без изменений (режим ?view=readonly). */
@@ -438,6 +451,7 @@ export function ActivityTree({
   focusNodeId,
   sourcesById,
   onShowTranscript,
+  onShowProgramLinks,
   insights,
   readOnly = false,
 }: ActivityTreeProps) {
@@ -450,6 +464,33 @@ export function ActivityTree({
   const [scrollTop, setScrollTop] = useState(0)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selected, setSelected] = useState<TreeNode | null>(null)
+  /** Решения проверки, принятые в текущей сессии: перекрывают устаревшие props до поллинга. */
+  const [reviewOverrides, setReviewOverrides] = useState<Map<string, NodeReviewFields>>(
+    () => new Map(),
+  )
+
+  /** Сливает поля проверки из props узла и локального решения (локальное приоритетнее). */
+  const reviewFieldsFor = useCallback(
+    (node: TreeNode): NodeReviewFields => {
+      const override = reviewOverrides.get(node.id)
+      return {
+        review_status: override?.review_status ?? node.review_status ?? null,
+        review_comment: override?.review_comment ?? node.review_comment ?? null,
+        reviewed_at: override?.reviewed_at ?? node.reviewed_at ?? null,
+      }
+    },
+    [reviewOverrides],
+  )
+
+  const handleReviewed = useCallback((node: ReviewableNode) => {
+    const fields: NodeReviewFields = {
+      review_status: node.review_status ?? null,
+      review_comment: node.review_comment ?? null,
+      reviewed_at: node.reviewed_at ?? null,
+    }
+    setReviewOverrides((previous) => new Map(previous).set(node.id, fields))
+    setSelected((previous) => (previous?.id === node.id ? { ...previous, ...fields } : previous))
+  }, [])
 
   const roots = useMemo(() => buildTree(nodes), [nodes])
   const flagsByNode = useMemo(() => {
@@ -690,7 +731,10 @@ export function ActivityTree({
     setOnlyProblem(false)
   }, [])
 
-  const select = useCallback((node: TreeNode) => setSelected(node), [])
+  const select = useCallback(
+    (node: TreeNode) => setSelected({ ...node, ...reviewFieldsFor(node) }),
+    [reviewFieldsFor],
+  )
 
   const toolbar = (
     <div className="space-y-3" data-print-hide>
@@ -872,6 +916,13 @@ export function ActivityTree({
                   ))}
                 </ul>
               )}
+              <NodeReview
+                key={selected.id}
+                nodeId={selected.id}
+                review={reviewFieldsFor(selected)}
+                readOnly={readOnly}
+                onReviewed={handleReviewed}
+              />
               {selected.evidence.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   К этому узлу пока не прикреплено ни одного обоснования.
@@ -890,19 +941,34 @@ export function ActivityTree({
               )}
             </div>
           )}
-          {!readOnly && (
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const node = selected
-                  setSelected(null)
-                  if (node) onAttach(node)
-                }}
-              >
-                <PlusIcon className="size-4" />
-                Добавить обоснование
-              </Button>
+          {(onShowProgramLinks || !readOnly) && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {onShowProgramLinks && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const node = selected
+                    setSelected(null)
+                    if (node) onShowProgramLinks(node.id)
+                  }}
+                >
+                  <GraduationCapIcon className="size-4" />
+                  Сопоставления с программой
+                </Button>
+              )}
+              {!readOnly && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const node = selected
+                    setSelected(null)
+                    if (node) onAttach(node)
+                  }}
+                >
+                  <PlusIcon className="size-4" />
+                  Добавить обоснование
+                </Button>
+              )}
             </div>
           )}
         </DialogContent>

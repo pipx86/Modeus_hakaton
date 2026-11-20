@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
@@ -183,7 +184,157 @@ describe("NewResearch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
     expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
     const request = fetchCalls().find((call) => call.init.method === "POST")
-    expect(JSON.parse(String(request?.init.body))).toEqual({ profession: "Аналитик", type: "chat" })
+    expect(JSON.parse(String(request?.init.body))).toEqual({
+      profession: "Аналитик",
+      type: "chat",
+      github_consent: true,
+      github_exclude: [],
+      result_kind: "activity",
+    })
     expect(fetchCalls().some((call) => call.url.includes("/runs/estimate"))).toBe(false)
+  })
+})
+
+const PROGRAMS = [
+  { id: "p-1", title: "Прикладная математика", code: "01.03.02" },
+  { id: "p-2", title: "Программная инженерия" },
+]
+
+/** Обработчик запуска и списка программ для карточки 25. */
+function programHandler(programs: unknown[] = PROGRAMS) {
+  return setFetchHandler(async (url, init) => {
+    const method = init?.method ?? "GET"
+    if (url.endsWith("/api/v1/academic/programs") && method === "GET") {
+      return { status: 200, body: programs }
+    }
+    if (url.endsWith("/api/v1/runs") && method === "POST") {
+      return { status: 201, body: { id: "run-42", status: "pending", profession: "Data Scientist" } }
+    }
+    return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+  })
+}
+
+/** Переключает форму в режим сопоставления и ждёт загрузку списка программ. */
+async function switchToProgram() {
+  fireEvent.click(
+    screen.getByRole("radio", {
+      name: /Описание и сопоставление с образовательной программой/,
+    }),
+  )
+  expect(await screen.findByText("Образовательная программа")).toBeInTheDocument()
+  await waitFor(() =>
+    expect(screen.queryByText(/Загружаем список программ/)).not.toBeInTheDocument(),
+  )
+}
+
+describe("NewResearch: ожидаемый результат", () => {
+  it("по умолчанию выбирает описание деятельности и не запрашивает программы", async () => {
+    programHandler()
+    renderPage()
+    await act(async () => {})
+
+    expect(screen.getByRole("radio", { name: /Описание деятельности/ })).toBeChecked()
+    expect(screen.queryByText("Образовательная программа")).not.toBeInTheDocument()
+    expect(fetchCalls().some((call) => call.url.includes("/academic/programs"))).toBe(false)
+  })
+
+  it("в режиме сопоставления показывает выбор программы и отправляет program_id", async () => {
+    programHandler()
+    const user = userEvent.setup()
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
+      target: { value: "Data Scientist" },
+    })
+    await switchToProgram()
+
+    await user.click(screen.getByLabelText("Образовательная программа"))
+    await user.click(
+      await screen.findByRole("option", { name: "01.03.02 · Прикладная математика" }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
+    const request = fetchCalls().find((call) => call.init.method === "POST")
+    expect(JSON.parse(String(request?.init.body))).toMatchObject({
+      result_kind: "program",
+      program_id: "p-1",
+    })
+  })
+
+  it("блокирует запуск без выбранной программы и объясняет причину", async () => {
+    programHandler()
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
+      target: { value: "Data Scientist" },
+    })
+    await switchToProgram()
+
+    expect(screen.getByRole("button", { name: "Начать исследование" })).toBeDisabled()
+    expect(
+      screen.getByText("Чтобы запустить исследование, выберите образовательную программу."),
+    ).toBeInTheDocument()
+    expect(fetchCalls().some((call) => call.init.method === "POST")).toBe(false)
+  })
+
+  it("аккуратно показывает программы без title/code и отбрасывает записи без id", async () => {
+    programHandler([
+      { id: "p-1", name: "Только name" },
+      { title: "Без id" },
+      { id: "p-2", title: "С кодом", code: "09.03.01" },
+    ])
+    const user = userEvent.setup()
+    renderPage()
+    await act(async () => {})
+
+    await switchToProgram()
+    await user.click(screen.getByLabelText("Образовательная программа"))
+
+    expect(await screen.findByRole("option", { name: "Только name" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "09.03.01 · С кодом" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: /Без id/ })).not.toBeInTheDocument()
+  })
+
+  it("показывает ошибку загрузки программ и не даёт запустить исследование", async () => {
+    setFetchHandler(async (url) => {
+      if (url.includes("/academic/programs")) {
+        return { status: 500, body: { code: "INTERNAL", message: "программы недоступны" } }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
+      target: { value: "Data Scientist" },
+    })
+    await switchToProgram()
+
+    expect(await screen.findByText("программы недоступны")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Начать исследование" })).toBeDisabled()
+    expect(fetchCalls().some((call) => call.init.method === "POST")).toBe(false)
+  })
+
+  it("при возврате к описанию деятельности не отправляет program_id", async () => {
+    programHandler()
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
+      target: { value: "Data Scientist" },
+    })
+    await switchToProgram()
+    fireEvent.click(screen.getByRole("radio", { name: /Описание деятельности/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
+    const request = fetchCalls().find((call) => call.init.method === "POST")
+    const body = JSON.parse(String(request?.init.body)) as Record<string, unknown>
+    expect(body.result_kind).toBe("activity")
+    expect(body).not.toHaveProperty("program_id")
   })
 })

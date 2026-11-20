@@ -3,10 +3,14 @@
  * @description Модель дерева деятельности: сборка иерархии из плоского списка узлов и подписи уровней.
  */
 
-import type { ActivityNode, NodeType } from "@/lib/api/client"
+import type { NodeType, ReviewableNode } from "@/lib/api/client"
 
-/** Узел дерева с восстановленными детьми из плоского ответа API. */
-export type TreeNode = ActivityNode & { children: TreeNode[] }
+/**
+ * Узел дерева с восстановленными детьми из плоского ответа API. Поля проверки
+ * (`review_status`, `review_comment`, `reviewed_at`) переносятся из ответа как есть:
+ * `buildTree` копирует узел целиком, поэтому панель узла видит актуальный статус.
+ */
+export type TreeNode = ReviewableNode & { children: TreeNode[] }
 
 /** Подписи типов узлов для дерева и формы редактирования. */
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {
@@ -17,7 +21,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
 }
 
 /** Восстанавливает иерархию дерева из плоского списка узлов за два прохода. */
-export function buildTree(nodes: ActivityNode[]): TreeNode[] {
+export function buildTree(nodes: ReviewableNode[]): TreeNode[] {
   const map = new Map<string, TreeNode>()
   for (const node of nodes) map.set(node.id, { ...node, children: [] })
 

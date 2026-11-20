@@ -38,6 +38,9 @@ import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
 import { LearningPlanView } from "@/components/learning-plan-view"
 import { RunStageStepper } from "@/components/run-stage"
+import { ProgramLinksTab } from "@/components/program-links-tab"
+import { InterviewsTab } from "@/components/interviews-tab"
+import { ReviewSummary } from "@/components/review-summary"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
@@ -1035,6 +1038,7 @@ function TreeTab({
   focusNodeId,
   onShowTranscript,
   onFocusNode,
+  onShowProgramLinks,
   readOnly = false,
 }: {
   id: string
@@ -1042,6 +1046,7 @@ function TreeTab({
   focusNodeId?: string | null
   onShowTranscript?: (item: Evidence, source?: Source) => void
   onFocusNode?: (nodeId: string) => void
+  onShowProgramLinks?: (nodeId: string) => void
   readOnly?: boolean
 }) {
   const [nodes, setNodes] = useState<ActivityNode[]>([])
@@ -1331,6 +1336,7 @@ function TreeTab({
           focusNodeId={focusNodeId}
           sourcesById={sourcesById}
           onShowTranscript={onShowTranscript}
+          onShowProgramLinks={onShowProgramLinks}
           insights={insights}
           readOnly={readOnly}
         />
@@ -1382,6 +1388,8 @@ export function Research() {
   const chatReadOnly = guestView
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
+  /** Фильтр вкладки «Программа»: открыта из панели узла дерева. */
+  const [programNodeId, setProgramNodeId] = useState<string | null>(null)
   const autoChatRef = useRef(false)
   const showTranscript = useCallback(
     async (item: Evidence) => {
@@ -1421,6 +1429,20 @@ export function Research() {
     },
     [setSearchParams, setTab],
   )
+  /**
+   * Переход из панели узла дерева на вкладку «Программа»: запоминаем узел, чтобы
+   * показать только его сопоставления. Если бэкенд не поддержит фильтр, компонент
+   * отфильтрует список на клиенте.
+   */
+  const showProgramLinks = useCallback((nodeId: string) => {
+    setProgramNodeId(nodeId)
+    setTab("program")
+  }, [])
+  /** Ручное переключение вкладок сбрасывает фильтр по узлу. */
+  const handleTabChange = useCallback((value: string) => {
+    setTab(value)
+    setProgramNodeId(null)
+  }, [])
   const {
     run,
     loading,
@@ -1534,7 +1556,9 @@ export function Research() {
           />
         )
       ) : (
-      <Tabs value={tab} onValueChange={setTab} className="flex-col">
+      <>
+        {reviewerView && run && <ReviewSummary runId={id} />}
+        <Tabs value={tab} onValueChange={handleTabChange} className="flex-col">
         <TabsList className="h-9 items-center" data-print-hide>
           <TabsTrigger value="sources" className={TAB_TRIGGER_CLASS}>
             Источники
@@ -1552,11 +1576,19 @@ export function Research() {
               Снимки и проверка
             </TabsTrigger>
           )}
+          {reviewerView && (
+            <TabsTrigger value="program" className={TAB_TRIGGER_CLASS}>
+              Программа
+            </TabsTrigger>
+          )}
           {adminView && (
             <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
               Конфликты
             </TabsTrigger>
           )}
+          <TabsTrigger value="interviews" className={TAB_TRIGGER_CLASS}>
+            Интервью
+          </TabsTrigger>
           <TabsTrigger value="chat" className={TAB_TRIGGER_CLASS}>
             Чат
           </TabsTrigger>
@@ -1571,6 +1603,7 @@ export function Research() {
             focusNodeId={focusNodeId}
             onShowTranscript={showTranscript}
             onFocusNode={focusNode}
+            onShowProgramLinks={reviewerView ? showProgramLinks : undefined}
             readOnly={treeReadOnly}
           />
         </TabsContent>
@@ -1582,8 +1615,21 @@ export function Research() {
             <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
           )}
         </TabsContent>
+        <TabsContent value="program">
+          {reviewerView && (
+            <ProgramLinksTab
+              runId={id}
+              nodeId={programNodeId}
+              onClearNodeFilter={() => setProgramNodeId(null)}
+              readOnly={treeReadOnly}
+            />
+          )}
+        </TabsContent>
         <TabsContent value="conflicts">
           {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
+        </TabsContent>
+        <TabsContent value="interviews">
+          <InterviewsTab runId={id} />
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab
@@ -1596,6 +1642,7 @@ export function Research() {
           />
         </TabsContent>
       </Tabs>
+      </>
       )}
     </div>
   )

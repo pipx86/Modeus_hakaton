@@ -467,3 +467,227 @@ export async function listReviewEvidence(
   }).toString()
   return requestApi<ReviewQueueItem[]>(`/reviews/evidence?${query}`)
 }
+
+// ---------------------------------------------------------------------------
+// MVP-план: проверка узлов дерева, сопоставления с образовательной программой,
+// сводка проверки и история интервью. Этих эндпоинтов ещё нет в сгенерированной
+// OpenAPI-схеме, поэтому ниже - ручные типы и те же raw-fetch обёртки, что и выше.
+// ---------------------------------------------------------------------------
+
+/** Статус проверки узла методистом. */
+export type NodeReviewStatus = "pending" | "approved" | "rejected"
+
+/** Решение по узлу, которое отправляется в `POST /nodes/{id}/review`. */
+export type NodeReviewDecision = "approved" | "rejected"
+
+/**
+ * Поля проверки, которые бэкенд добавляет к узлу дерева. Все они необязательные:
+ * старый бэкенд и legacy-моки их не отдают, а UI считает такой узел непроверенным.
+ */
+export interface NodeReviewFields {
+  review_status?: NodeReviewStatus | null
+  review_comment?: string | null
+  reviewed_at?: string | null
+}
+
+/** Узел дерева вместе с полями проверки (`GET /runs/{id}/tree`). */
+export type ReviewableNode = ActivityNode & NodeReviewFields
+
+/**
+ * Сохраняет решение методиста по узлу.
+ *
+ * @param nodeId Id узла дерева.
+ * @param status `approved` или `rejected`.
+ * @param comment Необязательный комментарий; пустая строка допустима.
+ */
+export async function setNodeReview(
+  nodeId: string,
+  status: NodeReviewDecision,
+  comment = "",
+): Promise<ReviewableNode> {
+  return requestApi<ReviewableNode>(`/nodes/${encodeURIComponent(nodeId)}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, comment }),
+  })
+}
+
+/** Статус связи узла деятельности с элементом образовательной программы. */
+export type ProgramLinkStatus = "proposed" | "approved" | "rejected"
+
+/** Связь узла дерева с элементом программы (`GET /runs/{id}/program-links`). */
+export interface ProgramLink {
+  id: string
+  run_id: string
+  node_id: string
+  node_title: string
+  node_type: NodeType
+  program_id: string
+  program_title: string
+  competency_id: string
+  competency_title: string
+  ksa_id: string | null
+  ksa_title: string | null
+  status: ProgramLinkStatus
+  /** Объяснение, почему система предложила именно эту связь. */
+  reason: string
+  source: "system" | "methodist"
+  reviewed_at: string | null
+}
+
+/**
+ * Список связей исследования с программой. Если передан `nodeId`, он уходит
+ * query-параметром `node_id`: бэкенд может поддержать фильтр, а компонент всё
+ * равно отфильтрует ответ на клиенте, чтобы не показывать чужие узлы.
+ */
+export async function listProgramLinks(runId: string, nodeId?: string): Promise<ProgramLink[]> {
+  const query = nodeId ? `?node_id=${encodeURIComponent(nodeId)}` : ""
+  return requestApi<ProgramLink[]>(`/runs/${encodeURIComponent(runId)}/program-links${query}`)
+}
+
+/** Подтверждает или отклоняет связь с элементом программы. */
+export async function reviewProgramLink(
+  runId: string,
+  linkId: string,
+  status: NodeReviewDecision,
+  reason = "",
+): Promise<ProgramLink> {
+  return requestApi<ProgramLink>(
+    `/runs/${encodeURIComponent(runId)}/program-links/${encodeURIComponent(linkId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, reason }),
+    },
+  )
+}
+
+/** Счётчики проверки по одной сущности сводки. */
+export interface ReviewSummarySection {
+  pending: number
+  approved: number
+  rejected: number
+  total: number
+}
+
+/** Ответ `GET /runs/{id}/review/summary`. */
+export interface ReviewSummary {
+  nodes: ReviewSummarySection
+  evidence: ReviewSummarySection
+  links: ReviewSummarySection
+}
+
+/** Сводка проверки исследования: узлы, обоснования и сопоставления. */
+export async function getReviewSummary(runId: string): Promise<ReviewSummary> {
+  return requestApi<ReviewSummary>(`/runs/${encodeURIComponent(runId)}/review/summary`)
+}
+
+/** Статус интервью в истории исследования. */
+export type InterviewStatus = "active" | "completed" | "failed"
+
+/** Одно интервью исследования (`GET /runs/{id}/interviews`). */
+export interface RunInterview {
+  id: string
+  run_id: string
+  respondent_name?: string
+  respondent_role?: string
+  status: InterviewStatus
+  started_at: string
+  finished_at?: string
+}
+
+/** Цитата-ссылка внутри сообщения интервью; форма не гарантирована контрактом. */
+export interface InterviewCitation {
+  id?: string
+  source_id?: string
+  ref_id?: string
+  quote?: string
+  title?: string
+}
+
+/** Сообщение истории интервью (`GET /runs/{id}/interviews/{interview_id}/messages`). */
+export interface InterviewMessage {
+  id: string
+  role: "user" | "agent"
+  content: string
+  created_at: string
+  citations?: InterviewCitation[]
+}
+
+/** Список интервью исследования. */
+export async function listRunInterviews(runId: string): Promise<RunInterview[]> {
+  return requestApi<RunInterview[]>(`/runs/${encodeURIComponent(runId)}/interviews`)
+}
+
+/** История сообщений выбранного интервью. */
+export async function listInterviewMessages(
+  runId: string,
+  interviewId: string,
+): Promise<InterviewMessage[]> {
+  return requestApi<InterviewMessage[]>(
+    `/runs/${encodeURIComponent(runId)}/interviews/${encodeURIComponent(interviewId)}/messages`,
+  )
+}
+
+/** Ожидаемый результат исследования, который выбирают при запуске. */
+export type RunResultKind = "activity" | "program"
+
+/**
+ * Программа в ответе `GET /academic/programs`. Поля необязательные: бэкенд может
+ * отдать `title` или `name`, `code` часто отсутствует.
+ */
+export interface AcademicProgram {
+  id?: string
+  title?: string
+  name?: string
+  code?: string
+}
+
+/** Нормализованный вариант программы для выпадающего списка. */
+export interface AcademicProgramOption {
+  id: string
+  title: string
+  code?: string
+}
+
+/** Загружает образовательные программы для режима «сопоставление с программой». */
+export async function listAcademicPrograms(): Promise<AcademicProgramOption[]> {
+  const data = await requestApi<AcademicProgram[]>("/academic/programs")
+  if (!Array.isArray(data)) return []
+  const options: AcademicProgramOption[] = []
+  const seen = new Set<string>()
+  for (const raw of data) {
+    if (!raw || typeof raw !== "object") continue
+    const id = typeof raw.id === "string" ? raw.id.trim() : ""
+    if (!id || seen.has(id)) continue
+    const title = (typeof raw.title === "string" && raw.title.trim()) ||
+      (typeof raw.name === "string" && raw.name.trim()) ||
+      id
+    const code = typeof raw.code === "string" && raw.code.trim() ? raw.code.trim() : undefined
+    seen.add(id)
+    options.push({ id, title, code })
+  }
+  return options
+}
+
+/** Тело запуска исследования: базовые поля плюс выбор результата MVP. */
+export interface CreateRunInput {
+  profession: string
+  type?: "chat" | "batch" | "learning"
+  transcript?: string
+  github_username?: string
+  github_consent?: boolean
+  github_exclude?: string[]
+  profile_context?: string
+  result_kind?: RunResultKind
+  program_id?: string
+}
+
+/** Запускает исследование (`POST /runs`). */
+export async function createRun(input: CreateRunInput): Promise<Run> {
+  return requestApi<Run>("/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+}
