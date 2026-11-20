@@ -31,6 +31,8 @@ function stubRun(
     tree?: unknown[]
     treeResponse?: unknown
     sources?: unknown[]
+    runSources?: unknown[]
+    programCoverage?: unknown
     evidences?: unknown[]
     snapshots?: unknown[]
     reviewQueue?: unknown[]
@@ -101,6 +103,22 @@ function stubRun(
     if (url.includes("/api/v1/runs/7/conflicts") && method === "GET") {
       return { status: 200, body: overrides.conflicts ?? [] }
     }
+    if (url.endsWith("/api/v1/runs/7/sources") && method === "GET") {
+      return { status: 200, body: overrides.runSources ?? [] }
+    }
+    if (url.endsWith("/api/v1/runs/7/program-coverage") && method === "GET") {
+      return {
+        status: 200,
+        body: overrides.programCoverage ?? {
+          run_id: "7",
+          program_id: "p-1",
+          program_title: "Прикладная математика",
+          nodes: [],
+          competencies: [],
+          counts: { confirmed: 0, proposed: 0, none: 0, total: 0 },
+        },
+      }
+    }
     if (url.includes("/api/v1/runs/7/snapshots") && method === "GET") {
       return { status: 200, body: overrides.snapshots ?? [] }
     }
@@ -165,6 +183,86 @@ describe("Research", () => {
 
     expect(await screen.findByRole("heading", { name: "Data Scientist" })).toBeInTheDocument()
     expect(await screen.findByText("Вакансия DS, HH")).toBeInTheDocument()
+  })
+
+  it("показывает состав использованных материалов в табе «Источники»", async () => {
+    stubRun({
+      runSources: [
+        {
+          id: "s-1",
+          type: "interview",
+          title: "Интервью с аналитиком",
+          source_url: null,
+          created_at: "2026-11-06T10:00:00Z",
+          evidence_count: 3,
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(await screen.findByText("Состав использованных материалов")).toBeInTheDocument()
+    expect(await screen.findByText("Интервью с аналитиком")).toBeInTheDocument()
+    expect(screen.getByText("Обоснований: 3")).toBeInTheDocument()
+    expect(
+      fetchCalls().some((call) => call.url.endsWith("/api/v1/runs/7/sources")),
+    ).toBe(true)
+  })
+
+  it("показывает отчёт о покрытии программы в табе «Программа»", async () => {
+    stubRun({
+      programCoverage: {
+        run_id: "7",
+        program_id: "p-1",
+        program_title: "Прикладная математика",
+        nodes: [
+          {
+            node_id: "n-1",
+            node_title: "Анализ метрик",
+            node_type: "function",
+            status: "confirmed",
+            links: [
+              {
+                link_id: "l-1",
+                competency_id: "c-1",
+                competency_title: "Анализ данных",
+                status: "approved",
+                reason: "Связь согласована методистом",
+              },
+            ],
+          },
+          {
+            node_id: "n-2",
+            node_title: "Коммуникация",
+            node_type: "action",
+            status: "none",
+            links: [],
+          },
+        ],
+        competencies: [
+          { competency_id: "c-1", competency_title: "Анализ данных", links_count: 1 },
+        ],
+        counts: { confirmed: 1, proposed: 0, none: 1, total: 2 },
+      },
+    })
+
+    renderPage()
+    await screen.findByRole("heading", { name: "Data Scientist" })
+    act(() => {
+      screen.getByRole("tab", { name: "Программа" }).focus()
+    })
+
+    expect(
+      await screen.findByText("Отчёт о покрытии программы деятельностью"),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Подтверждено: 1")).toBeInTheDocument()
+    expect(screen.getByText("Не сопоставлено: 1")).toBeInTheDocument()
+    expect(screen.getByText("Всего узлов: 2")).toBeInTheDocument()
+    expect(screen.getByText("Анализ метрик")).toBeInTheDocument()
+    expect(screen.queryByText(/пробел/i)).not.toBeInTheDocument()
+    expect(
+      fetchCalls().some((call) => call.url.endsWith("/api/v1/runs/7/program-coverage")),
+    ).toBe(true)
   })
 
   it("показывает дату запуска", async () => {

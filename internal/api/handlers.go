@@ -130,6 +130,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/vacancies/stats/summary", s.handleVacancyStats)
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
+	// Состав использованных материалов (карточка 10 плана MVP).
+	mux.HandleFunc("GET /api/v1/runs/{id}/sources", s.handleListRunSources)
 	mux.HandleFunc("GET /api/v1/runs/estimate", s.handleRunEstimate)
 	mux.HandleFunc("GET /api/v1/runs/{id}/cost", s.handleRunCost)
 	mux.HandleFunc("GET /api/v1/runs/{id}/insights", s.handleRunInsights)
@@ -158,11 +160,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/program-links", s.handleListProgramLinks)
 	mux.HandleFunc("POST /api/v1/runs/{id}/program-links/{link_id}/review", s.handleReviewProgramLink)
 	mux.HandleFunc("GET /api/v1/runs/{id}/review/summary", s.handleReviewSummary)
+	// Покрытие образовательной программы узлами дерева (карточка 24).
+	mux.HandleFunc("GET /api/v1/runs/{id}/program-coverage", s.handleProgramCoverage)
 	// Интервью одного исследования: несколько респондентов, у каждого своя
 	// история ответов (карточка 12 плана MVP).
 	mux.HandleFunc("GET /api/v1/runs/{id}/interviews", s.handleListRunInterviews)
 	mux.HandleFunc("POST /api/v1/runs/{id}/interviews", s.handleStartRunInterview)
 	mux.HandleFunc("GET /api/v1/runs/{id}/interviews/{interview_id}/messages", s.handleRunInterviewMessages)
+	// Какие ответы респондента стали основаниями решений (карточка 14).
+	mux.HandleFunc("GET /api/v1/runs/{id}/interviews/{interview_id}/evidence", s.handleRunInterviewEvidence)
 	mux.HandleFunc("GET /api/v1/runs/{id}/conflicts", s.handleRunConflicts)
 	mux.HandleFunc("GET /api/v1/runs/{id}/agent-messages", s.handleRunAgentMessages)
 	mux.HandleFunc("GET /api/v1/runs/{id}/search", s.handleSearch)

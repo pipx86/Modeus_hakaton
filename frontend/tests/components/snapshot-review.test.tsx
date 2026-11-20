@@ -72,6 +72,23 @@ const SNAPSHOT_DIFF = {
   summary: { added: 1, removed: 1, changed: 1 },
 }
 
+const SNAPSHOT_DIFF_WITH_EVIDENCE = {
+  ...SNAPSHOT_DIFF,
+  changed: [
+    {
+      ...SNAPSHOT_DIFF.changed[0],
+      evidence_added: [{ id: "e-new", quote: "Новая цитата", source_id: "src-1" }],
+      evidence_removed: [{ id: "e-old", quote: "Удалённая цитата", source_id: "src-2" }],
+    },
+  ],
+  evidence_added: [
+    { id: "e-root-new", quote: "Корневая новая цитата", source_id: "src-1" },
+  ],
+  evidence_removed: [
+    { id: "e-root-old", quote: "Корневая удалённая цитата", source_id: "src-3" },
+  ],
+}
+
 const PENDING_ITEM: ReviewQueueItem = {
   id: "ev-1",
   run_id: "7",
@@ -166,6 +183,30 @@ describe("SnapshotReviewTab", () => {
 
     const diffCall = fetchCalls().find((call) => call.url.includes("/diff?against="))
     expect(diffCall?.url).toContain("/runs/7/snapshots/snap-2/diff?against=snap-1")
+  })
+
+  it("показывает новые и удалённые обоснования и отделяет изменения дерева от решений по программе", async () => {
+    stubReviewApi({ diff: SNAPSHOT_DIFF_WITH_EVIDENCE })
+    renderTab()
+
+    const compareButton = await screen.findByRole("button", { name: "Сравнить снимки" })
+    await waitFor(() => expect(compareButton).toBeEnabled())
+    await userEvent.click(compareButton)
+    await screen.findByTestId("snapshot-diff")
+
+    expect(screen.getByText("Изменения дерева")).toBeInTheDocument()
+    expect(screen.getByText(/на вкладке «Программа»/)).toBeInTheDocument()
+
+    expect(screen.getByText("Новые обоснования")).toBeInTheDocument()
+    expect(screen.getByText(/Новая цитата/)).toBeInTheDocument()
+    expect(screen.getByText("Удалённые обоснования")).toBeInTheDocument()
+    expect(screen.getByText(/Удалённая цитата/)).toBeInTheDocument()
+    expect(screen.getAllByText("source_id: src-2").length).toBeGreaterThan(0)
+
+    expect(screen.getByText("Обоснования в сравнении")).toBeInTheDocument()
+    expect(screen.getByText(/Корневая новая цитата/)).toBeInTheDocument()
+    expect(screen.getByText(/Корневая удалённая цитата/)).toBeInTheDocument()
+    expect(screen.queryByText(/пробел/i)).not.toBeInTheDocument()
   })
 
   it("открывает диалог исходной цитаты и переходит к узлу дерева", async () => {

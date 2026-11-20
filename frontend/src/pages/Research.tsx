@@ -40,6 +40,8 @@ import { LearningPlanView } from "@/components/learning-plan-view"
 import { RunStageStepper } from "@/components/run-stage"
 import { ProgramLinksTab } from "@/components/program-links-tab"
 import { InterviewsTab } from "@/components/interviews-tab"
+import { RunSourcesPanel } from "@/components/run-sources-panel"
+import { ProgramCoverageReport } from "@/components/program-coverage-report"
 import { ReviewSummary } from "@/components/review-summary"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -1594,7 +1596,10 @@ export function Research() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="sources">
-          <SourcesTab runId={id} readOnly={treeReadOnly} />
+          <div className="space-y-4">
+            <RunSourcesPanel runId={id} onFocusNode={focusNode} />
+            <SourcesTab runId={id} readOnly={treeReadOnly} />
+          </div>
         </TabsContent>
         <TabsContent value="tree">
           <TreeTab
@@ -1617,19 +1622,22 @@ export function Research() {
         </TabsContent>
         <TabsContent value="program">
           {reviewerView && (
-            <ProgramLinksTab
-              runId={id}
-              nodeId={programNodeId}
-              onClearNodeFilter={() => setProgramNodeId(null)}
-              readOnly={treeReadOnly}
-            />
+            <div className="space-y-4">
+              <ProgramCoverageReport runId={id} />
+              <ProgramLinksTab
+                runId={id}
+                nodeId={programNodeId}
+                onClearNodeFilter={() => setProgramNodeId(null)}
+                readOnly={treeReadOnly}
+              />
+            </div>
           )}
         </TabsContent>
         <TabsContent value="conflicts">
           {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
         </TabsContent>
         <TabsContent value="interviews">
-          <InterviewsTab runId={id} />
+          <InterviewsTab runId={id} onFocusNode={focusNode} />
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab

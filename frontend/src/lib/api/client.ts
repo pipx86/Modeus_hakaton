@@ -88,6 +88,7 @@ export type HealthResponse = components["schemas"]["HealthResponse"]
 export type ApiError = components["schemas"]["Error"]
 export type NodeType = components["schemas"]["NodeType"]
 export type SourceType = components["schemas"]["SourceType"]
+export type EvidenceStatus = components["schemas"]["EvidenceStatus"]
 export type RunStatus = components["schemas"]["RunStatus"]
 export type Evidence = components["schemas"]["Evidence"]
 export type ActivityNode = components["schemas"]["Node"]
@@ -137,6 +138,19 @@ export interface SnapshotNodeChange {
   after: ActivityNode
   /** Изменённые поля в порядке контракта: title, description, type, parent_id, evidence. */
   fields: string[]
+  /**
+   * Новые и удалённые обоснования узла. Бэкенд добавляет поля аддитивно: старые
+   * ответы их не содержат, поэтому UI обязан работать и без них.
+   */
+  evidence_added?: SnapshotEvidenceRef[]
+  evidence_removed?: SnapshotEvidenceRef[]
+}
+
+/** Обоснование в дельте снимков: цитата и материал, на который она ссылается. */
+export interface SnapshotEvidenceRef {
+  id: string
+  quote: string
+  source_id: string
 }
 
 export interface SnapshotDiffSummary {
@@ -157,6 +171,12 @@ export interface SnapshotDiff {
   /** Человекочитаемый changelog от бэкенда (если доступен). */
   story?: string
   story_lines?: string[]
+  /**
+   * Необязательные общие дельты обоснований: бэкенд может отдать их как на уровне
+   * изменённого узла, так и на уровне всего сравнения. UI поддерживает обе формы.
+   */
+  evidence_added?: SnapshotEvidenceRef[]
+  evidence_removed?: SnapshotEvidenceRef[]
 }
 
 /** Статусы очереди проверки (`GET /reviews/evidence`). */
@@ -690,4 +710,123 @@ export async function createRun(input: CreateRunInput): Promise<Run> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   })
+}
+
+// ---------------------------------------------------------------------------
+// P1-карточки MVP: состав использованных материалов, основания из интервью и
+// отчёт о покрытии программы деятельностью. Эндпоинтов пока нет в сгенерированной
+// OpenAPI-схеме, формы фиксированы планом MVP, поэтому здесь ручные типы и те же
+// raw-fetch обёртки, что у снимков и проверки узлов.
+// ---------------------------------------------------------------------------
+
+/**
+ * Материал, привязанный к исследованию (`GET /runs/{id}/sources`).
+ * `evidence_count` показывает, сколько обоснований ссылается на материал.
+ */
+export interface RunSource {
+  id: string
+  type: SourceType
+  title: string
+  source_url?: string | null
+  created_at?: string | null
+  evidence_count?: number | null
+}
+
+/** Состав использованных материалов исследования. */
+export async function listRunSources(runId: string): Promise<RunSource[]> {
+  const data = await requestApi<RunSource[]>(`/runs/${encodeURIComponent(runId)}/sources`)
+  // Старый бэкенд мог отвечать объектом вместо массива: экран покажет пустое состояние.
+  return Array.isArray(data) ? data : []
+}
+
+/**
+ * Обоснование, которое интервью дало дереву деятельности
+ * (`GET /runs/{id}/interviews/{interview_id}/evidence`).
+ */
+export interface InterviewEvidence {
+  evidence_id: string
+  node_id: string
+  node_title: string
+  node_type: NodeType
+  quote: string
+  source_id: string
+  source_title?: string | null
+  status: EvidenceStatus
+}
+
+/** Основания, связанные с ответами выбранного интервью. */
+export async function listInterviewEvidence(
+  runId: string,
+  interviewId: string,
+): Promise<InterviewEvidence[]> {
+  const data = await requestApi<InterviewEvidence[]>(
+    `/runs/${encodeURIComponent(runId)}/interviews/${encodeURIComponent(interviewId)}/evidence`,
+  )
+  return Array.isArray(data) ? data : []
+}
+
+/** Статус узла в отчёте о покрытии: подтверждён, только предложен или без связи. */
+export type ProgramCoverageStatus = "confirmed" | "proposed" | "none"
+
+/** Связь узла деятельности с элементом программы в отчёте о покрытии. */
+export interface ProgramCoverageLink {
+  link_id: string
+  competency_id: string
+  competency_title: string
+  status: ProgramLinkStatus
+  reason: string
+}
+
+/** Один узел дерева в отчёте о покрытии программы. */
+export interface ProgramCoverageNode {
+  node_id: string
+  node_title: string
+  node_type: NodeType
+  status: ProgramCoverageStatus
+  links: ProgramCoverageLink[]
+}
+
+/** Компетенция программы, связанная с деятельностью, и число её связей. */
+export interface ProgramCoverageCompetency {
+  competency_id: string
+  competency_title: string
+  links_count: number
+}
+
+/** Счётчики отчёта о покрытии программы. */
+export interface ProgramCoverageCounts {
+  confirmed: number
+  proposed: number
+  none: number
+  total: number
+}
+
+/** Ответ `GET /runs/{id}/program-coverage`. */
+export interface ProgramCoverage {
+  run_id: string
+  program_id: string
+  program_title: string
+  nodes: ProgramCoverageNode[]
+  competencies: ProgramCoverageCompetency[]
+  counts: ProgramCoverageCounts
+}
+
+/** Отчёт о покрытии программы деятельностью исследования. */
+export async function getProgramCoverage(runId: string): Promise<ProgramCoverage> {
+  const data = await requestApi<ProgramCoverage>(
+    `/runs/${encodeURIComponent(runId)}/program-coverage`,
+  )
+  return {
+    run_id: typeof data?.run_id === "string" ? data.run_id : runId,
+    program_id: typeof data?.program_id === "string" ? data.program_id : "",
+    program_title: typeof data?.program_title === "string" ? data.program_title : "",
+    nodes: Array.isArray(data?.nodes) ? data.nodes : [],
+    competencies: Array.isArray(data?.competencies) ? data.competencies : [],
+    counts: {
+      confirmed: Number(data?.counts?.confirmed ?? 0) || 0,
+      proposed: Number(data?.counts?.proposed ?? 0) || 0,
+      none: Number(data?.counts?.none ?? 0) || 0,
+      total: Number(data?.counts?.total ?? 0) || 0,
+    },
+  }
 }

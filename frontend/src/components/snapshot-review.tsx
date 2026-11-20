@@ -7,8 +7,12 @@
  * 1. Сравнение снимков - `GET /runs/{id}/snapshots` и
  *    `GET /runs/{id}/snapshots/{head}/diff?against={base}`. По умолчанию сравниваются
  *    два последних снимка; показываются сводка, добавленные/удалённые узлы и изменения
- *    по полям (было/стало). У каждой цитаты видны source_id и ref_id, клик открывает
- *    диалог исходной цитаты с источником и переходом к узлу в дереве.
+ *    по полям (было/стало). Изменённые узлы дополнительно показывают новые и удалённые
+ *    обоснования (`evidence_added`/`evidence_removed`, поля бэкенд добавляет аддитивно;
+ *    при их отсутствии блок не рендерится). Блок явно отделён от решений по программе:
+ *    сопоставления ведутся на вкладке «Программа» и в diff не входят. У каждой цитаты
+ *    видны source_id и ref_id, клик открывает диалог исходной цитаты с источником и
+ *    переходом к узлу в дереве.
  * 2. Очередь проверки - `GET /reviews/evidence?status=...`; строку можно подтвердить
  *    или отклонить существующими `POST /evidences/{id}/approve|reject` (204). После
  *    успешной мутации строка уходит из текущего фильтра, при ошибке остаётся и
@@ -81,6 +85,7 @@ import {
   type ReviewProgress,
   type RunSnapshot,
   type SnapshotDiff,
+  type SnapshotEvidenceRef,
   type SnapshotNodeChange,
   type Source,
 } from "@/lib/api/client"
@@ -245,6 +250,64 @@ function FieldChange({ label, before, after }: { label: string; before: string; 
 }
 
 /**
+ * Список новых или удалённых обоснований из дельты снимков. Поля
+ * `evidence_added`/`evidence_removed` бэкенд добавляет аддитивно, поэтому
+ * отсутствие массивов - обычный случай, а не ошибка.
+ */
+function EvidenceDeltaList({
+  title,
+  evidence,
+  removed = false,
+}: {
+  title: string
+  evidence: SnapshotEvidenceRef[]
+  removed?: boolean
+}) {
+  if (evidence.length === 0) return null
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium">{title}</p>
+      <ul className="space-y-1">
+        {evidence.map((item) => (
+          <li
+            key={item.id}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-background/60 px-2 py-1 text-xs"
+          >
+            <span
+              className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${
+                removed ? "text-muted-foreground line-through" : ""
+              }`}
+            >
+              «{item.quote}»
+            </span>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+              source_id: {item.source_id}
+            </span>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+              evidence_id: {item.id}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Собирает дельты обоснований со всех изменённых узлов сравнения. */
+function collectNodeEvidenceDeltas(changes: SnapshotNodeChange[]): {
+  added: SnapshotEvidenceRef[]
+  removed: SnapshotEvidenceRef[]
+} {
+  const added: SnapshotEvidenceRef[] = []
+  const removed: SnapshotEvidenceRef[] = []
+  for (const change of changes) {
+    added.push(...(change.evidence_added ?? []))
+    removed.push(...(change.evidence_removed ?? []))
+  }
+  return { added, removed }
+}
+
+/**
  * Список цитат узла: каждая строка кликабельна и открывает диалог исходной
  * цитаты. Source_id и ref_id показаны явно - это требование «перехода к исходным
  * цитатам»: эксперт видит, откуда именно взята формулировка.
@@ -386,6 +449,9 @@ function ChangedNode({
 }) {
   const before = change.before
   const after = change.after
+  const evidenceAdded = change.evidence_added ?? []
+  const evidenceRemoved = change.evidence_removed ?? []
+  const hasEvidenceDelta = evidenceAdded.length + evidenceRemoved.length > 0
   return (
     <li className="space-y-2 rounded-lg border bg-muted/20 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -423,11 +489,17 @@ function ChangedNode({
           />
         )}
       </dl>
-      {change.fields.includes("evidence") && (
+      {change.fields.includes("evidence") && !hasEvidenceDelta && (
         <p className="text-xs text-muted-foreground">
           Обоснования изменились - ниже актуальные цитаты снимка.
         </p>
       )}
+      <EvidenceDeltaList title="Новые обоснования" evidence={evidenceAdded} />
+      <EvidenceDeltaList
+        title="Удалённые обоснования"
+        evidence={evidenceRemoved}
+        removed
+      />
       <EvidenceQuotes
         nodeId={after.id}
         nodeTitle={after.title}
@@ -708,6 +780,19 @@ function SnapshotDiffSection({
     setCompareError(null)
   }
 
+  // Бэкенд может отдать дельты обоснований на уровне узла или всего сравнения:
+  // показываем обе формы и не дублируем обоснования, если они пришли дважды.
+  const nodeEvidenceDeltas = collectNodeEvidenceDeltas(diff?.changed ?? [])
+  const nodeEvidenceIds = new Set(
+    [...nodeEvidenceDeltas.added, ...nodeEvidenceDeltas.removed].map((item) => item.id),
+  )
+  const rootEvidenceAdded = (diff?.evidence_added ?? []).filter(
+    (item) => !nodeEvidenceIds.has(item.id),
+  )
+  const rootEvidenceRemoved = (diff?.evidence_removed ?? []).filter(
+    (item) => !nodeEvidenceIds.has(item.id),
+  )
+
   return (
     <Card className="gap-4 p-5">
       <CardHeader>
@@ -821,6 +906,14 @@ function SnapshotDiffSection({
             )}
             {diff && (
               <div className="space-y-4" data-testid="snapshot-diff">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold">Изменения дерева</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Здесь только структура дерева деятельности и его обоснования.
+                    Сопоставления с образовательной программой и решения по ним ведутся
+                    отдельно, на вкладке «Программа», и в это сравнение не входят.
+                  </p>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <DiffSummaryBadges diff={diff} />
                   <Button
@@ -869,6 +962,20 @@ function SnapshotDiffSection({
                         sources={sources}
                         onOpenQuote={setDetail}
                       />
+                    )}
+                    {(rootEvidenceAdded.length > 0 || rootEvidenceRemoved.length > 0) && (
+                      <section className="space-y-2">
+                        <h3 className="text-sm font-medium">Обоснования в сравнении</h3>
+                        <EvidenceDeltaList
+                          title="Новые обоснования в сравнении"
+                          evidence={rootEvidenceAdded}
+                        />
+                        <EvidenceDeltaList
+                          title="Удалённые обоснования в сравнении"
+                          evidence={rootEvidenceRemoved}
+                          removed
+                        />
+                      </section>
                     )}
                   </div>
                 )}

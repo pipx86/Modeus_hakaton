@@ -1,14 +1,17 @@
 /**
  * @file interviews-tab.tsx
- * @description Вкладка «Интервью»: история интервью исследования и сообщения выбранного
- * интервью.
+ * @description Вкладка «Интервью»: история интервью исследования, сообщения выбранного
+ * интервью и основания, которые его ответы дали дереву деятельности.
  *
- * Данные: `GET /runs/{id}/interviews` (список с респондентом и статусом) и
- * `GET /runs/{id}/interviews/{interview_id}/messages` (история сообщений).
- * Список и история - отдельные запросы: при переключении интервью сообщения сначала
- * очищаются, а «поздний» ответ предыдущего интервью игнорируется по номеру запроса,
- * поэтому истории разных интервью не смешиваются. Если API вернул ошибку, экран
- * показывает её и кнопку повтора, а не пустой список.
+ * Данные: `GET /runs/{id}/interviews` (список с респондентом и статусом),
+ * `GET /runs/{id}/interviews/{interview_id}/messages` (история сообщений) и
+ * `GET /runs/{id}/interviews/{interview_id}/evidence` (цитаты, узлы и статусы
+ * обоснований). Три запроса независимы, а при переключении интервью их состояние
+ * сначала очищается, а «поздний» ответ предыдущего интервью игнорируется по номеру
+ * запроса - поэтому истории и основания разных интервью не смешиваются. Если API
+ * вернул ошибку, экран показывает её и кнопку повтора, а не пустой список; блок
+ * оснований при 501/ошибке остаётся нейтральным («Основания ещё не связаны с
+ * ответами») и не роняет вкладку.
  *
  * Экспорт: {@link InterviewsTab}.
  */
@@ -17,10 +20,14 @@ import { MessagesSquareIcon, RefreshCwIcon, UserIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { NODE_TYPE_LABELS } from "@/components/activity-tree-model"
 import {
   ApiRequestError,
+  listInterviewEvidence,
   listInterviewMessages,
   listRunInterviews,
+  type EvidenceStatus,
+  type InterviewEvidence,
   type InterviewMessage,
   type InterviewStatus,
   type RunInterview,
@@ -36,6 +43,23 @@ const INTERVIEW_STATUS_CLASS: Record<InterviewStatus, string> = {
   active: "bg-primary/10 text-primary",
   completed: "bg-success/15 text-success",
   failed: "bg-destructive/15 text-destructive",
+}
+
+const EVIDENCE_STATUS_LABEL: Record<EvidenceStatus, string> = {
+  pending: "На проверке",
+  approved: "Подтверждено",
+  rejected: "Отклонено",
+}
+
+const EVIDENCE_STATUS_CLASS: Record<EvidenceStatus, string> = {
+  pending: "bg-muted text-muted-foreground",
+  approved: "bg-success/15 text-success",
+  rejected: "bg-destructive/15 text-destructive",
+}
+
+/** Человекочитаемый тип узла; неизвестный тип показываем как есть. */
+function nodeTypeLabel(type: string): string {
+  return NODE_TYPE_LABELS[type as keyof typeof NODE_TYPE_LABELS] ?? type
 }
 
 /** Короткая дата и время; неразобранное значение возвращается как есть. */
@@ -72,11 +96,20 @@ function respondentLabel(interview: RunInterview): string {
 }
 
 /**
- * Вкладка «Интервью»: слева список интервью, справа история выбранного.
+ * Вкладка «Интервью»: слева список интервью, справа история выбранного и
+ * основания, которые его ответы дали дереву деятельности.
  *
  * @param runId Id исследования.
+ * @param onFocusNode Переход к узлу на вкладке «Дерево»: используется кнопкой
+ *   узла в блоке «Ответы, ставшие основаниями». Без колбэка узел показан текстом.
  */
-export function InterviewsTab({ runId }: { runId: string }) {
+export function InterviewsTab({
+  runId,
+  onFocusNode,
+}: {
+  runId: string
+  onFocusNode?: (nodeId: string) => void
+}) {
   const [interviews, setInterviews] = useState<RunInterview[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -85,8 +118,15 @@ export function InterviewsTab({ runId }: { runId: string }) {
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [messagesError, setMessagesError] = useState<string | null>(null)
   const [messagesToken, setMessagesToken] = useState(0)
+  const [evidence, setEvidence] = useState<InterviewEvidence[]>([])
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
+  const [evidenceError, setEvidenceError] = useState<string | null>(null)
+  const [evidenceNotAvailable, setEvidenceNotAvailable] = useState(false)
+  const [evidenceToken, setEvidenceToken] = useState(0)
   /** Номер последнего запроса истории: ответы прошлых интервью не применяются. */
   const messagesSequence = useRef(0)
+  /** Номер последнего запроса оснований: основания прошлых интервью не смешиваются. */
+  const evidenceSequence = useRef(0)
 
   const loadInterviews = useCallback(async () => {
     setLoading(true)
@@ -149,6 +189,48 @@ export function InterviewsTab({ runId }: { runId: string }) {
       messagesSequence.current += 1
     }
   }, [loadMessages, selectedId, messagesToken])
+
+  const loadEvidence = useCallback(
+    async (interviewId: string | null) => {
+      const sequence = ++evidenceSequence.current
+      // Основания разных интервью не смешиваются: чистим до запроса.
+      setEvidence([])
+      setEvidenceError(null)
+      setEvidenceNotAvailable(false)
+      if (!interviewId) {
+        setEvidenceLoading(false)
+        return
+      }
+      setEvidenceLoading(true)
+      try {
+        const data = await listInterviewEvidence(runId, interviewId)
+        if (sequence !== evidenceSequence.current) return
+        setEvidence(Array.isArray(data) ? data : [])
+      } catch (cause) {
+        if (sequence !== evidenceSequence.current) return
+        setEvidence([])
+        // 501 - раздел ещё не включён; прочие ошибки видны отдельной строкой,
+        // но блок остаётся нейтральным и не роняет экран.
+        if (cause instanceof ApiRequestError && cause.status === 501) {
+          setEvidenceNotAvailable(true)
+        } else {
+          setEvidenceError(describeInterviewsError(cause))
+        }
+      } finally {
+        if (sequence === evidenceSequence.current) setEvidenceLoading(false)
+      }
+    },
+    [runId],
+  )
+
+  useEffect(() => {
+    // Загрузка асинхронная; «поздний» ответ прошлого интервью отбрасывается.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadEvidence(selectedId)
+    return () => {
+      evidenceSequence.current += 1
+    }
+  }, [loadEvidence, selectedId, evidenceToken])
 
   const selected = interviews.find((interview) => interview.id === selectedId) ?? null
 
@@ -320,6 +402,97 @@ export function InterviewsTab({ runId }: { runId: string }) {
                 })}
               </ul>
             )}
+
+            <section
+              className="space-y-2 rounded-lg border bg-muted/10 p-3"
+              aria-label="Ответы, ставшие основаниями"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Ответы, ставшие основаниями</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {evidenceLoading ? "Загрузка…" : `Обоснований: ${evidence.length}`}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Обновить основания интервью"
+                    disabled={evidenceLoading}
+                    onClick={() => setEvidenceToken((token) => token + 1)}
+                  >
+                    <RefreshCwIcon className="size-4" />
+                  </Button>
+                </div>
+              </div>
+              {evidenceLoading ? (
+                <div className="space-y-1.5">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-3/4" />
+                </div>
+              ) : evidenceError ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Основания ещё не связаны с ответами.
+                  </p>
+                  <p className="text-xs text-destructive" role="alert">
+                    {evidenceError}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEvidenceToken((token) => token + 1)}
+                  >
+                    Повторить загрузку оснований
+                  </Button>
+                </div>
+              ) : evidence.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Основания ещё не связаны с ответами.
+                  {evidenceNotAvailable && " Раздел пока не поддерживается сервером."}
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {evidence.map((item) => {
+                    const status = item.status ?? "pending"
+                    return (
+                      <li
+                        key={item.evidence_id}
+                        className="space-y-1 rounded-lg border bg-background/60 p-2.5 text-sm"
+                      >
+                        <blockquote className="whitespace-pre-wrap break-words text-muted-foreground">
+                          «{item.quote}»
+                        </blockquote>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${EVIDENCE_STATUS_CLASS[status] ?? "bg-muted text-muted-foreground"}`}
+                          >
+                            {EVIDENCE_STATUS_LABEL[status] ?? status}
+                          </span>
+                          {onFocusNode ? (
+                            <button
+                              type="button"
+                              onClick={() => onFocusNode(item.node_id)}
+                              aria-label={`Перейти к узлу ${item.node_title}`}
+                              className="min-w-0 break-words text-left font-medium underline underline-offset-4 hover:text-primary"
+                            >
+                              {item.node_title}
+                            </button>
+                          ) : (
+                            <span className="min-w-0 break-words font-medium">{item.node_title}</span>
+                          )}
+                          <span className="text-muted-foreground">
+                            {nodeTypeLabel(item.node_type)}
+                          </span>
+                          <span className="min-w-0 break-words text-muted-foreground">
+                            Источник: {item.source_title || item.source_id}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </section>
           </>
         ) : (
           <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center">

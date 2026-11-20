@@ -118,7 +118,18 @@ func buildRunCompareResult(base, head []domain.Node) runCompareResult {
 		}
 		// id изменённой semantic-пары — идентификатор head-узла (текущий
 		// прогон); before.id — идентификатор узла базового прогона.
-		changed = append(changed, snapshotNodeChange{ID: pair.head.ID, Before: pair.base, After: pair.head, Fields: fields})
+		// evidence_added/evidence_removed (карточка 19) здесь всегда пустые:
+		// у независимых прогонов обоснования имеют разные id, и список
+		// «добавлено всё / удалено всё» был бы бесполезен. Поля заполнены
+		// не-nil, чтобы JSON не отдавал null вместо массива.
+		changed = append(changed, snapshotNodeChange{
+			ID:              pair.head.ID,
+			Before:          pair.base,
+			After:           pair.head,
+			Fields:          fields,
+			EvidenceAdded:   []snapshotEvidenceRef{},
+			EvidenceRemoved: []snapshotEvidenceRef{},
+		})
 	}
 
 	added := make([]domain.Node, 0, len(idDiff.Added))

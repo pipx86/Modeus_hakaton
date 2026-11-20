@@ -32,7 +32,9 @@ import (
 //	  "added":   [domain.Node, …],   // узлы только в head, отсортированы по id
 //	  "removed": [domain.Node, …],   // узлы только в base, отсортированы по id
 //	  "changed": [{"id": "…", "before": domain.Node, "after": domain.Node,
-//	               "fields": ["title", "description", "evidence"]}],
+//	               "fields": ["title", "description", "evidence"],
+//	               "evidence_added":   [{"id": "…", "quote": "…", "source_id": "…"}],
+//	               "evidence_removed": []}],
 //	  "summary": {"added": 0, "removed": 0, "changed": 1},
 //	  "story": "Узлов добавлено: 0, удалено: 0, изменено: 1. Изменён узел «Отчёт»: подтверждения.",
 //	  "story_lines": ["Узлов добавлено: 0, удалено: 0, изменено: 1.", "Изменён узел «Отчёт»: подтверждения."]
@@ -55,7 +57,11 @@ import (
 //     title, description, type, parent_id, evidence;
 //   - для evidence сравниваются id, node_id, source_id, ref_id, quote, status;
 //     порядок подтверждений внутри узла не считается изменением;
-//   - status «pending» по умолчанию нормализуется (пустой status == pending).
+//   - status «pending» по умолчанию нормализуется (пустой status == pending);
+//   - в каждом элементе changed есть аддитивные evidence_added и evidence_removed
+//     (карточка 19): обоснования, которых не было в base и которых больше нет в
+//     head. Сравнение по id, порядок не важен; правка цитаты под тем же id
+//     попадает в fields = ["evidence"], но не в эти списки.
 //
 // Коды ответа:
 //   - 200 — diff построен (в том числе для одинаковых снимков — пустой diff);
@@ -94,6 +100,21 @@ type snapshotNodeChange struct {
 	Before domain.Node `json:"before"`
 	After  domain.Node `json:"after"`
 	Fields []string    `json:"fields"`
+	// Карточка 19 плана MVP: какие обоснования появились и исчезли у узла.
+	// Поля аддитивные — before/after и fields остаются как есть, поэтому
+	// существующий интерфейс не ломается. Сравнение идёт по id обоснования:
+	// правка цитаты под тем же id — изменение (fields содержит evidence), а не
+	// добавление и удаление. Срезы всегда не-nil, чтобы JSON отдавал [].
+	EvidenceAdded   []snapshotEvidenceRef `json:"evidence_added"`
+	EvidenceRemoved []snapshotEvidenceRef `json:"evidence_removed"`
+}
+
+// snapshotEvidenceRef — компактная ссылка на обоснование в diff'е (карточка 19):
+// id, цитата и источник, по которым интерфейс открывает исходный материал.
+type snapshotEvidenceRef struct {
+	ID       string `json:"id"`
+	Quote    string `json:"quote"`
+	SourceID string `json:"source_id"`
 }
 
 type snapshotDiffSummary struct {
@@ -279,7 +300,15 @@ func diffSnapshotTrees(base, head []domain.Node) snapshotTreeDiff {
 		}
 		fields := snapshotChangedFields(before, node)
 		if len(fields) > 0 {
-			result.Changed = append(result.Changed, snapshotNodeChange{ID: node.ID, Before: before, After: node, Fields: fields})
+			evidenceAdded, evidenceRemoved := diffSnapshotEvidence(before.Evidence, node.Evidence)
+			result.Changed = append(result.Changed, snapshotNodeChange{
+				ID:              node.ID,
+				Before:          before,
+				After:           node,
+				Fields:          fields,
+				EvidenceAdded:   evidenceAdded,
+				EvidenceRemoved: evidenceRemoved,
+			})
 		}
 	}
 	for _, node := range base {
@@ -354,6 +383,44 @@ func snapshotEvidenceStatus(status domain.EvidenceStatus) domain.EvidenceStatus 
 		return domain.EvidencePending
 	}
 	return status
+}
+
+// diffSnapshotEvidence возвращает обоснования, которые появились (added) и
+// исчезли (removed) между двумя версиями узла (карточка 19). Функция чистая и
+// не зависит от порядка подтверждений: результат отсортирован по id, а срезы
+// всегда не-nil, чтобы JSON отдавал [] вместо null. Правка цитаты под тем же
+// id — не добавление и не удаление: такой случай остаётся в before/after и в
+// поле fields = ["evidence"].
+func diffSnapshotEvidence(before, after []domain.Evidence) (added, removed []snapshotEvidenceRef) {
+	beforeByID := make(map[string]domain.Evidence, len(before))
+	for _, evidence := range before {
+		beforeByID[evidence.ID] = evidence
+	}
+	afterByID := make(map[string]domain.Evidence, len(after))
+	for _, evidence := range after {
+		afterByID[evidence.ID] = evidence
+	}
+	added = []snapshotEvidenceRef{}
+	removed = []snapshotEvidenceRef{}
+	for _, evidence := range after {
+		if _, exists := beforeByID[evidence.ID]; !exists {
+			added = append(added, presentSnapshotEvidenceRef(evidence))
+		}
+	}
+	for _, evidence := range before {
+		if _, exists := afterByID[evidence.ID]; !exists {
+			removed = append(removed, presentSnapshotEvidenceRef(evidence))
+		}
+	}
+	sort.Slice(added, func(i, j int) bool { return added[i].ID < added[j].ID })
+	sort.Slice(removed, func(i, j int) bool { return removed[i].ID < removed[j].ID })
+	return added, removed
+}
+
+// presentSnapshotEvidenceRef оставляет от обоснования только поля, нужные
+// карточке 19: интерфейсу не нужно целиком дублировать before/after.
+func presentSnapshotEvidenceRef(evidence domain.Evidence) snapshotEvidenceRef {
+	return snapshotEvidenceRef{ID: evidence.ID, Quote: evidence.Quote, SourceID: evidence.SourceID}
 }
 
 // snapshotInRun загружает снимок исследования и отличает «снимка нет» (404)
@@ -434,7 +501,7 @@ func snapshotDiffError(w http.ResponseWriter, err error) {
 
 // handleSnapshotDiff godoc
 // @Summary      Diff two snapshots of a research run
-// @Description  Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Nodes are matched by id; returns added/removed nodes and changed nodes with the changed field list. Evidence changes are visible because every returned node carries evidence with source_id/ref_id/quote/status, so the UI can jump to the source quote.
+// @Description  Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Nodes are matched by id; returns added/removed nodes and changed nodes with the changed field list. Evidence changes are visible because every returned node carries evidence with source_id/ref_id/quote/status, so the UI can jump to the source quote. Each changed node also carries the additive evidence_added and evidence_removed arrays (card 19): evidence items present only in head or only in base, compared by id.
 // @Tags         runs
 // @Produce      json
 // @Param        id           path   string  true  "Run ID"
