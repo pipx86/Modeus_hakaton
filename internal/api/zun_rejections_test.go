@@ -44,7 +44,7 @@ func TestZunRejectValidationAndAuth(t *testing.T) {
 	server := NewServer(store)
 
 	student := doMentorHandler(t, server.handleRejectZunSuggestion, http.MethodPost,
-		"/api/v1/runs/"+runID+"/zun/suggestions/reject", "student",
+		"/api/v1/runs/"+runID+"/zun/suggestions/reject", "viewer",
 		`{"node_id":"node-1"}`, map[string]string{"id": runID})
 	if student.Code != http.StatusForbidden {
 		t.Fatalf("student: ожидали 403, получили %d", student.Code)

@@ -1,18 +1,18 @@
 /**
  * @file admin.tsx
- * @description Админка: пользователи, исследования, LLM-метрики, расход токенов и материалы для аналитика.
+ * @description Администрирование: исследования, LLM-метрики, расход токенов и материалы для агентов.
  */
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   ActivityIcon,
+  ChevronDownIcon,
   DatabaseIcon,
   DownloadIcon,
   RefreshCwIcon,
   ShieldAlertIcon,
   Trash2Icon,
-  UsersIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -24,8 +24,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
-import { decodeToken, getCurrentRole, getValidToken } from "@/lib/auth"
+import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
+import { scoreSource, scoreTone, type SourceQualityItem } from "@/lib/source-quality"
+import { agentLabel } from "@/lib/agent-labels"
 import {
   averageHistogramMs,
   fetchMetricsText,
@@ -34,13 +36,6 @@ import {
   type MetricSample,
 } from "@/lib/metrics"
 
-interface AppUser {
-  id: string
-  email: string
-  display_name: string
-  role: string
-}
-
 interface LlmRequest {
   id: string
   agent: string
@@ -48,6 +43,7 @@ interface LlmRequest {
   status: string
   error_code?: string
   latency_ms: number
+  usage?: { total_tokens?: number }
   attempt?: number
   max_attempts?: number
   created_at?: string
@@ -77,6 +73,13 @@ interface AdminSource {
   content?: string
 }
 
+interface AdminUser {
+  id: string
+  email: string
+  display_name: string
+  role: string
+}
+
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   vacancy: "Вакансия",
   interview: "Интервью",
@@ -87,6 +90,21 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
 const ROLE_LABEL: Record<string, string> = {
   admin: "Администратор",
   user: "Пользователь",
+  specialist: "Специалист",
+}
+
+function scoreTextClass(total: number): string {
+  const tone = scoreTone(total)
+  if (tone === "success") return "text-success"
+  if (tone === "warning") return "text-warning"
+  return "text-destructive"
+}
+
+function scoreBarClass(total: number): string {
+  const tone = scoreTone(total)
+  if (tone === "success") return "bg-success"
+  if (tone === "warning") return "bg-warning"
+  return "bg-destructive"
 }
 
 function formatPercent(value: number): string {
@@ -111,16 +129,14 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   )
 }
 
-/** Админка: KPI, пользователи, исследования, LLM-журнал, метрики агентов. */
+/** Администрирование: KPI, исследования, LLM-журнал, метрики агентов. */
 export function Admin() {
   const role = getCurrentRole()
   const isAdmin = role === "admin"
-  const [users, setUsers] = useState<AppUser[]>([])
   const [runs, setRuns] = useState<Run[]>([])
   const [health, setHealth] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<MetricSample[]>([])
   const [metricsText, setMetricsText] = useState("")
-  const [loading, setLoading] = useState(isAdmin)
   const [refreshing, setRefreshing] = useState(false)
   const [llmRequests, setLlmRequests] = useState<LlmRequest[]>([])
   const [llmUsage, setLlmUsage] = useState<ModelUsage[]>([])
@@ -131,6 +147,10 @@ export function Admin() {
   const [agentFilter, setAgentFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [sources, setSources] = useState<AdminSource[]>([])
+  const [sourceQuality, setSourceQuality] = useState<SourceQualityItem[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [userRoleSaving, setUserRoleSaving] = useState<string | null>(null)
+  const [materialsOpen, setMaterialsOpen] = useState(true)
   const [sourceType, setSourceType] = useState("document")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceFile, setSourceFile] = useState<File | null>(null)
@@ -138,10 +158,75 @@ export function Admin() {
   const [sourceSaving, setSourceSaving] = useState(false)
   const [indexingId, setIndexingId] = useState<string | null>(null)
 
-  const session = (() => {
-    const token = getValidToken()
-    return token ? decodeToken(token) : null
-  })()
+  const loadSourceQuality = useCallback(async () => {
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/admin/sources/quality`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) throw new Error(`sources quality: ${response.status}`)
+      const body = (await response.json()) as { items?: SourceQualityItem[] }
+      setSourceQuality(body.items ?? [])
+    } catch {
+      setSourceQuality([])
+    }
+  }, [])
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) throw new Error(`users: ${response.status}`)
+      const payload = (await response.json()) as unknown
+      if (!Array.isArray(payload)) {
+        setUsers([])
+        return
+      }
+      setUsers(
+        payload.filter(
+          (item): item is AdminUser =>
+            !!item &&
+            typeof item === "object" &&
+            typeof (item as AdminUser).id === "string" &&
+            typeof (item as AdminUser).email === "string" &&
+            typeof (item as AdminUser).role === "string",
+        ),
+      )
+    } catch {
+      setUsers([])
+    }
+  }, [])
+
+  const updateUserRole = async (user: AdminUser, nextRole: string) => {
+    if (nextRole === user.role) return
+    setUserRoleSaving(user.id)
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/users/${encodeURIComponent(user.id)}/role`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ role: nextRole }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string }
+        throw new Error(body.message ?? `users: ${response.status}`)
+      }
+      const updated = (await response.json()) as AdminUser
+      setUsers((previous) => previous.map((item) => (item.id === updated.id ? updated : item)))
+      toast.success("Роль обновлена", { description: `${user.email}: ${ROLE_LABEL[nextRole] ?? nextRole}` })
+    } catch (cause) {
+      toast.error("Не удалось изменить роль", {
+        description: cause instanceof Error ? cause.message : "Проверьте права и повторите.",
+      })
+    } finally {
+      setUserRoleSaving(null)
+    }
+  }
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -159,7 +244,7 @@ export function Admin() {
     await Promise.resolve()
     setLlmLoading(true)
     try {
-      const params = new URLSearchParams({ limit: "20" })
+      const params = new URLSearchParams({ limit: "10" })
       if (agentFilter !== "all") params.set("agent", agentFilter)
       if (statusFilter !== "all") params.set("status", statusFilter)
       const token = getValidToken() ?? apiToken
@@ -214,26 +299,25 @@ export function Admin() {
     if (!isAdmin) return
     let cancelled = false
     const load = async () => {
-      const [usersResponse, runsResponse, healthResponse, sourcesResponse] = await Promise.all([
-        apiClient.GET("/users"),
+      const [runsResponse, healthResponse, sourcesResponse] = await Promise.all([
         apiClient.GET("/runs"),
         apiClient.GET("/health"),
         apiClient.GET("/sources"),
       ])
       await loadMetrics()
       await loadPromptVersions()
+      await loadSourceQuality()
+      await loadUsers()
       if (cancelled) return
-      if (usersResponse.data) setUsers(usersResponse.data)
       if (runsResponse.data) setRuns(runsResponse.data)
       if (sourcesResponse.data) setSources(sourcesResponse.data)
       setHealth(healthResponse.data?.status ?? "недоступен")
-      setLoading(false)
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [isAdmin, loadMetrics, loadPromptVersions])
+  }, [isAdmin, loadMetrics, loadPromptVersions, loadSourceQuality, loadUsers])
   useEffect(() => {
     if (!isAdmin) return
     const timer = window.setTimeout(() => {
@@ -246,6 +330,7 @@ export function Admin() {
     setRefreshing(true)
     await loadMetrics()
     await loadPromptVersions()
+    await loadSourceQuality()
     await loadLlmRequests()
     setRefreshing(false)
   }
@@ -304,7 +389,7 @@ export function Admin() {
       setSourceFileKey((value) => value + 1)
       setSources((prev) => [created, ...prev])
       toast.success("Материал загружен", {
-        description: "Аналитик будет учитывать его в следующих прогонах.",
+        description: "Агенты будут учитывать его в следующих исследованиях.",
       })
     } catch {
       toast.error("Сервер недоступен", { description: "Файл не загружен." })
@@ -423,20 +508,57 @@ export function Admin() {
     }
   }, [sources])
 
+  const scoredSources = useMemo(
+    () =>
+      sourceQuality
+        .map((item) => ({ item, score: scoreSource(item) }))
+        .sort((left, right) => right.score.total - left.score.total),
+    [sourceQuality],
+  )
+  const averageSourceScore =
+    scoredSources.length > 0
+      ? Math.round(
+          scoredSources.reduce((total, entry) => total + entry.score.total, 0) /
+            scoredSources.length,
+        )
+      : null
+
   const routeStats = useMemo(() => {
     const map = new Map<
       string,
-      { route: string; requests: number; errors4xx: number; errors5xx: number; sum: number; count: number }
+      {
+        route: string
+        requests: number
+        errors4xx: number
+        errors5xx: number
+        errors: Record<string, number>
+        sum: number
+        count: number
+      }
     >()
     for (const sample of metrics) {
       const route = sample.labels.route
       if (!route) continue
       const entry =
-        map.get(route) ?? { route, requests: 0, errors4xx: 0, errors5xx: 0, sum: 0, count: 0 }
+        map.get(route) ?? {
+          route,
+          requests: 0,
+          errors4xx: 0,
+          errors5xx: 0,
+          errors: {},
+          sum: 0,
+          count: 0,
+        }
       if (sample.name === "activity_descriptor_http_requests_total") {
         entry.requests += sample.value
-        if ((sample.labels.status ?? "").startsWith("5")) entry.errors5xx += sample.value
-        if ((sample.labels.status ?? "").startsWith("4")) entry.errors4xx += sample.value
+        const status = sample.labels.status ?? ""
+        if (status.startsWith("4") || status.startsWith("5")) {
+          const method = sample.labels.method ?? "?"
+          const key = `${method} ${status}`
+          entry.errors[key] = (entry.errors[key] ?? 0) + sample.value
+          if (status.startsWith("5")) entry.errors5xx += sample.value
+          if (status.startsWith("4")) entry.errors4xx += sample.value
+        }
       } else if (sample.name === "activity_descriptor_http_request_duration_seconds_sum") {
         entry.sum += sample.value
       } else if (sample.name === "activity_descriptor_http_request_duration_seconds_count") {
@@ -493,10 +615,7 @@ export function Admin() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Админка</h1>
-          <p className="text-sm text-muted-foreground">
-            {session?.sub ?? "admin"} - управление пользователями и исследованиями.
-          </p>
+          <h1 className="text-3xl font-semibold tracking-tight">Администрирование</h1>
         </div>
         <Button variant="outline" onClick={() => void refresh()} disabled={refreshing}>
           <RefreshCwIcon className={refreshing ? "size-4 animate-spin" : "size-4"} />
@@ -506,7 +625,7 @@ export function Admin() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi label="Исследования" value={String(stats.total)} hint={`интервью: ${stats.running}`} />
-        <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам прогонов" />
+        <Kpi label="Завершено / провалено" value={`${stats.done} / ${stats.failed}`} hint="по статусам исследований" />
         <Kpi
           label="HTTP 4xx"
           value={stats.httpTotal > 0 ? formatPercent((stats.http4xx / stats.httpTotal) * 100) : "-"}
@@ -520,7 +639,7 @@ export function Admin() {
         <Kpi
           label="Средняя латентность API"
           value={formatMs(stats.apiLatency)}
-          hint={stats.runLatency !== null ? `прогон: ${formatMs(stats.runLatency)}` : "без учёта SSE"}
+          hint={stats.runLatency !== null ? `исследование: ${formatMs(stats.runLatency)}` : "без учёта SSE"}
         />
         <Kpi
           label="Токенов за 24 часа"
@@ -532,6 +651,57 @@ export function Admin() {
           }
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Пользователи и роли</CardTitle>
+          <CardDescription>
+            Назначение ролей администратора, специалиста и пользователя. Специалист проверяет
+            цитаты и источники.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {users.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Пользователи не загружены.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Пользователь</th>
+                    <th className="py-2 pr-3 font-medium">Email</th>
+                    <th className="py-2 pr-3 font-medium">Роль</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3">{user.display_name || "-"}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{user.email}</td>
+                      <td className="py-2 pr-3">
+                        <Select
+                          value={user.role}
+                          disabled={userRoleSaving === user.id}
+                          onValueChange={(value) => void updateUserRole(user, value)}
+                        >
+                          <SelectTrigger className="h-8 w-40" aria-label={`Роль ${user.email}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Администратор</SelectItem>
+                            <SelectItem value="specialist">Специалист</SelectItem>
+                            <SelectItem value="user">Пользователь</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -558,7 +728,7 @@ export function Admin() {
                 <tbody>
                   {promptVersions.map((version) => (
                     <tr key={version.id} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{version.agent}</td>
+                      <td className="py-2 pr-3">{agentLabel(version.agent)}</td>
                       <td className="py-2 pr-3 font-mono text-xs">{version.version}</td>
                       <td className="py-2 pr-3">
                         <Badge variant={version.status === "active" ? "default" : "secondary"}>
@@ -595,7 +765,7 @@ export function Admin() {
             <ActivityIcon className="size-4 shrink-0" />
             LLM-запросы
           </CardTitle>
-          <CardDescription>Последние 20 обращений к модели: статус, латентность, ошибки.</CardDescription>
+          <CardDescription>Последние 10 обращений к модели: статус, токены, ошибки.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -640,7 +810,7 @@ export function Admin() {
                     <th className="py-2 pr-3 font-medium">Агент</th>
                     <th className="py-2 pr-3 font-medium">Модель</th>
                     <th className="py-2 pr-3 font-medium">Статус</th>
-                    <th className="py-2 pr-3 font-medium">Латентность</th>
+                    <th className="py-2 pr-3 font-medium">Токены</th>
                     <th className="py-2 font-medium">Ошибка</th>
                   </tr>
                 </thead>
@@ -654,14 +824,18 @@ export function Admin() {
                             )
                           : "-"}
                       </td>
-                      <td className="py-2 pr-3">{request.agent}</td>
+                      <td className="py-2 pr-3">{agentLabel(request.agent)}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{request.model}</td>
                       <td className="py-2 pr-3">
                         <Badge variant={request.status === "ok" ? "secondary" : "destructive"}>
                           {request.status}
                         </Badge>
                       </td>
-                      <td className="py-2 pr-3">{formatMs(request.latency_ms)}</td>
+                      <td className="py-2 pr-3">
+                        {request.usage?.total_tokens
+                          ? request.usage.total_tokens.toLocaleString("ru-RU")
+                          : "-"}
+                      </td>
                       <td className="py-2 text-muted-foreground">{request.error_code || "-"}</td>
                     </tr>
                   ))}
@@ -754,7 +928,7 @@ export function Admin() {
                 <tbody>
                   {agents.map((agent) => (
                     <tr key={agent.agent} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{agent.agent}</td>
+                      <td className="py-2 pr-3">{agentLabel(agent.agent)}</td>
                       <td className="py-2 pr-3">{agent.calls}</td>
                       <td className="py-2 pr-3">{agent.errors}</td>
                       <td className="py-2">{formatMs(agent.avgMs)}</td>
@@ -770,7 +944,8 @@ export function Admin() {
         <CardHeader>
           <CardTitle className="text-base">Качество источников</CardTitle>
           <CardDescription>
-            Состав материалов и наличие извлечённого текста, на который опирается аналитик.
+            Оценка по типу, свежести, объёму, извлечению текста, происхождению, цитированию и
+            подтверждению цитат.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -785,36 +960,104 @@ export function Admin() {
                   </Badge>
                 ))}
               </div>
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>С извлечённым текстом</span>
-                  <span>
-                    {sourceStats.withContent} из {sources.length}
-                  </span>
+              {scoredSources.length > 0 ? (
+                <>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Средняя оценка</p>
+                      <p
+                        className={`text-2xl font-semibold tabular-nums ${scoreTextClass(averageSourceScore ?? 0)}`}
+                      >
+                        {averageSourceScore}
+                        <span className="ml-1 text-sm font-normal text-muted-foreground">/ 100</span>
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      источников: {scoredSources.length}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full ${scoreBarClass(averageSourceScore ?? 0)}`}
+                      style={{ width: `${averageSourceScore ?? 0}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Тип 20 · Свежесть 15 · Объём 15 · Текст 10 · Происхождение 10 · Цитирование 20 ·
+                    Цитаты 10
+                  </p>
+                  <ul className="max-h-72 divide-y overflow-y-auto">
+                    {scoredSources.map(({ item, score }) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-2 py-2 text-sm"
+                        title={`Тип ${score.authority}/20 · свежесть ${score.freshness}/15 · объём ${score.volume}/15 · текст ${score.extraction}/10 · происхождение ${score.origin}/10 · цитаты ${score.citations}/20 · подтверждение ${score.quotes}/10`}
+                      >
+                        <span
+                          className={`w-8 shrink-0 text-right font-semibold tabular-nums ${scoreTextClass(score.total)}`}
+                        >
+                          {score.total}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                        <Badge variant="secondary">
+                          {SOURCE_TYPE_LABELS[item.type] ?? item.type}
+                        </Badge>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {item.citations} цит.
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>С извлечённым текстом</span>
+                    <span>
+                      {sourceStats.withContent} из {sources.length}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${(sourceStats.withContent / sources.length) * 100}%` }}
+                    />
+                  </div>
+                  {sourceStats.empty > 0 && (
+                    <p className="text-xs text-warning">Без текста: {sourceStats.empty}</p>
+                  )}
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${(sourceStats.withContent / sources.length) * 100}%` }}
-                  />
-                </div>
-                {sourceStats.empty > 0 && (
-                  <p className="text-xs text-warning">Без текста: {sourceStats.empty}</p>
-                )}
-              </div>
+              )}
             </>
           )}
         </CardContent>
       </Card>
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Материалы для аналитика</CardTitle>
-          <CardDescription>
-            Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
-            доступны всем новым прогонам, аналитик опирается на них при разборе интервью.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <CardTitle className="text-base">Материалы для агентов</CardTitle>
+            <CardDescription>
+              Загрузите PDF, DOCX или текстовый файл - текст извлечётся автоматически. Материалы
+              доступны всем новым исследованиям, агенты опираются на них при разборе интервью.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0 text-muted-foreground"
+            aria-expanded={materialsOpen}
+            aria-controls="materials-content"
+            aria-label={materialsOpen ? "Свернуть материалы" : "Развернуть материалы"}
+            onClick={() => setMaterialsOpen((open) => !open)}
+          >
+            <ChevronDownIcon
+              className={`size-4 transition-transform ${materialsOpen ? "rotate-180" : ""}`}
+            />
+          </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {materialsOpen && (
+        <CardContent id="materials-content" className="space-y-4">
           <form onSubmit={addSource} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
               <div className="space-y-2">
@@ -864,7 +1107,7 @@ export function Admin() {
           {sources.length === 0 ? (
             <p className="text-sm text-muted-foreground">Материалов пока нет.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="max-h-80 divide-y overflow-y-auto">
               {sources.map((source) => (
                 <li key={source.id} className="flex items-center gap-3 py-3 text-sm">
                   <Badge variant="secondary">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</Badge>
@@ -893,11 +1136,14 @@ export function Admin() {
             </ul>
           )}
         </CardContent>
+        )}
       </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">HTTP по маршрутам</CardTitle>
-          <CardDescription>Запросы, ошибки 4xx/5xx и средняя латентность.</CardDescription>
+          <CardDescription>
+            Запросы, конкретные коды ошибок 4xx/5xx и средняя латентность.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {routeStats.length === 0 ? (
@@ -919,43 +1165,50 @@ export function Admin() {
                     <tr key={entry.route} className="border-b last:border-b-0">
                       <td className="py-2 pr-3 font-mono text-xs">{entry.route}</td>
                       <td className="py-2 pr-3">{entry.requests}</td>
-                      <td className="py-2 pr-3">{entry.errors4xx}</td>
-                      <td className="py-2 pr-3">{entry.errors5xx}</td>
+                      <td className="py-2 pr-3">
+                        {entry.errors4xx === 0 ? (
+                          "0"
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(entry.errors)
+                              .filter(([key]) => key.split(" ").at(-1)?.startsWith("4"))
+                              .map(([key, count]) => (
+                                <Badge
+                                  key={key}
+                                  variant="outline"
+                                  className="px-1.5 py-0 font-mono text-[10px] text-warning"
+                                >
+                                  {key} ×{count}
+                                </Badge>
+                              ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {entry.errors5xx === 0 ? (
+                          "0"
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(entry.errors)
+                              .filter(([key]) => key.split(" ").at(-1)?.startsWith("5"))
+                              .map(([key, count]) => (
+                                <Badge
+                                  key={key}
+                                  variant="outline"
+                                  className="px-1.5 py-0 font-mono text-[10px] text-destructive"
+                                >
+                                  {key} ×{count}
+                                </Badge>
+                              ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2">{formatMs(entry.avgMs)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <UsersIcon className="size-4 shrink-0" />
-            Пользователи
-          </CardTitle>
-          <CardDescription>Зарегистрированные учётные записи и их роли.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : (
-            <ul className="divide-y">
-              {users.map((user) => (
-                <li key={user.id} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="font-medium">{user.display_name}</span>
-                  <span className="text-xs text-muted-foreground">{user.email}</span>
-                  <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                    {ROLE_LABEL[user.role] ?? user.role}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
           )}
         </CardContent>
       </Card>

@@ -79,7 +79,9 @@ func requestZunBatch(ctx context.Context, client llm.ChatClient, profession stri
 значение — объект с массивами строк:
 {"<id>": {"knowledge": ["..."], "skills": ["..."], "abilities": ["..."]}}
 
-Узлы: %s`, profession, string(payload))
+Узлы: %s
+
+Пиши только на русском языке.`, profession, string(payload))
 
 	answer, err := client.Chat(ctx, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 	if err != nil {

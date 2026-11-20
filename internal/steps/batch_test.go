@@ -160,7 +160,7 @@ func TestBatchOrchestratorProducesAndPersistsTree(t *testing.T) {
 	SetTranscript(run, "Я аналитик данных и готовлю отчёты.", "")
 
 	runSteps, timeout := plan.For(true)
-	if err := domain.Orchestrate(context.Background(), run, runSteps, store, fakeVacancyReader{}, plan.MaxRetries, timeout); err != nil {
+	if err := domain.Orchestrate(context.Background(), run, runSteps, store, fakeVacancyReader{empty: true}, plan.MaxRetries, timeout); err != nil {
 		t.Fatalf("orchestrate: %v", err)
 	}
 

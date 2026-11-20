@@ -26,7 +26,7 @@ const STATUS_CONFIG: Record<RunStatus, { label: string; className: string }> = {
   },
   degraded: {
     label: "С ограничениями",
-    className: "border-transparent bg-amber-500/15 text-amber-300",
+    className: "border-transparent bg-warning/15 text-warning",
   },
 }
 

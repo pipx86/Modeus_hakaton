@@ -906,7 +906,7 @@ export interface components {
          * @description chat runs are driven by the interview chat; batch runs by the batch pipeline.
          * @enum {string}
          */
-        RunType: "batch" | "chat";
+        RunType: "batch" | "chat" | "learning";
         /**
          * @description Review state of an evidence quote. An empty status is treated as pending on legacy records.
          * @enum {string}
@@ -2515,7 +2515,7 @@ export interface operations {
                      * @description chat starts the interactive interviewer; batch runs the domain.Orchestrate pipeline. Omitted means chat when the chat service is configured, otherwise batch.
                      * @enum {string}
                      */
-                    type?: "chat" | "batch";
+                    type?: "chat" | "batch" | "learning";
                     /** @description Optional interview transcript for a batch run. Chat runs ignore it. */
                     transcript?: string;
                 };

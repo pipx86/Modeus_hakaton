@@ -170,7 +170,14 @@ export function Login() {
                 <ShieldCheckIcon className="size-4 text-primary" />
                 Вы вошли
               </CardTitle>
-              <CardDescription>Роль: {session.role === "admin" ? "администратор" : "пользователь"}</CardDescription>
+              <CardDescription>
+                Роль:{" "}
+                {session.role === "admin"
+                  ? "администратор"
+                  : session.role === "specialist"
+                    ? "специалист"
+                    : "пользователь"}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid gap-1">

@@ -239,36 +239,14 @@ describe("Research", () => {
     expect(fetchCalls().some((call) => call.url.includes("/runs/7/insights"))).toBe(false)
   })
 
-  it("привязывает standard-источник к прогону", async () => {
+  it("не показывает кнопку добавления стандарта или вакансии", async () => {
     stubRun({ sources: [] })
     renderPage()
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Добавить стандарт или вакансию" }),
-    )
-    await userEvent.type(
-      screen.getByLabelText("Название"),
-      "Профстандарт аналитика",
-    )
-    await userEvent.type(
-      screen.getByLabelText("Текст источника"),
-      "Требования к аналитике данных и отчётности.",
-    )
-    await userEvent.click(screen.getByRole("button", { name: "Добавить" }))
-
-    await waitFor(() => {
-      const call = fetchCalls().find(
-        (item) =>
-          item.url.endsWith("/api/v1/runs/7/sources") && item.init.method === "POST",
-      )
-      expect(call).toBeDefined()
-      const body = JSON.parse(String(call!.init.body)) as {
-        type?: string
-        title?: string
-      }
-      expect(body.type).toBe("standard")
-      expect(body.title).toBe("Профстандарт аналитика")
-    })
+    expect(await screen.findByText("Источники")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Добавить стандарт или вакансию" }),
+    ).not.toBeInTheDocument()
   })
 
   it("на вкладке «Дерево» рисует узлы из API", async () => {

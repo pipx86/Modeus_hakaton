@@ -6,7 +6,9 @@ function cellStyle(value: number): CSSProperties {
   const alpha = 0.06 + intensity * 0.55
   return {
     backgroundColor:
-      value >= 0 ? `rgba(16, 185, 129, ${alpha})` : `rgba(244, 63, 94, ${alpha})`,
+      value >= 0
+        ? `hsl(var(--primary) / ${alpha})`
+        : `hsl(var(--destructive) / ${alpha})`,
   }
 }
 
@@ -76,7 +78,7 @@ export function CorrelationMap({
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>−1</span>
-        <span className="h-2 w-32 rounded-full bg-gradient-to-r from-rose-500/70 via-muted to-emerald-500/70" />
+        <span className="h-2 w-32 rounded-full bg-gradient-to-r from-destructive/70 via-muted to-primary/70" />
         <span>+1</span>
         <span>· {sampleLabel}: {data.sample_size}</span>
       </div>

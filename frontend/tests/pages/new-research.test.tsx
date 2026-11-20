@@ -122,6 +122,7 @@ describe("NewResearch", () => {
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
       target: { value: "Data Scientist" },
     })
+    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     const probe = await screen.findByTestId("location")
@@ -140,6 +141,7 @@ describe("NewResearch", () => {
     await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
+    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     expect(await screen.findByText("profession: слишком длинное название")).toBeInTheDocument()
@@ -153,6 +155,7 @@ describe("NewResearch", () => {
     await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
+    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     expect(
@@ -175,29 +178,23 @@ describe("NewResearch", () => {
     expect(input).toHaveValue("Аналитик данных")
   })
 
-  it("запускает batch-прогон с транскриптом", async () => {
+  it("запускает подбор плана и переходит в исследование", async () => {
     happyHandler()
     renderPage()
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
       target: { value: "Data Analyst" },
     })
-    fireEvent.click(screen.getByRole("button", { name: "Готовый транскрипт" }))
-    fireEvent.change(screen.getByLabelText("Транскрипт интервью"), {
-      target: { value: "Вопрос: что делаешь? Ответ: строю дашборды и проверяю метрики." },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
+    fireEvent.click(screen.getByRole("button", { name: "План обучения" }))
+    fireEvent.click(screen.getByRole("button", { name: "Составить план обучения" }))
 
     expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
     const call = fetchCalls().find(
       (item) => item.url.endsWith("/api/v1/runs") && item.init.method === "POST",
     )
-    const body = JSON.parse(String(call?.init.body)) as {
-      type?: string
-      transcript?: string
-    }
-    expect(body.type).toBe("batch")
-    expect(body.transcript).toContain("строю дашборды")
+    const body = JSON.parse(String(call?.init.body)) as { profession?: string; type?: string }
+    expect(body.profession).toBe("Data Analyst")
+    expect(body.type).toBe("learning")
   })
 
   it("показывает оценку токенов и времени до запуска", async () => {
@@ -224,6 +221,7 @@ describe("NewResearch", () => {
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
       target: { value: "Data Analyst" },
     })
+    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
 
     expect(await screen.findByText("Оценка до запуска")).toBeInTheDocument()
     expect(screen.getByText(/4 200 токенов/)).toBeInTheDocument()

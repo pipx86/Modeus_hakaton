@@ -11,7 +11,7 @@ func TestRAGSettingsDefaults(t *testing.T) {
 	if settings.OllamaURL != "http://127.0.0.1:11434" || settings.EmbedModel != "nomic-embed-text" {
 		t.Fatalf("Ollama-умолчания: %+v", settings)
 	}
-	if settings.Strategy != "vector" || settings.Limit != 8 {
+	if settings.Strategy != "hybrid" || settings.Limit != 8 {
 		t.Fatalf("стратегия/лимит: %+v", settings)
 	}
 }
@@ -30,12 +30,20 @@ func TestRAGSettingsFromEnv(t *testing.T) {
 	}
 }
 
+func TestRAGSettingsVectorOverride(t *testing.T) {
+	t.Setenv("RAG_SEARCH_STRATEGY", "vector")
+	settings := ragSettingsFromEnv()
+	if settings.Strategy != "vector" {
+		t.Fatalf("явный vector должен сохраняться: %q", settings.Strategy)
+	}
+}
+
 func TestRAGSettingsInvalidValuesFallBack(t *testing.T) {
 	t.Setenv("RAG_SEARCH_STRATEGY", "semantic-ish")
 	t.Setenv("RAG_SEARCH_LIMIT", "500")
 	settings := ragSettingsFromEnv()
-	if settings.Strategy != "vector" {
-		t.Fatalf("неизвестная стратегия должна откатываться на vector: %q", settings.Strategy)
+	if settings.Strategy != "hybrid" {
+		t.Fatalf("неизвестная стратегия должна откатываться на hybrid: %q", settings.Strategy)
 	}
 	if settings.Limit != 8 {
 		t.Fatalf("недопустимый лимит должен откатываться на 8: %d", settings.Limit)

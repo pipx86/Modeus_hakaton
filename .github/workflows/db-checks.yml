@@ -40,7 +40,7 @@ jobs:
       - name: Применить миграции
         run: |
           goose -dir migrations postgres "$DATABASE_URL" up
-          goose -table goose_vector_versions -dir migrations_optional/vector postgres "$DATABASE_URL" up
+          goose -table goose_vector_versions -dir migrations/optional/vector postgres "$DATABASE_URL" up
       - name: Проверить генерацию sqlc
         run: |
           sqlc generate

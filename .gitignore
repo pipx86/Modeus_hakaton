@@ -55,3 +55,6 @@ data/reports/
 *.njsproj
 *.sln
 *.sw?
+
+# Full prompt texts are local-only; the public repo ships safe defaults.
+prompts/_shared/

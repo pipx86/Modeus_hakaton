@@ -39,6 +39,7 @@ type Server struct {
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 	batchPlan    steps.BatchPlan
+	learningPlan LearningPlanner
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
 	// или явно отключённая настройка SOURCE_AUTO_INDEX).
@@ -76,6 +77,9 @@ func NewServerWithChat(store Store, chatService chatStarter) *Server {
 // AI agent pipeline cannot diverge between the two paths.
 func (s *Server) SetBatchPlan(plan steps.BatchPlan) { s.batchPlan = plan }
 
+// SetLearningPlanner wires the optional learning-plan generator.
+func (s *Server) SetLearningPlanner(planner LearningPlanner) { s.learningPlan = planner }
+
 // batchPipeline returns the configured batch plan, or the vacancy-only default
 // when the server was built without the cmd/server LLM wiring (tests, demo
 // binaries). The default keeps the historical behaviour for those callers.
@@ -90,7 +94,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Статическая страница и спецификация API.
-	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./api-docs"))))
+	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs"))))
 
 	mux.HandleFunc("GET /api/v1/subscriptions", s.handlePublicationSubscriptions)
 	mux.HandleFunc("POST /api/v1/subscriptions", s.handleCreatePublicationSubscription)
@@ -125,6 +129,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/coverage", s.handleRunCoverage)
 	mux.HandleFunc("GET /api/v1/runs/{id}/compare", s.handleCompareRuns)
 	mux.HandleFunc("GET /api/v1/runs/{id}/zun/suggestions", s.handleZunSuggestions)
+	mux.HandleFunc("GET /api/v1/runs/{id}/learning-plan", s.handleGetLearningPlan)
 	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/apply", s.handleApplyZunSuggestion)
 	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/reject", s.handleRejectZunSuggestion)
 	mux.HandleFunc("GET /api/v1/runs/{id}/evidence/{evidence_id}/context", s.handleEvidenceContext)
@@ -153,9 +158,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", s.handleDeleteSource)
 	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
+	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
 	mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
+	mux.HandleFunc("GET /api/v1/admin/sources/quality", s.handleSourceQuality)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 	mux.HandleFunc("POST /api/v1/sources/upload", s.handleUploadSource)
 	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
@@ -271,8 +278,14 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		runType = domain.RunTypeChat
 	case string(domain.RunTypeBatch):
 		runType = domain.RunTypeBatch
+	case string(domain.RunTypeLearning):
+		if s.learningPlan == nil {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "генератор плана обучения не настроен")
+			return
+		}
+		runType = domain.RunTypeLearning
 	default:
-		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat or batch")
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat, batch or learning")
 		return
 	}
 	if runType == domain.RunTypeChat && s.chat == nil {
@@ -345,6 +358,45 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	run.Type = runType
+	if runType == domain.RunTypeLearning {
+		pgStore, ok := s.store.(*PGStore)
+		if !ok {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "план обучения требует PostgreSQL")
+			return
+		}
+		starter, ok := s.chat.(learningChatStarter)
+		if !ok || s.chat == nil {
+			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "интервьюер для плана обучения не настроен")
+			return
+		}
+		if err := pgStore.SetRunType(run.ID, domain.RunTypeLearning); err != nil {
+			logging.Logger.Error("learning_run_type_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		if err := s.store.SetStage(run.ID, domain.StageInterview); err != nil {
+			logging.Logger.Error("learning_run_stage_store_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", err.Error())
+			return
+		}
+		run.Stage = domain.StageInterview
+		if err := starter.StartLearning(run.ID, run.Profession); err != nil {
+			_ = s.store.SetStage(run.ID, domain.StageFailed)
+			logging.Logger.Error("learning_chat_start_failed", "run_id", run.ID, "error", err)
+			writeErr(w, http.StatusBadGateway, "BAD_GATEWAY", err.Error())
+			return
+		}
+		stageEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{
+			"stage":  string(domain.StageInterview),
+			"status": string(domain.RunRunning),
+		})
+		if err := s.eventStore.Append(stageEvent); err != nil {
+			logging.Logger.Error("learning_stage_event_failed", "run_id", run.ID, "error", err)
+		}
+		writeJSON(w, http.StatusCreated, run)
+		return
+	}
+
 	if pgStore, ok := s.store.(*PGStore); runType == domain.RunTypeBatch && ok {
 		if err := pgStore.SetRunType(run.ID, domain.RunTypeBatch); err != nil {
 			logging.Logger.Error("batch_run_type_store_failed", "run_id", run.ID, "error", err)
@@ -587,7 +639,7 @@ func (s *Server) handleGetAnswers(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/{id}/approve [post]
 func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 	id := r.PathValue("id")
@@ -623,7 +675,7 @@ func (s *Server) handleApproveEvidence(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/{id}/reject [post]
 func (s *Server) handleRejectEvidence(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 	id := r.PathValue("id")
@@ -744,7 +796,7 @@ type bulkApproveResponse struct {
 // @Security     BearerAuth
 // @Router       /api/v1/evidences/bulk-approve [post]
 func (s *Server) handleBulkApprove(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
 		return
 	}
 

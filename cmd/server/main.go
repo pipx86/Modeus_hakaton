@@ -48,6 +48,21 @@ func loadConfig() (config, error) {
 	return c, nil
 }
 
+// aiStepTimeout returns the per-attempt budget of an AI batch step. The
+// default is one hour because analyst extraction can span many sources.
+func aiStepTimeout() time.Duration {
+	const defaultTimeout = time.Hour
+	raw := strings.TrimSpace(os.Getenv("AI_STEP_TIMEOUT_S"))
+	if raw == "" {
+		return defaultTimeout
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return defaultTimeout
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // sourceAutoIndexEnabled reports whether new sources should be indexed in the
 // background. Enabled by default; SOURCE_AUTO_INDEX=false disables the
 // background embedding calls (for example on a server without Ollama).
@@ -109,13 +124,16 @@ func run(ctx context.Context, c config) error {
 	var agentMetrics *agentmetrics.Registry
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
+	var synthesizerClient llm.ChatClient
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
 		logging.Logger.Info("LLM provider configured",
 			"base_url", cfg.BaseURL,
 			"interviewer_model", cfg.Agents[agents.Interviewer].Model,
 			"interviewer_fallback_model", cfg.Agents[agents.Interviewer].FallbackModel,
 			"analyst_model", cfg.Agents[agents.Analyst].Model,
-			"analyst_fallback_model", cfg.Agents[agents.Analyst].FallbackModel)
+			"analyst_fallback_model", cfg.Agents[agents.Analyst].FallbackModel,
+			"synthesizer_model", cfg.Agents[agents.Synthesizer].Model,
+			"synthesizer_fallback_model", cfg.Agents[agents.Synthesizer].FallbackModel)
 		// The pool wraps every per-model client with this decorator, so the
 		// llm_requests audit row names the model that actually answered. A
 		// fallback call therefore shows up as a second row with its own model
@@ -130,6 +148,14 @@ func run(ctx context.Context, c config) error {
 			}
 			if client, clientErr := agentPool.Client(agents.Analyst); clientErr == nil {
 				analystClient = client
+			}
+			// The synthesizer client powers the best-effort LLM normalization
+			// pass. Its calls are recorded by the pool metrics with
+			// agent="synthesizer", which is what the admin agent table reads.
+			if client, clientErr := agentPool.Client(agents.Synthesizer); clientErr == nil {
+				synthesizerClient = client
+			} else {
+				logging.Logger.Warn("synthesizer client unavailable; the synthesizer stays deterministic", "error", clientErr)
 			}
 		} else {
 			logging.Logger.Error("LLM provider pool setup failed; using fallback interview", "error", poolErr)
@@ -151,7 +177,13 @@ func run(ctx context.Context, c config) error {
 	// handed to both the create-run handler and the resume processor.
 	var batchSynth steps.Synthesizer
 	if analystClient != nil {
-		if synthAgent, synthErr := synthesizer.New(synthesizer.WithPromptVersion(synthesizerVersion)); synthErr != nil {
+		synthOptions := []synthesizer.Option{synthesizer.WithPromptVersion(synthesizerVersion)}
+		if synthesizerClient != nil {
+			// Batch synthesis keeps the deterministic merge as the source of
+			// truth and only uses the model to normalize titles/descriptions.
+			synthOptions = append(synthOptions, synthesizer.WithClient(synthesizerClient))
+		}
+		if synthAgent, synthErr := synthesizer.New(synthOptions...); synthErr != nil {
 			logging.Logger.Error("batch synthesizer setup failed; batch runs keep the vacancy pipeline", "error", synthErr)
 		} else {
 			batchSynth = synthAgent
@@ -163,13 +195,20 @@ func run(ctx context.Context, c config) error {
 		Synthesizer:          batchSynth,
 		Store:                pgStore,
 		VacancyTopK:          10,
+		AITimeout:            aiStepTimeout(),
+		ZunEnricher: func(ctx context.Context, profession string, nodes []domain.Node) []domain.Node {
+			return enrichZun(ctx, analystClient, profession, nodes)
+		},
 	})
 	logging.Logger.Info("batch pipeline configured",
 		"ai", batchPlan.HasAI(),
 		"analyst_prompt_version", analystVersion,
 		"synthesizer_prompt_version", synthesizerVersion,
+		"synthesizer_llm_normalization", synthesizerClient != nil,
 		"ai_step_timeout", batchPlan.AITimeout,
 		"vacancy_step_timeout", batchPlan.FallbackTimeout)
+	st := store.New(pool)
+	vacancyReader := store.NewVacancyAdapter(st)
 	chatService := chat.NewService(chatClient, func(runID string, status domain.RunStatus) {
 		metricsRegistry.ObserveRun(string(status), 0)
 		if err := pgStore.SetStatus(runID, status); err != nil {
@@ -183,20 +222,28 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
+	chatService.SetSourceContextLoader(newInterviewSourceContext(pgStore, vacancyReader))
 	// Persist the dialog and the interviewer session cursor, so chat history
 	// survives restarts and an active interview resumes instead of hanging.
 	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
 	chatService.SetSessionStore(store.NewChatSessionStore(pool))
+	var learningPlanner *learningPlannerAdapter
 	if analystClient != nil {
-		chatService.SetFinalizer(newTreeFinalizerWithVersions(pgStore, analystClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore)))
+		learningPlanner = newLearningPlanner(pgStore, vacancyReader, analystClient)
+		treeFinalizer := newTreeFinalizerWithClients(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, newRAGRetriever(pgStore))
+		chatService.SetFinalizer(newHybridFinalizer(pgStore, treeFinalizer, learningPlanner))
 	} else {
 		chatService.SetFinalizer(unavailableChatTree)
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetBatchPlan(batchPlan)
+	if learningPlanner != nil {
+		app.SetLearningPlanner(learningPlanner)
+	}
+	startHHVacancyImporter(context.Background(), pool)
 	// Семантическая индексация: источники, созданные через POST /sources и
 	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).
-	// Уже существующие источники догоняет cmd/index-sources (docs/EMBEDDINGS.md).
+	// Уже существующие источники догоняет cmd/index-sources (README.md).
 	if sourceAutoIndexEnabled() {
 		if app.EnableSourceAutoIndex() {
 			embedConfig := search.ConfigFromEnv()
@@ -234,9 +281,7 @@ func run(ctx context.Context, c config) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
 
-	st := store.New(pool)
-	reader := store.NewVacancyAdapter(st)
-	resumer := api.NewResumeProcessor(pgStore, pgStore, reader)
+	resumer := api.NewResumeProcessor(pgStore, pgStore, vacancyReader)
 	resumer.SetBatchPlan(batchPlan)
 	app.BindResumeProcessor(resumer)
 	// A restart may have interrupted a chat run between two durable steps:

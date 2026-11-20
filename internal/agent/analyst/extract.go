@@ -56,6 +56,45 @@ func ValidateEntitiesWithSources(out agent.AnalystOutput, transcript string, sou
 	return nil
 }
 
+// ValidateEntityShape validates only the entity structure, not quote wording.
+// It is used by the best-effort salvage pass after strict validation failed.
+func ValidateEntityShape(out agent.AnalystOutput) error {
+	if len(out.Entities) == 0 {
+		return ErrNoEntities
+	}
+	for i := range out.Entities {
+		if err := out.Entities[i].Validate(); err != nil {
+			return fmt.Errorf("analyst: entity %q: %w", out.Entities[i].ID, err)
+		}
+	}
+	return nil
+}
+
+// SalvageEntities drops evidence whose quote cannot be found in the transcript
+// or a provided source, then drops entities left without evidence. It turns a
+// single hallucinated quote into a smaller tree instead of failing the run.
+func SalvageEntities(out agent.AnalystOutput, in agent.AnalystInput) agent.AnalystOutput {
+	contents := sourceContents(in)
+	kept := make([]agent.ExtractedEntity, 0, len(out.Entities))
+	for _, entity := range out.Entities {
+		evidence := make([]domain.Evidence, 0, len(entity.Evidence))
+		for _, item := range entity.Evidence {
+			source, known := evidenceSource(contents, item.SourceID)
+			if (known && validate.ContainsQuote(source.Content, item.Quote)) ||
+				validate.ContainsQuote(in.Transcript, item.Quote) {
+				evidence = append(evidence, item)
+			}
+		}
+		if len(evidence) == 0 {
+			continue
+		}
+		entity.Evidence = evidence
+		kept = append(kept, entity)
+	}
+	out.Entities = kept
+	return out
+}
+
 // NormalizeEntities trims field values and fills missing identifiers with
 // deterministic content hashes so deduplication and evidence stay stable.
 func NormalizeEntities(entities []agent.ExtractedEntity) []agent.ExtractedEntity {

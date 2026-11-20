@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // repairLevelTypes задаёт тип узла для каждого уровня дерева.
 var repairLevelTypes = []NodeType{NodeRole, NodeFunction, NodeTask, NodeAction}
@@ -20,6 +23,7 @@ func RepairTree(nodes []Node) ([]Node, error) {
 
 	out := make([]Node, len(nodes))
 	copy(out, nodes)
+	out = dedupeSiblingTitles(out)
 
 	byID := make(map[string]int, len(out))
 	for index := range out {
@@ -128,4 +132,63 @@ func RepairTree(nodes []Node) ([]Node, error) {
 	}
 
 	return out, nil
+}
+
+// dedupeSiblingTitles merges nodes that have the same parent and title. A
+// vacancy-focused analyzer pass often discovers the same task that the
+// interview pass already found; keeping both makes the tree invalid
+// (DUPLICATE_SIBLING_TITLE), while dropping the second copy loses its evidence.
+func dedupeSiblingTitles(nodes []Node) []Node {
+	seen := make(map[string]int, len(nodes))
+	redirect := make(map[string]string, len(nodes))
+	out := make([]Node, 0, len(nodes))
+	for _, node := range nodes {
+		parentKey := ""
+		if node.ParentID != nil {
+			parentKey = *node.ParentID
+		}
+		key := parentKey + "\x00" + strings.ToLower(strings.TrimSpace(node.Title))
+		if parentKey != "" {
+			if index, ok := seen[key]; ok {
+				out[index].Evidence = appendUniqueEvidence(out[index].Evidence, node.Evidence)
+				redirect[node.ID] = out[index].ID
+				continue
+			}
+		}
+		seen[key] = len(out)
+		out = append(out, node)
+	}
+	if len(redirect) == 0 {
+		return out
+	}
+	for index := range out {
+		if out[index].ParentID == nil {
+			continue
+		}
+		parent := *out[index].ParentID
+		for {
+			next, ok := redirect[parent]
+			if !ok {
+				break
+			}
+			parent = next
+		}
+		out[index].ParentID = &parent
+	}
+	return out
+}
+
+func appendUniqueEvidence(existing, incoming []Evidence) []Evidence {
+	known := make(map[string]bool, len(existing))
+	for _, item := range existing {
+		known[item.ID] = true
+	}
+	for _, item := range incoming {
+		if known[item.ID] {
+			continue
+		}
+		known[item.ID] = true
+		existing = append(existing, item)
+	}
+	return existing
 }

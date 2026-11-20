@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -127,6 +129,21 @@ type HHTokenSource struct {
 	token         string
 	expiresAt     time.Time
 	refreshMargin time.Duration
+	// cachePath optionally persists the short-lived token across process
+	// restarts. hh.ru refuses a second client_credentials request while the
+	// previous token is still valid ("app token refresh too early").
+	cachePath string
+}
+
+// SetCachePath enables an on-disk token cache. The file contains a secret and
+// is written with 0600 permissions; keep it outside the repository.
+func (s *HHTokenSource) SetCachePath(path string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cachePath = strings.TrimSpace(path)
 }
 
 // NewHHTokenSource собирает источник токена из переменных окружения и опций.
@@ -166,6 +183,9 @@ func (s *HHTokenSource) Token(ctx context.Context) (string, error) {
 	defer s.mu.Unlock()
 
 	now := time.Now()
+	if s.token == "" {
+		s.loadCacheLocked(now)
+	}
 	if s.token != "" && now.Add(s.refreshMargin).Before(s.expiresAt) {
 		return s.token, nil
 	}
@@ -186,5 +206,44 @@ func (s *HHTokenSource) Token(ctx context.Context) (string, error) {
 		expiresIn = 3600 // разумный fallback, если API не вернул expires_in
 	}
 	s.expiresAt = now.Add(time.Duration(expiresIn) * time.Second)
+	s.saveCacheLocked()
 	return s.token, nil
+}
+
+type hhTokenCache struct {
+	AccessToken string    `json:"access_token"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+func (s *HHTokenSource) loadCacheLocked(now time.Time) {
+	if s.cachePath == "" {
+		return
+	}
+	data, err := os.ReadFile(s.cachePath)
+	if err != nil {
+		return
+	}
+	var cached hhTokenCache
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return
+	}
+	if strings.TrimSpace(cached.AccessToken) == "" || !now.Add(s.refreshMargin).Before(cached.ExpiresAt) {
+		return
+	}
+	s.token = cached.AccessToken
+	s.expiresAt = cached.ExpiresAt
+}
+
+func (s *HHTokenSource) saveCacheLocked() {
+	if s.cachePath == "" || s.token == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(s.cachePath), 0o700); err != nil {
+		return
+	}
+	data, err := json.Marshal(hhTokenCache{AccessToken: s.token, ExpiresAt: s.expiresAt})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(s.cachePath, data, 0o600)
 }

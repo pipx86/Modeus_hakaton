@@ -16,7 +16,7 @@ name: activity-descriptor
 # vector group with its own version table, and only then does the backend start.
 # `web-server` serves the built frontend and reverse-proxies /api/, /swagger/
 # and /metrics to `server`, so the full stack has ONE public entry point (one
-# port, same origin, no CORS). Runbook: docs/DOCKER_SERVER.md.
+# port, same origin, no CORS). Runbook: README.md and migrations/README.md.
 #
 # Credentials come from the environment / .env / .secrets/llm.env (see
 # .env.example). The fallbacks are local-development placeholders only; never
@@ -140,7 +140,7 @@ services:
     restart: "no"
 
   # Second one-shot goose runner: the optional vector/embedding migrations from
-  # ./migrations_optional/vector, tracked in their OWN version table
+  # ./migrations/optional/vector, tracked in their OWN version table
   # (goose_vector_versions) so the main goose history stays independent. They run
   # after the main group because the SQL references tables created there
   # (sources, run_sources) and they need the pgvector extension. Idempotent like
@@ -157,10 +157,10 @@ services:
       <<: *server-postgres
       GOOSE_DRIVER: "postgres"
       GOOSE_DBSTRING: *server-database-url
-      GOOSE_MIGRATION_DIR: "/migrations_optional/vector"
+      GOOSE_MIGRATION_DIR: "/migrations/optional/vector"
     # Global goose flags must precede the `up` command; -table/-dir override the
     # GOOSE_MIGRATION_DIR default of the image so the separate history is used.
-    command: ["-table", "goose_vector_versions", "-dir", "/migrations_optional/vector", "up"]
+    command: ["-table", "goose_vector_versions", "-dir", "/migrations/optional/vector", "up"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

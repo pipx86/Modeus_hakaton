@@ -11,7 +11,7 @@ $dataDrive = 'D:\'
 
 if (-not (Test-Path -LiteralPath $psql)) { throw 'Не найден psql в D:\PostgreSQL\16\bin.' }
 if (-not (Test-Path -LiteralPath $goose)) { throw 'Не найден Goose в C:\Users\REDMI\go\bin.' }
-if (-not (Test-Path -LiteralPath (Join-Path $repo 'migrations_optional\vector'))) {
+if (-not (Test-Path -LiteralPath (Join-Path $repo 'migrations/optional\vector'))) {
     throw 'Не найдена папка необязательных миграций pgvector.'
 }
 if (-not (Test-Path -LiteralPath 'D:\PostgreSQL\16\lib\vector.dll') -or -not (Test-Path -LiteralPath 'D:\PostgreSQL\16\share\extension\vector.control')) {
@@ -36,7 +36,7 @@ try {
     if ($fields[3] -ne 't') { throw 'В выбранной базе нет основной схемы проекта; сначала примените основные миграции.' }
 
     $dsn = "postgres://$dbUser@$dbHost`:$dbPort/$dbName`?sslmode=disable"
-    & $goose -table goose_vector_versions -dir (Join-Path $repo 'migrations_optional\vector') postgres $dsn up
+    & $goose -table goose_vector_versions -dir (Join-Path $repo 'migrations/optional\vector') postgres $dsn up
     if ($LASTEXITCODE -ne 0) { throw 'Не удалось применить миграции поиска.' }
 
     $verifySql = "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector') AND to_regclass('public.source_fragments') IS NOT NULL AND to_regclass('public.fragment_embeddings') IS NOT NULL;"

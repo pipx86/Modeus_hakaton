@@ -92,12 +92,32 @@ func (a *Agent) Taxonomy() Taxonomy { return a.taxonomy }
 // and that every quote is a verbatim transcript fragment; invalid answers are
 // repaired before a terminal ErrModel is returned.
 func (a *Agent) Extract(ctx context.Context, in agent.AnalystInput) (agent.AnalystOutput, error) {
-	return a.extract(ctx, in, "", func(out *agent.AnalystOutput) error {
+	out, err := a.extract(ctx, in, "", func(out *agent.AnalystOutput) error {
 		if err := ResolveEvidenceSources(out, in); err != nil {
 			return err
 		}
 		return ValidateEntitiesWithSources(*out, in.Transcript, in.Sources)
 	})
+	if err == nil {
+		return out, nil
+	}
+	if !errors.Is(err, ErrQuoteMismatch) && !strings.Contains(err.Error(), ErrQuoteMismatch.Error()) {
+		return agent.AnalystOutput{}, err
+	}
+	salvaged, salvageErr := a.extract(ctx, in, "", func(out *agent.AnalystOutput) error {
+		return ValidateEntityShape(*out)
+	})
+	if salvageErr != nil {
+		return agent.AnalystOutput{}, err
+	}
+	cleaned := SalvageEntities(salvaged, in)
+	if len(cleaned.Entities) == 0 {
+		return agent.AnalystOutput{}, err
+	}
+	if resolveErr := ResolveEvidenceSources(&cleaned, in); resolveErr == nil {
+		return cleaned, nil
+	}
+	return agent.AnalystOutput{}, err
 }
 
 // extract runs one model extraction with the supplied validator. The validator
@@ -129,7 +149,7 @@ func (a *Agent) extract(ctx context.Context, in agent.AnalystInput, extraInstruc
 	}
 	answer, err := repaired.Chat(ctx, messages)
 	if err != nil {
-		return agent.AnalystOutput{}, fmt.Errorf("%w: %v", ErrModel, err)
+		return agent.AnalystOutput{}, fmt.Errorf("%w: %w", ErrModel, err)
 	}
 
 	var out agent.AnalystOutput
@@ -137,7 +157,7 @@ func (a *Agent) extract(ctx context.Context, in agent.AnalystInput, extraInstruc
 		return agent.AnalystOutput{}, fmt.Errorf("%w: decode: %v", ErrModel, err)
 	}
 	if err := validate(&out); err != nil {
-		return agent.AnalystOutput{}, fmt.Errorf("%w: %v", ErrModel, err)
+		return agent.AnalystOutput{}, fmt.Errorf("%w: %w", ErrModel, err)
 	}
 	return out, nil
 }

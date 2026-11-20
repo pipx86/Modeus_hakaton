@@ -30,6 +30,7 @@ import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import {
   CheckIcon,
+  ChevronDownIcon,
   CopyIcon,
   ExternalLinkIcon,
   FileDiffIcon,
@@ -326,36 +327,49 @@ function DiffNodeSection({
   onOpenQuote: (detail: QuoteDetail) => void
   removed?: boolean
 }) {
+  const [open, setOpen] = useState(false)
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-medium">
-        {title} <span className="text-muted-foreground">({nodes.length})</span>
-      </h3>
-      <ul className="space-y-2">
-        {nodes.map((node) => (
-          <li key={node.id} className="space-y-2 rounded-lg border bg-muted/20 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{NODE_TYPE_LABELS[node.type]}</Badge>
-              <span
-                className={`text-sm font-medium ${removed ? "text-muted-foreground line-through" : ""}`}
-              >
-                {node.title}
-              </span>
-              <code className="ml-auto text-[11px] text-muted-foreground">{node.id}</code>
-            </div>
-            {node.description && (
-              <p className="text-sm text-muted-foreground">{node.description}</p>
-            )}
-            <EvidenceQuotes
-              nodeId={node.id}
-              nodeTitle={node.title}
-              evidence={node.evidence}
-              sources={sources}
-              onOpen={onOpenQuote}
-            />
-          </li>
-        ))}
-      </ul>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-muted/40"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <h3 className="text-sm font-medium">
+          {title} <span className="text-muted-foreground">({nodes.length})</span>
+        </h3>
+        <ChevronDownIcon
+          className={`ml-auto size-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <ul className="space-y-2">
+          {nodes.map((node) => (
+            <li key={node.id} className="space-y-2 rounded-lg border bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">{NODE_TYPE_LABELS[node.type]}</Badge>
+                <span
+                  className={`text-sm font-medium ${removed ? "text-muted-foreground line-through" : ""}`}
+                >
+                  {node.title}
+                </span>
+                <code className="ml-auto text-[11px] text-muted-foreground">{node.id}</code>
+              </div>
+              {node.description && (
+                <p className="text-sm text-muted-foreground">{node.description}</p>
+              )}
+              <EvidenceQuotes
+                nodeId={node.id}
+                nodeTitle={node.title}
+                evidence={node.evidence}
+                sources={sources}
+                onOpen={onOpenQuote}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
@@ -824,24 +838,6 @@ function SnapshotDiffSection({
                     Скопировать changelog
                   </Button>
                 </div>
-                {diff.story_lines && diff.story_lines.length > 0 ? (
-                  <ol className="space-y-1 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    {diff.story_lines.map((line, index) => (
-                      <li key={`${index}-${line}`} className="flex gap-2">
-                        <span className="w-4 shrink-0 text-right text-muted-foreground/60">
-                          {index + 1}
-                        </span>
-                        <span>{line}</span>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  diff.story && (
-                    <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                      {diff.story}
-                    </p>
-                  )
-                )}
                 {diff.summary.added === 0 &&
                 diff.summary.removed === 0 &&
                 diff.summary.changed === 0 ? (
@@ -1202,7 +1198,7 @@ function ReviewQueueSection({
                         <ExternalLinkIcon className="size-3" />
                       </a>
                     )}
-                    <span className="font-mono">прогон: {item.run_id}</span>
+                    <span className="font-mono">исследование: {item.run_id}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button

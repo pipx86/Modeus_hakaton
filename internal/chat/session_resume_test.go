@@ -28,6 +28,29 @@ type fakeSessionStore struct {
 	appends  int
 }
 
+func TestMessagesProbeDoesNotFailBatchRun(t *testing.T) {
+	store := newFakeSessionStore()
+	store.seedRun("batch-run", domain.RunRunning)
+	finished := make(chan domain.RunStatus, 1)
+	service := NewService(fakeInterviewer{}, func(_ string, status domain.RunStatus) {
+		finished <- status
+	})
+	service.SetSessionStore(store)
+
+	messages, err := service.Messages("batch-run")
+	if err != nil {
+		t.Fatalf("Messages: %v", err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("batch messages = %d, want 0", len(messages))
+	}
+	select {
+	case status := <-finished:
+		t.Fatalf("batch run was marked %s by a messages probe", status)
+	default:
+	}
+}
+
 func newFakeSessionStore() *fakeSessionStore {
 	return &fakeSessionStore{
 		runs:     make(map[string]domain.RunStatus),

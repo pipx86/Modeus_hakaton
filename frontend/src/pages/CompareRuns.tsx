@@ -34,7 +34,7 @@ export function CompareRuns() {
         setRuns(done)
         setError(null)
       } catch {
-        if (!cancelled) setError("Не удалось загрузить список прогонов.")
+        if (!cancelled) setError("Не удалось загрузить список исследований.")
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -64,7 +64,7 @@ export function CompareRuns() {
         setDiff(data ?? null)
         setCompareError(null)
       } catch {
-        if (!cancelled) setCompareError("Не удалось сравнить прогоны.")
+        if (!cancelled) setCompareError("Не удалось сравнить исследования.")
       } finally {
         if (!cancelled) setComparing(false)
       }
@@ -77,9 +77,9 @@ export function CompareRuns() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Сравнение прогонов</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Сравнение исследований</h1>
         <p className="text-sm text-muted-foreground">
-          Выберите два завершённых исследования, чтобы увидеть, что изменилось в дереве.
+          Выберите два завершённых исследования по одной профессии, чтобы увидеть, что изменилось в дереве.
         </p>
       </div>
 
@@ -88,12 +88,12 @@ export function CompareRuns() {
           {error}
         </div>
       ) : loading ? (
-        <div className="text-sm text-muted-foreground">Загрузка прогонов…</div>
+        <div className="text-sm text-muted-foreground">Загрузка исследований…</div>
       ) : runs.length < 2 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
           <GitCompareIcon className="size-6 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            Для сравнения нужно минимум два завершённых прогона. Сейчас доступно: {runs.length}.
+            Для сравнения нужно минимум два завершённых исследования. Сейчас доступно: {runs.length}.
           </p>
           <Button asChild variant="outline">
             <Link to="/">К исследованиям</Link>
@@ -104,16 +104,16 @@ export function CompareRuns() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Выберите версии</CardTitle>
-              <CardDescription>Сравниваем дерево базового прогона с новым.</CardDescription>
+              <CardDescription>Сравниваем дерево базового исследования с новым.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="compare-base">
-                  Базовый прогон
+                  Базовое исследование
                 </label>
                 <Select value={baseId ?? undefined} onValueChange={setBaseId}>
-                  <SelectTrigger id="compare-base" aria-label="Базовый прогон">
-                    <SelectValue placeholder="Выберите прогон" />
+                  <SelectTrigger id="compare-base" aria-label="Базовое исследование">
+                    <SelectValue placeholder="Выберите исследование" />
                   </SelectTrigger>
                   <SelectContent>
                     {runs.map((run) => (
@@ -127,11 +127,11 @@ export function CompareRuns() {
               <ArrowLeftRightIcon className="mx-auto hidden size-4 text-muted-foreground sm:block" />
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="compare-head">
-                  Новый прогон
+                  Новое исследование
                 </label>
                 <Select value={headId ?? undefined} onValueChange={setHeadId}>
-                  <SelectTrigger id="compare-head" aria-label="Новый прогон">
-                    <SelectValue placeholder="Выберите прогон" />
+                  <SelectTrigger id="compare-head" aria-label="Новое исследование">
+                    <SelectValue placeholder="Выберите исследование" />
                   </SelectTrigger>
                   <SelectContent>
                     {runs.map((run) => (
@@ -152,10 +152,10 @@ export function CompareRuns() {
           )}
 
           {!baseId || !headId ? (
-            <p className="text-sm text-muted-foreground">Выберите оба прогона, чтобы увидеть diff.</p>
+            <p className="text-sm text-muted-foreground">Выберите оба исследования, чтобы увидеть разницу.</p>
           ) : baseId === headId ? (
             <p className="text-sm text-muted-foreground">
-              Выберите разные прогоны: сравнивать прогон сам с собой нечего.
+              Выберите разные исследования: сравнивать исследование само с собой нечего.
             </p>
           ) : diff ? (
             <div className="space-y-4">
@@ -197,7 +197,7 @@ export function CompareRuns() {
               {!diff.same_profession && (
                 <p className="flex items-center gap-2 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm text-warning">
                   <AlertTriangleIcon className="size-4 shrink-0" />
-                  Прогоны относятся к разным профессиям: diff может быть неинформативным.
+                  Исследования относятся к разным профессиям: diff может быть неинформативным.
                 </p>
               )}
               {diff.summary.added + diff.summary.removed + diff.summary.changed === 0 ? (
@@ -239,7 +239,7 @@ export function CompareRuns() {
           ) : comparing ? (
             <div className="text-sm text-muted-foreground">Сравнение…</div>
           ) : (
-            <div className="text-sm text-muted-foreground">Выберите оба прогона, чтобы увидеть diff.</div>
+            <div className="text-sm text-muted-foreground">Выберите оба исследования, чтобы увидеть разницу.</div>
           )}
         </>
       )}

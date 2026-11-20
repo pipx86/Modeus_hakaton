@@ -34,6 +34,29 @@ type Session struct {
 	clarifiedFor int
 	fallbacks    int
 	seq          int
+	// sourceContext is a compact, trusted-by-position but untrusted-by-content
+	// summary of vacancies and materials relevant to the profession.
+	sourceContext string
+	// learning selects the beginner learning interview instead of the expert
+	// activity interview.
+	learning bool
+}
+
+// SetLearning switches the session to a beginner learning interview.
+func (s *Session) SetLearning(learning bool) {
+	if s == nil {
+		return
+	}
+	s.learning = learning
+}
+
+// SetSourceContext attaches vacancy/material context to the next questions.
+// The text is treated as reference data, never as instructions.
+func (s *Session) SetSourceContext(context string) {
+	if s == nil {
+		return
+	}
+	s.sourceContext = strings.TrimSpace(context)
 }
 
 // NewSession starts an interview session for respondent. id must be unique.
@@ -95,11 +118,13 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 		SessionID:         s.state.ID,
 		Respondent:        s.state.Respondent,
 		Profession:        s.state.Profession,
+		SourceContext:     s.sourceContext,
 		Asked:             append([]domain.Question(nil), s.state.Questions...),
 		Answers:           append([]domain.Answer(nil), s.state.Answers...),
 		NextLevel:         level,
 		NeedClarification: clarify,
 		MaxQuestions:      len(s.plan),
+		Learning:          s.learning,
 	}
 
 	out, err := s.agent.AskNext(ctx, in)

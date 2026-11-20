@@ -20,6 +20,7 @@ type authUserStore interface {
 	RegisterUser(ctx context.Context, email, displayName, passwordHash string) (*domain.User, error)
 	UserByEmail(ctx context.Context, email string) (*domain.User, error)
 	ListUsers(ctx context.Context) ([]domain.User, error)
+	UpdateUserRole(ctx context.Context, id, role string) error
 }
 
 var _ authUserStore = (*PGStore)(nil)
@@ -64,6 +65,33 @@ func (p *PGStore) RegisterUser(ctx context.Context, email, displayName, password
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+	return &user, nil
+}
+
+func (p *PGStore) CountUsers(ctx context.Context) (int, error) {
+	var count int
+	if err := p.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE password_hash <> ''`).Scan(&count); err != nil {
+		return 0, translate(err)
+	}
+	return count, nil
+}
+
+func (p *PGStore) CreateUser(ctx context.Context, email, displayName, passwordHash, role string) (*domain.User, error) {
+	var user domain.User
+	err := p.Pool.QueryRow(ctx, `
+		INSERT INTO users (email, display_name, role_id, password_hash)
+		SELECT $1, $2, r.id, $3 FROM roles r WHERE r.code = $4
+		RETURNING id::text, email, display_name`,
+		email, displayName, passwordHash, role,
+	).Scan(&user.ID, &user.Email, &user.DisplayName)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrEmailTaken
+		}
+		return nil, translate(err)
+	}
+	user.Role = role
 	return &user, nil
 }
 
@@ -113,6 +141,30 @@ func (p *PGStore) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return p.ExistingUsers(ctx)
 }
 
+func (p *PGStore) UpdateUserRole(_ context.Context, id, role string) error {
+	if !validUUID(id) {
+		return ErrNotFound
+	}
+	switch role {
+	case string(auth.RoleAdmin), string(auth.RoleUser), string(auth.RoleSpecialist):
+	default:
+		return errors.New("INVALID_ROLE")
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tag, err := p.Pool.Exec(ctx, `
+		UPDATE users
+		SET role_id = (SELECT id FROM roles WHERE code = $2), updated_at = now()
+		WHERE id = $1`, id, role)
+	if err != nil {
+		return translate(err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (m *memStore) ListUsers(_ context.Context) ([]domain.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -124,24 +176,55 @@ func (m *memStore) ListUsers(_ context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
+func (m *memStore) CountUsers(_ context.Context) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.users), nil
+}
+
+func (m *memStore) UpdateUserRole(_ context.Context, id, role string) error {
+	if role != "admin" && role != "user" && role != "specialist" {
+		return errors.New("INVALID_ROLE")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	user.Role = role
+	m.users[id] = user
+	return nil
+}
+
 func (m *memStore) RegisterUser(_ context.Context, email, displayName, passwordHash string) (*domain.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	role := string(auth.RoleUser)
+	if len(m.users) == 0 {
+		role = string(auth.RoleAdmin)
+	}
+	return m.createUserLocked(email, displayName, passwordHash, role)
+}
+
+func (m *memStore) CreateUser(_ context.Context, email, displayName, passwordHash, role string) (*domain.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.createUserLocked(email, displayName, passwordHash, role)
+}
+
+func (m *memStore) createUserLocked(email, displayName, passwordHash, role string) (*domain.User, error) {
 	for _, existing := range m.users {
 		if existing.Email == email {
 			return nil, ErrEmailTaken
 		}
-	}
-	role := auth.RoleUser
-	if len(m.users) == 0 {
-		role = auth.RoleAdmin
 	}
 	m.seq++
 	user := domain.User{
 		ID:           fmt.Sprintf("user-%d", m.seq),
 		Email:        email,
 		DisplayName:  displayName,
-		Role:         string(role),
+		Role:         role,
 		PasswordHash: passwordHash,
 	}
 	m.users[user.ID] = user

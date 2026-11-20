@@ -11,8 +11,9 @@ import (
 type Role string
 
 const (
-	RoleAdmin Role = "admin"
-	RoleUser  Role = "user"
+	RoleAdmin      Role = "admin"
+	RoleUser       Role = "user"
+	RoleSpecialist Role = "specialist"
 )
 
 // NormalizeRole maps the legacy demo roles to the two supported roles. Tokens
@@ -24,6 +25,8 @@ func NormalizeRole(value Role) Role {
 		return RoleAdmin
 	case "user", "student", "guest":
 		return RoleUser
+	case "specialist", "expert", "mentor":
+		return RoleSpecialist
 	default:
 		return value
 	}
@@ -31,7 +34,7 @@ func NormalizeRole(value Role) Role {
 
 func ValidRole(s string) bool {
 	switch Role(s) {
-	case RoleAdmin, RoleUser:
+	case RoleAdmin, RoleUser, RoleSpecialist:
 		return true
 	}
 	return false

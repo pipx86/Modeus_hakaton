@@ -41,7 +41,7 @@ jobs:
       - name: Применить обе группы миграций
         run: |
           goose -dir .ci-db/migrations postgres "$DATABASE_URL" up
-          goose -table goose_vector_versions -dir .ci-db/migrations_optional/vector postgres "$DATABASE_URL" up
+          VECTOR_DIR=".ci-db/migrations/optional/vector"; if [ ! -d "$VECTOR_DIR" ]; then VECTOR_DIR=".ci-db/migrations_optional/vector"; fi; goose -table goose_vector_versions -dir "$VECTOR_DIR" postgres "$DATABASE_URL" up
       - name: Применить новые миграции текущей ветки
         # .ci-db — отдельная ветка миграций и может отставать от backend-кода.
         # Догоняем её миграциями из проверяемой ветки, чтобы acceptance видел

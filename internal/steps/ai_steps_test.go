@@ -148,9 +148,12 @@ func (s *fakeAITreeStore) Saved(runID string) []domain.Node {
 }
 
 // fakeVacancyReader provides deterministic vacancy data for the fallback chain.
-type fakeVacancyReader struct{}
+type fakeVacancyReader struct{ empty bool }
 
-func (fakeVacancyReader) ByProfession(_ context.Context, _ string, _ int) ([]domain.VacancyRecord, error) {
+func (r fakeVacancyReader) ByProfession(_ context.Context, _ string, _ int) ([]domain.VacancyRecord, error) {
+	if r.empty {
+		return nil, nil
+	}
 	return []domain.VacancyRecord{{
 		ID:          "v1",
 		SourceID:    "11111111-1111-4111-8111-111111111111",
@@ -168,6 +171,59 @@ func newRealSynthesizer(t *testing.T) Synthesizer {
 	return agentInstance
 }
 
+type staticSourceLoader struct {
+	sources []domain.Source
+}
+
+func (l staticSourceLoader) ListRunSourceContents(context.Context, string) ([]domain.Source, error) {
+	return l.sources, nil
+}
+
+func (l staticSourceLoader) ListGlobalSources(int) ([]domain.Source, error) {
+	return l.sources, nil
+}
+
+func TestAnalysisSourcesMergesMaterialsRunSourcesAndVacancies(t *testing.T) {
+	step := &AgentAnalysisStep{
+		GlobalSources: staticSourceLoader{sources: []domain.Source{
+			{ID: "doc-1", Type: domain.SourceDocument, Title: "Материал", Content: "Практика"},
+			{ID: "interview-1", Type: domain.SourceInterview, Content: "дубль транскрипта"},
+		}},
+		RunSources: staticSourceLoader{sources: []domain.Source{
+			{ID: "doc-1", Type: domain.SourceDocument, Title: "Материал", Content: "Практика"},
+			{ID: "std-1", Type: domain.SourceStandard, Title: "Стандарт", Content: "Требования"},
+		}},
+	}
+	sources := step.analysisSources(context.Background(), "run-1", "Backend-разработчик", []domain.VacancyRecord{{
+		ID: "v1", SourceID: "vac-1", Title: "Backend", Description: "Go и SQL",
+	}})
+	if len(sources) != 3 {
+		t.Fatalf("sources = %#v, want 3", sources)
+	}
+	ids := map[string]bool{}
+	for _, source := range sources {
+		ids[source.ID] = true
+	}
+	if !ids["doc-1"] || !ids["std-1"] || !ids["vac-1"] {
+		t.Fatalf("missing source ids: %#v", ids)
+	}
+}
+
+func TestAnalysisSourcesExcludesOtherProfession(t *testing.T) {
+	step := &AgentAnalysisStep{
+		GlobalSources: staticSourceLoader{sources: []domain.Source{
+			{ID: "generic", Type: domain.SourceDocument, Title: "Общая методика", Content: "Как проводить встречи"},
+			{ID: "data", Type: domain.SourceStandard, Title: "Аналитик данных", Content: "SQL и дашборды"},
+		}},
+	}
+	sources := step.analysisSources(context.Background(), "run-2", "Backend-разработчик", []domain.VacancyRecord{{
+		ID: "v2", SourceID: "vac-2", Title: "Backend Engineer", Description: "Go и PostgreSQL",
+	}})
+	if len(sources) != 1 || sources[0].ID != "vac-2" {
+		t.Fatalf("sources = %#v, want only backend vacancy", sources)
+	}
+}
+
 func TestAgentAnalysisAndSynthesisSteps(t *testing.T) {
 	run := &domain.Run{ID: "run-1", Profession: "Аналитик данных"}
 	SetTranscript(run, "Я аналитик данных и готовлю отчёты.", "")
@@ -181,13 +237,24 @@ func TestAgentAnalysisAndSynthesisSteps(t *testing.T) {
 		t.Fatalf("interview_nodes = %#v", run.Data[DataKeyInterviewNodes])
 	}
 
-	synthesis := &AgentSynthesisStep{Synthesizer: newRealSynthesizer(t)}
+	synthesis := &AgentSynthesisStep{
+		Synthesizer: newRealSynthesizer(t),
+		ZunEnricher: func(_ context.Context, _ string, nodes []domain.Node) []domain.Node {
+			for index := range nodes {
+				nodes[index].Zun = &domain.Zun{Knowledge: []string{"Тестовое знание"}}
+			}
+			return nodes
+		},
+	}
 	if err := synthesis.Execute(context.Background(), run); err != nil {
 		t.Fatalf("synthesis: %v", err)
 	}
 	tree, ok := run.Data[DataKeyTree].([]domain.Node)
 	if !ok || len(tree) == 0 {
 		t.Fatalf("tree = %#v", run.Data[DataKeyTree])
+	}
+	if tree[0].Zun == nil || len(tree[0].Zun.Knowledge) == 0 {
+		t.Fatalf("ZUN enricher was not applied: %#v", tree[0])
 	}
 	if _, ok := run.Data[DataKeyConflicts].([]domain.Conflict); !ok {
 		t.Fatalf("conflicts = %#v", run.Data[DataKeyConflicts])
@@ -280,6 +347,28 @@ func TestSaveAITreeStepCreatesSourceAndUUIDs(t *testing.T) {
 	}
 	if node.Evidence[0].Quote != "готовлю отчёты" || node.Evidence[0].RefID != "q-1" {
 		t.Fatalf("evidence content changed: %+v", node.Evidence[0])
+	}
+}
+
+func TestSaveAITreeStepPreservesVacancyEvidenceSource(t *testing.T) {
+	run := &domain.Run{ID: "run-vacancy-source", Data: map[string]any{
+		DataKeyTranscript: "Я аналитик",
+		DataKeySourceIDs:  map[string]string{"vac-1": "vac-1"},
+		DataKeyTree: []domain.Node{{
+			ID: "n1", Type: domain.NodeRole, Title: "Роль",
+			Evidence: []domain.Evidence{{ID: "e1", SourceID: "vac-1", Quote: "Go"}},
+		}},
+	}}
+	store := newFakeAITreeStore()
+	if err := (&SaveAITreeStep{Store: store, NewID: sequenceUUID()}).Execute(context.Background(), run); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	saved := store.Saved(run.ID)
+	if len(saved) != 1 || len(saved[0].Evidence) != 1 {
+		t.Fatalf("saved = %+v", saved)
+	}
+	if saved[0].Evidence[0].SourceID != "vac-1" {
+		t.Fatalf("evidence source = %q, want vac-1", saved[0].Evidence[0].SourceID)
 	}
 }
 

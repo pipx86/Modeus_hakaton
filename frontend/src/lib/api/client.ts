@@ -240,6 +240,50 @@ export async function listRunSnapshots(runId: string): Promise<RunSnapshot[]> {
   return requestApi<RunSnapshot[]>(`/runs/${encodeURIComponent(runId)}/snapshots`)
 }
 
+export interface LearningPlanStage {
+  title: string
+  goal: string
+  topics: string[]
+  practice: string[]
+}
+
+export interface LearningPlan {
+  profession: string
+  summary: string
+  weeks: number
+  stages: LearningPlanStage[]
+  sources?: string[]
+}
+
+/** Возвращает сохранённый план обучения исследования. */
+export async function getLearningPlan(runId: string): Promise<LearningPlan> {
+  return requestApi<LearningPlan>(`/runs/${encodeURIComponent(runId)}/learning-plan`)
+}
+
+export interface LearningPlanStage {
+  title: string
+  goal: string
+  topics: string[]
+  practice: string[]
+}
+
+export interface LearningPlan {
+  profession: string
+  summary: string
+  weeks: number
+  stages: LearningPlanStage[]
+  sources?: string[]
+}
+
+/** Составляет план обучения для новичка по выбранной профессии. */
+export async function createLearningPlan(profession: string): Promise<LearningPlan> {
+  return requestApi<LearningPlan>("/learning-plans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profession }),
+  })
+}
+
 /**
  * Сравнивает `head` (новый снимок, id в пути) с `base` (параметр `against`).
  * Порядок аргументов совпадает с контрактом бэкенда: head, затем base.

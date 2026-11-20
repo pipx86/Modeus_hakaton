@@ -154,7 +154,7 @@ func (s Service) IndexSource(ctx context.Context, id pgtype.UUID) error {
 		return ErrSourceChanged
 	}
 	if _, err = tx.Exec(ctx, "DELETE FROM source_fragments WHERE source_id=$1", id); err != nil {
-		return fmt.Errorf("удалить прежние фрагменты (применены ли миграции migrations_optional/vector?): %w", err)
+		return fmt.Errorf("удалить прежние фрагменты (применены ли миграции migrations/optional/vector?): %w", err)
 	}
 	for i, quote := range quotes {
 		var fragment pgtype.UUID
@@ -162,7 +162,7 @@ func (s Service) IndexSource(ctx context.Context, id pgtype.UUID) error {
 			return fmt.Errorf("сохранить фрагмент %d: %w", i, err)
 		}
 		if _, err = tx.Exec(ctx, "INSERT INTO fragment_embeddings(fragment_id,model,embedding) VALUES($1,$2,$3::vector)", fragment, s.Model.Model, vectors[i]); err != nil {
-			return fmt.Errorf("сохранить вектор фрагмента %d (применены ли миграции migrations_optional/vector?): %w", i, err)
+			return fmt.Errorf("сохранить вектор фрагмента %d (применены ли миграции migrations/optional/vector?): %w", i, err)
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {

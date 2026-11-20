@@ -17,7 +17,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY prompts ./prompts
-COPY api-docs ./api-docs
+COPY docs ./docs
 
 # Static, stripped binaries: no libc, no shell, reproducible paths.
 # /api is the demo entrypoint (in-memory store + chat fallback, /health and
@@ -78,8 +78,8 @@ RUN go install -trimpath -ldflags="-s -w" \
 
 # ---- server: cmd/server + Swagger UI + migrations (distroless) ------------
 # Full backend: PostgreSQL store, JWT auth, LLM agents (optional), goose-checked
-# schema. api-docs/ is required at runtime (cmd/server serves GET /swagger/
-# from ./api-docs); agent prompts are embedded into the binary at build time.
+# schema. docs/ is required at runtime (cmd/server serves GET /swagger/
+# from ./docs); agent prompts are embedded into the binary at build time.
 FROM gcr.io/distroless/static-debian12:nonroot AS server
 
 WORKDIR /app
@@ -89,12 +89,11 @@ COPY --from=server-build /out/healthcheck /app/healthcheck
 # cmd/server writes rotating logs to ./logs (LOG_FILE overrides the path);
 # keep the directory writable for the non-root user.
 COPY --from=server-build --chown=nonroot:nonroot /out/logs /app/logs
-# Swagger UI + OpenAPI spec: GET /swagger/ is served from ./api-docs.
-COPY --from=server-build /src/api-docs /app/api-docs
+# Swagger UI + OpenAPI spec: GET /swagger/ is served from ./docs.
+COPY --from=server-build /src/docs /app/docs
 # SQL migrations are shipped for parity with the deployment assets; applying
 # them is the job of the dedicated `migrate` image below (goose lives there).
 COPY migrations /app/migrations
-COPY migrations_optional /app/migrations_optional
 
 USER nonroot:nonroot
 EXPOSE 8080
@@ -109,20 +108,19 @@ ENTRYPOINT ["/app/server"]
 # `docker compose --profile server up -d server` runs this image first and the
 # backend only starts after it exits 0 (goose up is idempotent on a current DB).
 # The same image is used twice by the `server` profile: `migrate` applies the
-# main ./migrations group and `migrate-vector` applies ./migrations_optional/vector
+# main ./migrations group and `migrate-vector` applies ./migrations/optional/vector
 # with its own version table (goose_vector_versions).
 FROM gcr.io/distroless/static-debian12:nonroot AS migrate
 
 COPY --from=goose-build /out/goose /goose
 COPY migrations /migrations
-COPY migrations_optional /migrations_optional
 
 USER nonroot:nonroot
 
 # Compose supplies GOOSE_DRIVER=postgres, GOOSE_DBSTRING=<DATABASE_URL> and
 # GOOSE_MIGRATION_DIR=/migrations; the default command applies pending main
 # migrations. `migrate-vector` overrides GOOSE_MIGRATION_DIR and passes
-# -table goose_vector_versions -dir /migrations_optional/vector up.
+# -table goose_vector_versions -dir /migrations/optional/vector up.
 ENTRYPOINT ["/goose"]
 CMD ["up"]
 
@@ -151,8 +149,8 @@ FROM gcr.io/distroless/static-debian12:nonroot AS api
 WORKDIR /
 COPY --from=build /out/api /api
 COPY --from=build /out/local-token /local-token
-# Swagger UI is served from ./api-docs by the demo API.
-COPY --from=build /src/api-docs /api-docs
+# Swagger UI is served from ./docs by the demo API.
+COPY --from=build /src/docs /docs
 
 USER nonroot:nonroot
 EXPOSE 8080

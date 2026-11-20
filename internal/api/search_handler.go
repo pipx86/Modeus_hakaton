@@ -216,7 +216,7 @@ func indexSourceError(err error) (int, string, string) {
 	case errors.Is(err, search.ErrSourceChanged):
 		return http.StatusConflict, "SOURCE_CHANGED", "источник изменился во время векторизации; повторите индексацию"
 	default:
-		// Сбой модели или отсутствие таблиц migrations_optional/vector:
+		// Сбой модели или отсутствие таблиц migrations/optional/vector:
 		// прежний индекс не тронут, повтор после исправления безопасен.
 		return http.StatusBadGateway, "INDEX_FAILED", "не удалось получить векторы; прежний индекс сохранён: " + err.Error()
 	}

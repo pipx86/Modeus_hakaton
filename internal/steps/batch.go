@@ -62,6 +62,8 @@ type BatchOptions struct {
 	AnalystPromptVersion string
 	// Synthesizer is the deterministic merge agent (nil disables the AI chain).
 	Synthesizer Synthesizer
+	// ZunEnricher optionally fills knowledge/skills/abilities after synthesis.
+	ZunEnricher ZunEnricher
 	// Store persists the AI tree and its interview source, and is also used by
 	// the vacancy review step. nil disables both tree writes.
 	Store AITreeStore
@@ -89,9 +91,16 @@ func AISteps(analystClient llm.ChatClient, synth Synthesizer, store AITreeStore,
 	if analystClient == nil || synth == nil || store == nil {
 		return nil
 	}
+	analysisStep := &AgentAnalysisStep{Client: analystClient, PromptVersion: analystPromptVersion}
+	if loader, ok := store.(RunSourceLoader); ok {
+		analysisStep.RunSources = loader
+	}
+	if loader, ok := store.(GlobalSourceLoader); ok {
+		analysisStep.GlobalSources = loader
+	}
 	return []domain.Step{
 		&InterviewStep{},
-		&AgentAnalysisStep{Client: analystClient, PromptVersion: analystPromptVersion},
+		analysisStep,
 		&AgentSynthesisStep{Synthesizer: synth},
 		&SaveAITreeStep{Store: store},
 	}
@@ -136,6 +145,13 @@ func NewBatchPlan(opts BatchOptions) BatchPlan {
 		MaxRetries:      maxRetries,
 	}
 	plan.AI = AISteps(opts.Analyst, opts.Synthesizer, opts.Store, opts.AnalystPromptVersion)
+	if opts.ZunEnricher != nil {
+		for _, step := range plan.AI {
+			if synthesis, ok := step.(*AgentSynthesisStep); ok {
+				synthesis.ZunEnricher = opts.ZunEnricher
+			}
+		}
+	}
 	return plan
 }
 

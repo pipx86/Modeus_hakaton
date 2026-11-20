@@ -156,6 +156,8 @@ describe("SnapshotReviewTab", () => {
     expect(await screen.findByText("+1 добавлено")).toBeInTheDocument()
     expect(screen.getByText("-1 удалено")).toBeInTheDocument()
     expect(screen.getByText("~1 изменено")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: /Добавленные узлы/ }))
+    await userEvent.click(screen.getByRole("button", { name: /Удалённые узлы/ }))
     expect(await screen.findByText("Новая задача")).toBeInTheDocument()
     expect(screen.getByText("Удалённое действие")).toBeInTheDocument()
     // Для изменённого узла показываются и старое, и новое значения.
@@ -175,6 +177,7 @@ describe("SnapshotReviewTab", () => {
     await waitFor(() => expect(compareButton).toBeEnabled())
     await userEvent.click(compareButton)
 
+    await userEvent.click(await screen.findByRole("button", { name: /Добавленные узлы/ }))
     const quoteButtons = await screen.findAllByRole("button", { name: /Открыть цитату/ })
     const addedQuote = quoteButtons.find((button) =>
       button.getAttribute("aria-label")?.includes("Цитата добавленного узла"),

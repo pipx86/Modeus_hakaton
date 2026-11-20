@@ -14,7 +14,7 @@
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ChatTab } from "@/components/ChatTab"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -33,11 +33,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
-import { TreeMatrix } from "@/components/tree-matrix"
+import { CorrelationMap } from "@/components/correlation-map"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
 import { ZunSuggestionsDialog } from "@/components/zun-suggestions-dialog"
+import { LearningPlanView } from "@/components/learning-plan-view"
+import { agentLabel } from "@/lib/agent-labels"
 import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -54,11 +56,10 @@ import {
 import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
-import { buildTreeMatrix } from "@/lib/tree-matrix"
+import { buildTreeCorrelation } from "@/lib/tree-correlation"
 import {
   CheckIcon,
   EyeIcon,
-  PlusIcon,
   FileTextIcon,
   Loader2Icon,
   NetworkIcon,
@@ -103,7 +104,7 @@ function confidenceClass(value: number) {
 }
 
 const TAB_TRIGGER_CLASS =
-  "h-full items-center justify-center py-0 leading-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-input/30"
+  "h-full items-center justify-center py-0 leading-none transition-colors data-[state=active]:bg-primary data-[state=active]:font-semibold data-[state=active]:!text-primary-foreground data-[state=active]:shadow-sm dark:data-[state=active]:!text-primary-foreground"
 const ROOT_PARENT = "__root__"
 /**
  * Форматирует дату ISO в русскую длинную форму («6 ноября 2026»). Возвращает подсказку при
@@ -119,13 +120,6 @@ function formatDate(value?: string) {
     month: "long",
     year: "numeric",
   }).format(date)
-}
-
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "-"
-  if (ms < 60_000) return `${Math.round(ms / 1000)} с`
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} мин`
-  return `${(ms / 3_600_000).toFixed(1)} ч`
 }
 
 /**
@@ -167,11 +161,9 @@ function EmptyState({
  */
 function SourcesTab({
   runId,
-  canAttach,
   readOnly,
 }: {
   runId: string
-  canAttach: boolean
   readOnly: boolean
 }) {
   const [sources, setSources] = useState<Source[]>([])
@@ -363,7 +355,7 @@ function SourcesTab({
         toast.error("Не удалось привязать источник", { description: errorMessage(error) })
         return
       }
-      toast.success("Источник привязан к прогону")
+      toast.success("Источник привязан к исследованию")
       setAttachOpen(false)
       setAttachTitle("")
       setAttachContent("")
@@ -378,19 +370,6 @@ function SourcesTab({
 
   return (
     <div className="space-y-6">
-      {canAttach && (
-        <div className="flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1 px-2.5 text-xs"
-            onClick={() => setAttachOpen(true)}
-          >
-            <PlusIcon className="size-3.5" />
-            Добавить стандарт или вакансию
-          </Button>
-        </div>
-      )}
       {loadError ? (
         <div className="rounded-xl border border-destructive/50 p-6 text-center text-sm text-destructive">
           {loadError}
@@ -662,7 +641,7 @@ function SourcesTab({
       <Dialog open={attachOpen} onOpenChange={setAttachOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Добавить источник к прогону</DialogTitle>
+            <DialogTitle>Добавить источник к исследованию</DialogTitle>
             <DialogDescription>
               Стандарт или вакансия сразу попадут в run_sources: аналитик сможет цитировать
               источник, а синтезатор - находить конфликты между источниками.
@@ -1084,14 +1063,41 @@ function TreeTab({
   const [insights, setInsights] = useState<Insights | null>(null)
   const [cost, setCost] = useState<RunCost | null>(null)
   const [zunOpen, setZunOpen] = useState(false)
-  const [view, setView] = useState<"list" | "matrix">("list")
+  const [zunCount, setZunCount] = useState<number | null>(null)
+  const [view, setView] = useState<"list" | "correlation">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
     { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
   >([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  const treeMatrix = useMemo(() => buildTreeMatrix(nodes), [nodes])
+  const treeCorrelation = useMemo(() => buildTreeCorrelation(nodes), [nodes])
+
+  useEffect(() => {
+    if (!id || readOnly || nodes.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setZunCount(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const { data } = await apiClient.GET("/runs/{id}/zun/suggestions", {
+          params: { path: { id } },
+        })
+        if (!cancelled) {
+          setZunCount(
+            Array.isArray(data) ? data.filter((item) => item.can_apply).length : null,
+          )
+        }
+      } catch {
+        if (!cancelled) setZunCount(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [id, nodes, readOnly])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1347,8 +1353,8 @@ function TreeTab({
                 {cost.by_agent.map((item) => (
                   <div key={item.agent} className="space-y-0.5">
                     <div className="flex justify-between gap-2">
-                      <span className="truncate" title={item.agent}>
-                        {item.agent}
+                      <span className="truncate" title={agentLabel(item.agent)}>
+                        {agentLabel(item.agent)}
                       </span>
                       <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
                     </div>
@@ -1365,7 +1371,7 @@ function TreeTab({
               </div>
               {cost.attribution_ambiguous && (
                 <p className="mt-2 text-warning">
-                  Атрибуция по времени может включать запросы параллельного прогона.
+                  Атрибуция по времени может включать запросы параллельного исследования.
                 </p>
               )}
             </details>
@@ -1381,7 +1387,7 @@ function TreeTab({
           onClick={() => setZunOpen(true)}
         >
           <SparklesIcon className="size-3.5" />
-          Предложить ЗУН
+          ЗУН по исследованию{zunCount !== null ? `: ${zunCount}` : ""}
         </Button>
         )}
         <Button
@@ -1471,15 +1477,15 @@ function TreeTab({
         <Button
           type="button"
           size="sm"
-          variant={view === "matrix" ? "secondary" : "ghost"}
+          variant={view === "correlation" ? "secondary" : "ghost"}
           className="h-7 px-2.5 text-xs"
-          onClick={() => setView("matrix")}
+          onClick={() => setView("correlation")}
         >
-          Матрица
+          Корреляция
         </Button>
       </div>
-      {view === "matrix" ? (
-        <TreeMatrix data={treeMatrix} />
+      {view === "correlation" ? (
+        <CorrelationMap data={treeCorrelation} sampleLabel="узлов" />
       ) : (
         <ActivityTree
         nodes={nodes}
@@ -1523,6 +1529,7 @@ function TreeTab({
         open={zunOpen}
         onOpenChange={setZunOpen}
         onApplied={() => {
+          setZunCount(null)
           void load()
         }}
       />
@@ -1543,9 +1550,12 @@ export function Research() {
   const guestView = searchParams.get("view") === "readonly"
   const role = getCurrentRole()
   const adminView = role === "admin" || (role === null && import.meta.env.MODE === "test")
+  const reviewerView =
+    role === "admin" ||
+    role === "specialist" ||
+    (role === null && import.meta.env.MODE === "test")
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
-  const canAttach = !treeReadOnly && (role === null || role === "admin")
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
   const copyShareLink = async () => {
     const link = `${window.location.origin}/research/${id}?view=readonly`
@@ -1559,6 +1569,7 @@ export function Research() {
     }
   }
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
+  const autoChatRef = useRef(false)
   const showTranscript = useCallback(
     async (item: Evidence) => {
       let refId = item.ref_id
@@ -1607,6 +1618,8 @@ export function Research() {
     onStatusChange: (previous, next) => {
       if (previous === next) return
       if (next === "done") {
+        autoChatRef.current = true
+        setTab("tree")
         toast.success("Запуск завершён", { description: "Дерево деятельности готово." })
       }
       if (next === "failed") {
@@ -1616,6 +1629,15 @@ export function Research() {
       }
     },
   })
+
+  useEffect(() => {
+    if (!run || autoChatRef.current) return
+    if (run.type === "chat" && (run.status === "running" || run.status === "pending")) {
+      autoChatRef.current = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTab("chat")
+    }
+  }, [run])
 
   return (
     <div className="space-y-6">
@@ -1655,28 +1677,16 @@ export function Research() {
         {run?.stage && (
           <div className="mt-3">
             <RunStageStepper stage={run.stage} failed={run.status === "failed"} />
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {run.started_at && <span>Старт: {formatDate(run.started_at)}</span>}
-              {run.finished_at && <span>Финиш: {formatDate(run.finished_at)}</span>}
-              {run.started_at && run.finished_at && (
-                <span>
-                  Длительность:{" "}
-                  {formatDuration(
-                    new Date(run.finished_at).getTime() - new Date(run.started_at).getTime(),
-                  )}
-                </span>
-              )}
-            </div>
           </div>
         )}
         {run?.status === "degraded" && (
-          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
             Результат неполный: агенты работали с ограничениями.
           </p>
         )}
         {run?.status === "failed" && (
           <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            Прогон завершился ошибкой. Подробности - в журнале LLM-запросов админки.
+            Исследование завершилось ошибкой. Подробности - в журнале LLM-запросов админки.
           </p>
         )}
       </div>
@@ -1690,12 +1700,6 @@ export function Research() {
             Повторить
           </Button>
         </div>
-      )}
-      {isActive && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2Icon className="size-3.5 animate-spin" />
-          Агенты работают - страница обновляется автоматически
-        </p>
       )}
       {guestView && (
         <p className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
@@ -1712,6 +1716,20 @@ export function Research() {
           <p className="text-sm text-muted-foreground">Старт: {formatDate(run.started_at)}</p>
         )}
       </div>
+      {run?.type === "learning" ? (
+        run.status === "done" || run.status === "failed" ? (
+          <LearningPlanView runId={id} status={run.status} />
+        ) : (
+          <ChatTab
+            runId={id}
+            active={!loading && !error}
+            runStatus={run?.status}
+            stage={run?.stage}
+            focus={chatFocus}
+            readOnly={chatReadOnly}
+          />
+        )
+      ) : (
       <Tabs value={tab} onValueChange={setTab} className="flex-col">
         <TabsList className="h-9 items-center" data-print-hide>
           <TabsTrigger value="sources" className={TAB_TRIGGER_CLASS}>
@@ -1725,9 +1743,11 @@ export function Research() {
               Покрытие
             </TabsTrigger>
           )}
-          <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
-            Снимки и проверка
-          </TabsTrigger>
+          {reviewerView && (
+            <TabsTrigger value="snapshots" className={TAB_TRIGGER_CLASS}>
+              Снимки и проверка
+            </TabsTrigger>
+          )}
           {adminView && (
             <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
               Конфликты
@@ -1738,7 +1758,7 @@ export function Research() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="sources">
-          <SourcesTab runId={id} canAttach={canAttach} readOnly={treeReadOnly} />
+          <SourcesTab runId={id} readOnly={treeReadOnly} />
         </TabsContent>
         <TabsContent value="tree">
           <TreeTab
@@ -1754,7 +1774,9 @@ export function Research() {
           {adminView && <CoverageTab runId={id} />}
         </TabsContent>
         <TabsContent value="snapshots">
-          <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
+          {reviewerView && (
+            <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
+          )}
         </TabsContent>
         <TabsContent value="conflicts">
           {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
@@ -1770,6 +1792,7 @@ export function Research() {
           />
         </TabsContent>
       </Tabs>
+      )}
     </div>
   )
 }

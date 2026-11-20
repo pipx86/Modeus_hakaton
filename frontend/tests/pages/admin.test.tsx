@@ -35,6 +35,28 @@ function stubAdminData() {
         ],
       }
     }
+    if (url.includes("/api/v1/admin/sources/quality")) {
+      return {
+        status: 200,
+        body: {
+          items: [
+            {
+              id: "s-1",
+              type: "document",
+              title: "Профстандарт аналитика",
+              content_chars: 6000,
+              created_at: "2026-11-01T00:00:00Z",
+              content_present: true,
+              origin_present: true,
+              url_format: "valid",
+              citations: 5,
+              quote_checked: 5,
+              quote_matched: 5,
+            },
+          ],
+        },
+      }
+    }
     if (url.endsWith("/api/v1/runs")) {
       return {
         status: 200,
@@ -105,8 +127,6 @@ describe("админка", () => {
 
     renderAdmin()
 
-    expect(await screen.findByText("admin@example.com")).toBeInTheDocument()
-    expect(await screen.findByText("user@example.com")).toBeInTheDocument()
     expect(await screen.findByText("Data Scientist")).toBeInTheDocument()
     expect(
       screen.queryByRole("button", { name: /Удалить исследование/ }),
@@ -115,8 +135,15 @@ describe("админка", () => {
     expect(screen.getByText("HTTP 5xx")).toBeInTheDocument()
     expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
     expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
-    expect(screen.getByText("Материалы для аналитика")).toBeInTheDocument()
-    expect(await screen.findByText("Профстандарт аналитика")).toBeInTheDocument()
+    expect(screen.getByText("Материалы для агентов")).toBeInTheDocument()
+    expect((await screen.findAllByText("Профстандарт аналитика")).length).toBeGreaterThan(0)
+    expect(await screen.findByText("Средняя оценка")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Свернуть материалы" }))
+    expect(screen.queryByText("Загрузить файл")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Развернуть материалы" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Развернуть материалы" }))
+    expect(screen.getByText("Загрузить файл")).toBeInTheDocument()
     expect(await screen.findByText("minimax-test")).toBeInTheDocument()
     expect(await screen.findByText("deepseek-test")).toBeInTheDocument()
 
@@ -183,9 +210,9 @@ describe("админка", () => {
     const user = userEvent.setup()
 
     renderAdmin()
-    await screen.findByText("admin@example.com")
+    await screen.findByText("Data Scientist")
 
-    await user.click(screen.getAllByRole("combobox")[0])
+    await user.click(screen.getByRole("combobox", { name: "Фильтр по агенту" }))
     await user.click(await screen.findByRole("option", { name: "Аналитик" }))
 
     await waitFor(() => {
@@ -222,7 +249,7 @@ describe("админка", () => {
     stubAdminData()
 
     renderAdmin()
-    await screen.findByText("admin@example.com")
+    await screen.findByText("Data Scientist")
     const before = fetchCalls().filter((call) => call.url.includes("/llm/requests")).length
 
     fireEvent.click(screen.getByRole("button", { name: /Обновить/ }))
@@ -239,9 +266,9 @@ describe("админка", () => {
     const user = userEvent.setup()
 
     renderAdmin()
-    await screen.findByText("admin@example.com")
+    await screen.findByText("Data Scientist")
 
-    await user.click(screen.getAllByRole("combobox")[1])
+    await user.click(screen.getByRole("combobox", { name: "Фильтр по статусу" }))
     await user.click(await screen.findByRole("option", { name: "error" }))
 
     await waitFor(() => {

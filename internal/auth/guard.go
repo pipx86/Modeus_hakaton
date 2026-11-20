@@ -15,6 +15,11 @@ func RequireRole(w http.ResponseWriter, r *http.Request, allowed ...Role) bool {
 		if role == a {
 			return true
 		}
+		// A specialist has the normal user surface plus the review endpoints
+		// that explicitly list RoleSpecialist.
+		if role == RoleSpecialist && a == RoleUser {
+			return true
+		}
 	}
 	writeForbidden(w, "insufficient permissions for this action")
 	return false

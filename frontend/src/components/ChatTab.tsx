@@ -159,7 +159,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
       {runStatus === "failed" || runStatus === "degraded" ? (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive">
           <WifiOffIcon className="size-3.5 shrink-0" />
-          Прогон завершился ошибкой - чат закрыт.
+          Исследование завершилось ошибкой - чат закрыт.
         </div>
       ) : chatClosed ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

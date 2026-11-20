@@ -22,7 +22,7 @@ package api
 // request multiplied by the expected number of provider calls of the run type
 // (batch: 1 analyst call; chat: 6 planned interview questions + 1 analyst
 // finalize). Only when the llm_usage table is empty are the constants from
-// docs/LIVE_EVAL.md and docs/LLM_MODEL_BAKEOFF.md used.
+// README.md used.
 //
 // Cost USD: mean recorded cost_usd of the same-profession runs, then of all
 // runs; then a price per token derived from stored llm_usage cost rows; then
@@ -88,14 +88,14 @@ const (
 	// expectedChatLLMCalls is 6 planned interview questions
 	// (interviewer.defaultPlan) plus one analyst finalize call. The live eval
 	// observed exactly 7 model calls for a chat-like baseline run
-	// (docs/LIVE_EVAL.md).
+	// (README.md).
 	expectedChatLLMCalls = 7
 
 	// Last-resort constants, used only when no history exists at all. They are
 	// grounded in observed live runs, not in precise accounting:
 	// a chat run made 7 calls in ~36-67 s, one analyst call takes ~20-28 s and
 	// consumes ~2.4k-6.1k tokens (docs/LIVE_EVAL.md,
-	// docs/LLM_MODEL_BAKEOFF.md). The estimates are deliberately coarse.
+	// README.md). The estimates are deliberately coarse.
 	defaultBatchTokenEstimate      = 4000
 	defaultChatTokenEstimate       = 10000
 	defaultBatchDurationSeconds    = 60
@@ -287,13 +287,19 @@ func (s *Server) handleRunEstimate(w http.ResponseWriter, r *http.Request) {
 	}
 	runType, ok := parseEstimateRunType(r.URL.Query().Get("type"))
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat or batch")
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "type must be chat, batch or learning")
 		return
 	}
 
 	history := CostHistory{}
 	if source, ok := s.store.(CostDataSource); ok {
-		loaded, err := source.CostHistory(r.Context(), profession, runType)
+		historyType := runType
+		if historyType == domain.RunTypeLearning {
+			// Learning runs share the interview cost profile; a separate bucket
+			// would be empty until more learning runs finish.
+			historyType = domain.RunTypeChat
+		}
+		loaded, err := source.CostHistory(r.Context(), profession, historyType)
 		if err != nil {
 			logging.Logger.Error("run_estimate_history_failed",
 				"profession", profession, "type", string(runType), "error", err)
@@ -360,6 +366,8 @@ func parseEstimateRunType(raw string) (domain.RunType, bool) {
 		return domain.RunTypeChat, true
 	case string(domain.RunTypeBatch):
 		return domain.RunTypeBatch, true
+	case string(domain.RunTypeLearning):
+		return domain.RunTypeLearning, true
 	default:
 		return "", false
 	}
@@ -368,8 +376,13 @@ func parseEstimateRunType(raw string) (domain.RunType, bool) {
 // effectiveRunType normalizes the stored run type. Rows created before the
 // type column existed are batch runs (the historical default).
 func effectiveRunType(run *domain.Run) domain.RunType {
-	if run != nil && run.Type == domain.RunTypeChat {
-		return domain.RunTypeChat
+	if run != nil {
+		switch run.Type {
+		case domain.RunTypeChat:
+			return domain.RunTypeChat
+		case domain.RunTypeLearning:
+			return domain.RunTypeLearning
+		}
 	}
 	return domain.RunTypeBatch
 }
@@ -430,10 +443,16 @@ func buildRunEstimate(profession string, runType domain.RunType, history CostHis
 }
 
 func normalizeEstimateRunType(runType domain.RunType) domain.RunType {
-	if runType == domain.RunTypeChat {
-		return domain.RunTypeChat
+	switch runType {
+	case domain.RunTypeChat, domain.RunTypeLearning:
+		return runType
+	default:
+		return domain.RunTypeBatch
 	}
-	return domain.RunTypeBatch
+}
+
+func isInterviewLike(runType domain.RunType) bool {
+	return runType == domain.RunTypeChat || runType == domain.RunTypeLearning
 }
 
 // estimateDuration returns (source, seconds, sample count).
@@ -444,7 +463,7 @@ func estimateDuration(runType domain.RunType, history CostHistory) (string, floa
 	if durations := validDurations(history.GlobalRuns); len(durations) > 0 {
 		return durationSourceGlobal, median(durations), len(durations)
 	}
-	if runType == domain.RunTypeChat {
+	if runType == domain.RunTypeChat || runType == domain.RunTypeLearning {
 		return durationSourceDefault, defaultChatDurationSeconds, 0
 	}
 	return durationSourceDefault, defaultBatchDurationSeconds, 0
@@ -469,7 +488,7 @@ func estimateTokens(runType domain.RunType, history CostHistory) (string, float6
 		perCall := float64(stats.TotalTokens) / float64(stats.RequestCount)
 		return tokenSourceGlobalRequests, perCall * float64(expectedLLMCalls(runType)), int(stats.RequestCount)
 	}
-	if runType == domain.RunTypeChat {
+	if runType == domain.RunTypeChat || runType == domain.RunTypeLearning {
 		return tokenSourceDefault, defaultChatTokenEstimate, 0
 	}
 	return tokenSourceDefault, defaultBatchTokenEstimate, 0
@@ -546,6 +565,9 @@ func confidenceName(level int) string {
 func expectedLLMCalls(runType domain.RunType) int {
 	if runType == domain.RunTypeChat {
 		return expectedChatLLMCalls
+	}
+	if runType == domain.RunTypeLearning {
+		return expectedChatLLMCalls + 1
 	}
 	return expectedBatchLLMCalls
 }

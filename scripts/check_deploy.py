@@ -11,7 +11,6 @@ Runs without a Docker daemon (the CI "deploy-config" job and
   ``activity_descriptor_*`` metric it queries against internal/metrics;
 * validates n8n workflow exports (structure, connections, retry/safety flags)
   and that the env vars they use are documented and wired in compose;
-* checks the static web placeholder (HTML parses, no external resources);
 * verifies required deliverables exist;
 * checks relative Markdown links in the docs owned by this package;
 * scans owned text assets for obvious secret leaks.
@@ -21,7 +20,6 @@ Stdlib + PyYAML only (PyYAML ships on GitHub runners). Exit code 1 on failure.
 
 from __future__ import annotations
 
-import html.parser
 import json
 import os
 import re
@@ -57,10 +55,12 @@ REQUIRED_FILES = [
     ".golangci.yml",
     "Makefile",
     "cmd/api/main.go",
+    "docs/index.html",
+    "docs/swagger.json",
+    "docs/swagger.yaml",
     "internal/metrics/metrics.go",
     "internal/metrics/metrics_test.go",
     "internal/llm/metrics/metrics.go",
-    "web/index.html",
     "deploy/nginx/default.conf",
     "deploy/nginx/server.conf",
     "deploy/prometheus/prometheus.yml",
@@ -70,30 +70,17 @@ REQUIRED_FILES = [
     "deploy/grafana/provisioning/dashboards/dashboards.yml",
     "deploy/grafana/dashboards/activity-descriptor.json",
     "deploy/grafana/dashboards/activity-descriptor-business.json",
-    "deploy/n8n/workflows/README.md",
     "deploy/n8n/workflows/nightly_ingestion.json",
     "deploy/n8n/workflows/notion_email_notifications.json",
-    "migrations_optional/vector/20261109010000_vector_retrieval.sql",
-    "migrations_optional/vector/20261109010001_lexical_fallback.sql",
-    "migrations_optional/vector/VECTOR_STORAGE_GUIDE.md",
-    "docs/DOCKER.md",
-    "docs/DOCKER_SERVER.md",
-    "docs/GRAFANA.md",
-    "docs/METRICS.md",
-    "docs/N8N.md",
-    "docs/CI.md",
+    "migrations/optional/vector/20261109010000_vector_retrieval.sql",
+    "migrations/optional/vector/20261109010001_lexical_fallback.sql",
     "scripts/check_deploy.py",
+    "README.md",
 ]
 
-# Docs owned by the DevOps package: their relative links are validated.
+# Final README: relative links are validated.
 OWNED_DOCS = [
-    "docs/DOCKER.md",
-    "docs/DOCKER_SERVER.md",
-    "docs/GRAFANA.md",
-    "docs/METRICS.md",
-    "docs/N8N.md",
-    "docs/CI.md",
-    "deploy/n8n/workflows/README.md",
+    "README.md",
 ]
 
 SECRET_PATTERNS = [
@@ -114,38 +101,12 @@ SECRET_SCAN_GLOBS = [
     "cmd/api",
     "internal/metrics",
     "deploy",
-    "web",
-    "docs/DOCKER.md",
-    "docs/DOCKER_SERVER.md",
-    "docs/GRAFANA.md",
-    "docs/METRICS.md",
-    "docs/N8N.md",
-    "docs/CI.md",
     "scripts/check_deploy.py",
+    "README.md",
+    "docs",
+    "migrations",
     ".github/workflows/ci.yml",
 ]
-
-EXTERNAL_RESOURCE_TAGS = {"script", "link", "img", "iframe", "source"}
-
-
-class HTMLCollector(html.parser.HTMLParser):
-    """Collects ids and external resource references from one HTML file."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.ids: list[str] = []
-        self.resource_refs: list[tuple[str, str, str]] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attributes = dict(attrs)
-        if attributes.get("id"):
-            self.ids.append(attributes["id"])  # type: ignore[arg-type]
-        if tag in EXTERNAL_RESOURCE_TAGS:
-            for attr in ("src", "href"):
-                value = attributes.get(attr)
-                if value:
-                    self.resource_refs.append((tag, attr, value))
-
 
 def read(rel: str) -> str:
     return open(os.path.join(ROOT, rel), encoding="utf-8").read()
@@ -202,7 +163,7 @@ def check_dockerfile() -> None:
             raise SystemExit(f"FAIL: Dockerfile is missing the {stage!r} build stage")
     if stages[-1] != "api":
         raise SystemExit(f"FAIL: last Dockerfile stage must be 'api' (default build target), got {stages[-1]!r}")
-    for marker in ("./cmd/server", "goose@v3.29.0", "api-docs", "/app/healthcheck"):
+    for marker in ("./cmd/server", "goose@v3.29.0", "docs", "/app/healthcheck"):
         if marker not in dockerfile:
             raise SystemExit(f"FAIL: Dockerfile must include {marker!r}")
     # Full-stack web target: the SPA is built inside the image and served by
@@ -283,7 +244,7 @@ def check_compose() -> None:
     if "server" not in (migrate_vector.get("profiles") or []):
         raise SystemExit("FAIL: migrate-vector service must be behind the 'server' profile")
     vector_command = " ".join(str(part) for part in migrate_vector.get("command") or [])
-    for flag in ("-table goose_vector_versions", "-dir /migrations_optional/vector", "up"):
+    for flag in ("-table goose_vector_versions", "-dir /migrations/optional/vector", "up"):
         if flag not in vector_command:
             raise SystemExit(f"FAIL: migrate-vector command must contain {flag!r}")
     vector_deps = migrate_vector.get("depends_on") or {}
@@ -507,11 +468,11 @@ def check_metrics_labels() -> None:
 
 def check_vector_migrations() -> None:
     """The optional vector group must stay a separate, goose-managed history."""
-    directory = os.path.join(ROOT, "migrations_optional/vector")
+    directory = os.path.join(ROOT, "migrations/optional/vector")
     files = sorted(name for name in os.listdir(directory) if name.endswith(".sql"))
     if len(files) < 2:
-        raise SystemExit(f"FAIL: migrations_optional/vector has {len(files)} SQL migrations, expected >= 2")
-    retrieval = read("migrations_optional/vector/20261109010000_vector_retrieval.sql")
+        raise SystemExit(f"FAIL: migrations/optional/vector has {len(files)} SQL migrations, expected >= 2")
+    retrieval = read("migrations/optional/vector/20261109010000_vector_retrieval.sql")
     for marker in (
         "+goose Up",
         "CREATE EXTENSION IF NOT EXISTS vector",
@@ -522,17 +483,6 @@ def check_vector_migrations() -> None:
         if marker not in retrieval:
             raise SystemExit(f"FAIL: vector migration is missing {marker!r}")
     print(f"vector migrations ok: {len(files)} SQL files, pgvector tables + HNSW index")
-
-
-def check_web() -> None:
-    collector = HTMLCollector()
-    collector.feed(read("web/index.html"))
-    for tag, attr, value in collector.resource_refs:
-        if value.startswith(("http://", "https://", "//")):
-            raise SystemExit(f"FAIL: external resource in web/index.html: <{tag} {attr}={value!r}>")
-    if "/api/v1/health" not in read("web/index.html"):
-        raise SystemExit("FAIL: web/index.html must probe /api/v1/health")
-    print(f"web ok: html parsed, ids={len(collector.ids)}, no external resources")
 
 
 def check_workflows() -> None:
@@ -667,7 +617,6 @@ def main() -> int:
     check_dashboard()
     check_metrics_labels()
     check_vector_migrations()
-    check_web()
     check_workflows()
     check_required_files()
     check_markdown_links()

@@ -337,6 +337,42 @@ func TestPoolSchemaInvalidAnswerUsesFallback(t *testing.T) {
 	}
 }
 
+// TestPoolSynthesizerNormalizationAnswerDoesNotTriggerSchemaFallback locks in
+// the hybrid synthesizer contract: the model returns a normalization envelope
+// ({"nodes":[...]}) that is not the deterministic synthesis schema. The pool
+// must accept it without treating it as schema-invalid and calling the fallback
+// model a second time.
+func TestPoolSynthesizerNormalizationAnswerDoesNotTriggerSchemaFallback(t *testing.T) {
+	const normalizationAnswer = `{"nodes":[{"id":"tax-task-sql","title":"Писать SQL-запросы"}]}`
+	provider := newFakeProvider(t, map[string]providerResponse{
+		"synth-primary": {status: http.StatusOK, body: chatCompletion(normalizationAnswer)},
+		"synth-backup":  {status: http.StatusOK, body: chatCompletion(normalizationAnswer)},
+	})
+	cfg := testPoolConfig(t, provider.server.URL, map[AgentName]Spec{
+		Interviewer: testSpec("primary-model", "", 2*time.Second),
+		Analyst:     testSpec("primary-model", "", 2*time.Second),
+		Synthesizer: testSpec("synth-primary", "synth-backup", 2*time.Second),
+	})
+	pool, err := NewPool(cfg)
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	client, err := pool.Client(Synthesizer)
+	if err != nil {
+		t.Fatalf("Client: %v", err)
+	}
+	answer, err := client.Chat(context.Background(), benignMessages())
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if answer != normalizationAnswer {
+		t.Fatalf("answer = %q, want the unchanged normalization envelope", answer)
+	}
+	if models := provider.requestedModels(); len(models) != 1 || models[0] != "synth-primary" {
+		t.Fatalf("requested models = %v, want only the primary synthesizer model", models)
+	}
+}
+
 func TestPoolDuplicateFallbackModelBuildsNoChain(t *testing.T) {
 	provider := newFakeProvider(t, map[string]providerResponse{
 		"primary-model": {status: http.StatusOK, body: chatCompletion(validInterviewerAnswer)},

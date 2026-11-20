@@ -7,6 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -156,7 +159,7 @@ func Versions(kind string) ([]string, error) {
 	if !validKind(kind) {
 		return nil, fmt.Errorf("%w: kind %q", ErrUnknownPrompt, kind)
 	}
-	entries, err := promptassets.FS.ReadDir(kind)
+	entries, err := readDir(kind)
 	if err != nil {
 		return nil, fmt.Errorf("%w: read %s prompts: %v", ErrUnknownPrompt, kind, err)
 	}
@@ -175,7 +178,24 @@ func Versions(kind string) ([]string, error) {
 }
 
 func readAsset(name string) (string, error) {
-	data, err := promptassets.FS.ReadFile(name)
+	if dir := promptDir(); dir != "" {
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		if err == nil {
+			if strings.TrimSpace(string(data)) == "" {
+				return "", fmt.Errorf("prompts: %s is empty", name)
+			}
+			return strings.TrimSpace(string(data)), nil
+		}
+		// _shared is intentionally not committed; use the safe defaults.
+		if !strings.HasPrefix(name, "_shared/") {
+			return "", fmt.Errorf("prompts: read %s: %w", name, err)
+		}
+	}
+	fallback := name
+	if strings.HasPrefix(name, "_shared/") {
+		fallback = "default/" + strings.TrimSuffix(name, ".md") + ".txt"
+	}
+	data, err := promptassets.FS.ReadFile(fallback)
 	if err != nil {
 		return "", fmt.Errorf("prompts: read %s: %w", name, err)
 	}
@@ -183,6 +203,29 @@ func readAsset(name string) (string, error) {
 		return "", fmt.Errorf("prompts: %s is empty", name)
 	}
 	return strings.TrimSpace(string(data)), nil
+}
+
+// promptDir returns a private prompt directory for local development. The
+// public repository ships only the safe fallback prompts under default/.
+func promptDir() string {
+	if dir := strings.TrimSpace(os.Getenv("PROMPTS_DIR")); dir != "" {
+		return dir
+	}
+	if info, err := os.Stat("prompts"); err == nil && info.IsDir() {
+		for _, kind := range Kinds() {
+			if _, err := os.Stat(filepath.Join("prompts", kind)); err == nil {
+				return "prompts"
+			}
+		}
+	}
+	return ""
+}
+
+func readDir(kind string) ([]os.DirEntry, error) {
+	if dir := promptDir(); dir != "" {
+		return os.ReadDir(filepath.Join(dir, kind))
+	}
+	return fs.ReadDir(promptassets.FS, "default/"+kind)
 }
 
 func validKind(kind string) bool {

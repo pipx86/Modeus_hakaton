@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
@@ -39,37 +39,6 @@ describe("Dashboard", () => {
     expect(screen.getByText("Активность за 14 дней")).toBeInTheDocument()
   })
 
-  it("показывает карту корреляции из бэкенда", async () => {
-    setFetchHandler(async (url) => {
-      if (url.endsWith("/api/v1/dashboard/correlation")) {
-        return {
-          status: 200,
-          body: {
-            sample_size: 3,
-            metrics: [
-              { key: "duration", label: "Длительность, мин" },
-              { key: "roles", label: "Роли" },
-            ],
-            matrix: [
-              [1, 0.5],
-              [0.5, 1],
-            ],
-          },
-        }
-      }
-      return {
-        status: 200,
-        body: [{ id: "1", profession: "Data Scientist", status: "done" }],
-      }
-    })
-
-    renderPage()
-
-    expect(await screen.findByText("Карта корреляции")).toBeInTheDocument()
-    expect(screen.getAllByText("Длительность, мин").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("0.50").length).toBeGreaterThan(0)
-  })
-
   it("считает количество исследований и активных", async () => {
     setFetchHandler(async () => ({
       status: 200,
@@ -82,8 +51,12 @@ describe("Dashboard", () => {
 
     renderPage()
 
-    expect(await screen.findByText(/3 исследований/)).toBeInTheDocument()
-    expect(screen.getByText(/1 интервью/)).toBeInTheDocument()
+    const totalCard = (await screen.findByText("Всего исследований")).closest("[data-slot=card]")
+    expect(totalCard).not.toBeNull()
+    expect(within(totalCard as HTMLElement).getByText("3")).toBeInTheDocument()
+    const activeCard = screen.getByText("Активных").closest("[data-slot=card]")
+    expect(activeCard).not.toBeNull()
+    expect(within(activeCard as HTMLElement).getByText("1")).toBeInTheDocument()
   })
 
   it("показывает пустое состояние, если исследований нет", async () => {
@@ -158,41 +131,6 @@ describe("Dashboard", () => {
     await waitFor(() => {
       expect(screen.queryByText("Data Scientist")).not.toBeInTheDocument()
     })
-  })
-
-  it("ведёт в пример последнего завершённого прогона", async () => {
-    setFetchHandler(async (url) => {
-      if (url.endsWith("/api/v1/runs")) {
-        return {
-          status: 200,
-          body: [
-            { id: "done-1", profession: "Data Scientist", status: "done" },
-            { id: "run-2", profession: "Backend", status: "running" },
-          ],
-        }
-      }
-      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
-    })
-
-    renderPage()
-
-    const link = await screen.findByRole("link", { name: /Посмотреть пример/ })
-    expect(link).toHaveAttribute("href", "/research/done-1")
-
-    fireEvent.click(link)
-    expect(await screen.findByText("page-research")).toBeInTheDocument()
-  })
-
-  it("не показывает пример, если завершённых прогонов нет", async () => {
-    setFetchHandler(async () => ({
-      status: 200,
-      body: [{ id: "run-1", profession: "Backend", status: "running" }],
-    }))
-
-    renderPage()
-
-    expect(await screen.findByText("Backend")).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: /Посмотреть пример/ })).not.toBeInTheDocument()
   })
 
   it("оставляет исследование при отмене удаления", async () => {
