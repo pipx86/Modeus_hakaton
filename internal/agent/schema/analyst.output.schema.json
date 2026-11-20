@@ -31,7 +31,8 @@
                 "id": { "type": "string", "minLength": 1 },
                 "source_id": { "type": "string", "minLength": 1 },
                 "ref_id": { "type": "string", "minLength": 1 },
-                "quote": { "type": "string", "minLength": 1 }
+                "quote": { "type": "string", "minLength": 1 },
+                "claim_origin": { "enum": ["source_statement", "model_interpretation", "unclassified"] }
               }
             }
           }

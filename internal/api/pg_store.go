@@ -30,7 +30,7 @@ func translate(err error) error {
 	var p *pgconn.PgError
 	if errors.As(err, &p) {
 		switch p.ConstraintName {
-		case "EMPTY_TITLE", "ORPHAN_NODE", "CYCLE_DETECTED", "INVALID_TREE_DEPTH", "DUPLICATE_SIBLING_TITLE", "MISSING_EVIDENCE":
+		case "EMPTY_TITLE", "ORPHAN_NODE", "CYCLE_DETECTED", "INVALID_TREE_DEPTH", "DUPLICATE_SIBLING_TITLE", "MISSING_EVIDENCE", "PROGRAM_LINK_COMPETENCY_MISMATCH", "PROGRAM_LINK_KSA_MISMATCH":
 			return &domain.TreeValidationError{Code: p.ConstraintName, Details: "дерево нарушает ограничение базы"}
 		}
 		if p.Code == "23505" {
@@ -77,11 +77,24 @@ func (p *PGStore) GetRun(id string) (*domain.Run, error) {
 	defer cancel()
 	r := &domain.Run{}
 	var programID string
-	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,type,COALESCE(created_by::text,''),root_node_id::text,started_at,finished_at FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy, &r.RootNodeID, &r.StartedAt, &r.FinishedAt)
+	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,type,COALESCE(created_by::text,''),root_node_id::text,started_at,finished_at,result_kind,COALESCE(program_id::text,'') FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy, &r.RootNodeID, &r.StartedAt, &r.FinishedAt, &r.ResultKind, &programID)
 	if err == nil && programID != "" {
 		r.ProgramID = &programID
 	}
 	return r, translate(err)
+}
+
+// ActiveInterviewID returns the current respondent interview for evidence
+// provenance. A missing session is normal for batch/non-chat runs.
+func (p *PGStore) ActiveInterviewID(ctx context.Context, runID string) string {
+	if p == nil || p.Pool == nil || !validUUID(runID) {
+		return ""
+	}
+	var id string
+	if err := p.Pool.QueryRow(ctx, `SELECT interview_id::text FROM run_chat_sessions WHERE run_id=$1`, runID).Scan(&id); err != nil {
+		return ""
+	}
+	return id
 }
 func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	if _, err := p.GetRun(id); err != nil {
@@ -90,7 +103,7 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT n.id::text,n.type,n.title,COALESCE(n.description,''),n.parent_id::text,
- COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote,'status',COALESCE(e.status,'pending')) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb),
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote,'status',COALESCE(e.status,'pending'),'claim_origin',e.claim_origin,'interview_id',e.interview_id) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb),
  COALESCE(n.zun,'null'::jsonb),
  COALESCE(n.review_status,'pending'),COALESCE(n.review_comment,''),n.reviewed_at
  FROM nodes n WHERE n.run_id=$1 ORDER BY n.level,n.id`, id)
@@ -130,7 +143,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.node_id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote,COALESCE(e.status,'pending') FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
+	rows, err := p.Pool.Query(ctx, "SELECT e.id::text,e.node_id::text,e.source_id::text,COALESCE(e.ref_id,''),e.quote,COALESCE(e.status,'pending'),e.claim_origin,COALESCE(e.interview_id::text,'') FROM evidence e JOIN nodes n ON n.id=e.node_id WHERE n.run_id=$1 ORDER BY e.id", id)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +152,7 @@ func (p *PGStore) GetAnswers(id string) ([]domain.Evidence, error) {
 	for rows.Next() {
 		var e domain.Evidence
 		var st string
-		if err = rows.Scan(&e.ID, &e.NodeID, &e.SourceID, &e.RefID, &e.Quote, &st); err != nil {
+		if err = rows.Scan(&e.ID, &e.NodeID, &e.SourceID, &e.RefID, &e.Quote, &st, &e.ClaimOrigin, &e.InterviewID); err != nil {
 			return nil, err
 		}
 		e.Status = domain.EvidenceStatus(st)
@@ -300,6 +313,9 @@ func (p *PGStore) SaveTree(ctx context.Context, id string, nodes []domain.Node) 
 			if !validUUID(e.ID) || !validUUID(e.SourceID) {
 				return &domain.TreeValidationError{Code: "INVALID_EVIDENCE", NodeID: n.ID, Details: "ожидаются UUID подтверждения и источника"}
 			}
+			if e.InterviewID != "" && !validUUID(e.InterviewID) {
+				return &domain.TreeValidationError{Code: "INVALID_EVIDENCE", NodeID: n.ID, Details: "interview_id должен быть UUID"}
+			}
 		}
 		if n.ParentID == nil {
 			root = n
@@ -312,7 +328,11 @@ func (p *PGStore) SaveTree(ctx context.Context, id string, nodes []domain.Node) 
 		result := store.TreeNode{Title: n.Title, Description: pgtype.Text{String: n.Description, Valid: n.Description != ""}}
 		result.ID.Scan(n.ID)
 		for _, e := range n.Evidence {
-			item := store.TreeEvidence{Quote: e.Quote, RefID: pgtype.Text{String: e.RefID, Valid: e.RefID != ""}}
+			interviewUUID := pgtype.UUID{}
+			if e.InterviewID != "" {
+				_ = interviewUUID.Scan(e.InterviewID)
+			}
+			item := store.TreeEvidence{Quote: e.Quote, RefID: pgtype.Text{String: e.RefID, Valid: e.RefID != ""}, ClaimOrigin: string(e.ClaimOrigin), InterviewID: interviewUUID}
 			item.ID.Scan(e.ID)
 			item.SourceID.Scan(e.SourceID)
 			result.Evidence = append(result.Evidence, item)
@@ -426,11 +446,12 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 	if patch.Evidence != nil {
 		ids := make([]string, 0, len(*patch.Evidence))
 		for _, e := range *patch.Evidence {
-			tag, err := tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote,ref_id) VALUES($1,$2,$3,$4,NULLIF($5,''))
+			tag, err := tx.Exec(ctx, `INSERT INTO evidence(id,node_id,source_id,quote,ref_id,claim_origin,interview_id) VALUES($1,$2,$3,$4,NULLIF($5,''),COALESCE(NULLIF($6,''),'unclassified'),NULLIF($7,'')::uuid)
  ON CONFLICT (id) DO UPDATE SET source_id=EXCLUDED.source_id, quote=EXCLUDED.quote, ref_id=EXCLUDED.ref_id,
+ claim_origin=EXCLUDED.claim_origin, interview_id=EXCLUDED.interview_id,
  status=CASE WHEN evidence.source_id=EXCLUDED.source_id AND evidence.quote=EXCLUDED.quote AND evidence.ref_id IS NOT DISTINCT FROM EXCLUDED.ref_id THEN evidence.status ELSE 'pending' END,
  approved=CASE WHEN evidence.source_id=EXCLUDED.source_id AND evidence.quote=EXCLUDED.quote AND evidence.ref_id IS NOT DISTINCT FROM EXCLUDED.ref_id THEN evidence.approved ELSE false END
- WHERE evidence.node_id=EXCLUDED.node_id`, e.ID, nodeID, e.SourceID, e.Quote, e.RefID)
+ WHERE evidence.node_id=EXCLUDED.node_id`, e.ID, nodeID, e.SourceID, e.Quote, e.RefID, e.ClaimOrigin, e.InterviewID)
 			if err != nil {
 				return nil, translate(err)
 			}
@@ -443,7 +464,7 @@ func (p *PGStore) UpdateNode(nodeID string, patch NodePatch) (*domain.Node, erro
 			return nil, translate(err)
 		}
 	}
-	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'node_id',node_id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote,'status',COALESCE(status,'pending')) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
+	err = tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'node_id',node_id,'source_id',source_id,'ref_id',COALESCE(ref_id,''),'quote',quote,'status',COALESCE(status,'pending'),'claim_origin',claim_origin,'interview_id',interview_id) ORDER BY id),'[]'::jsonb) FROM evidence WHERE node_id=$1`, nodeID).Scan(&evidence)
 	if err != nil {
 		return nil, err
 	}

@@ -214,11 +214,22 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 
 	setFinalizeStage(deps.store, runID, domain.StageReview)
 	nodes := synthesis.Tree
-	if err := saveInterviewTree(ctx, deps.store, runID, profession, transcript, nodes, knownSourceIDs(provenanceSources)); err != nil {
+	interviewID := activeInterviewID(ctx, deps.store, runID)
+	if err := saveInterviewTree(ctx, deps.store, runID, profession, transcript, nodes, knownSourceIDs(provenanceSources), interviewID, knownInterviewSourceIDs(provenanceSources)); err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
 	}
 	setFinalizeStage(deps.store, runID, domain.StageDone)
 	return domain.RunDone, nil
+}
+
+func activeInterviewID(ctx context.Context, store any, runID string) string {
+	reader, ok := store.(interface {
+		ActiveInterviewID(context.Context, string) string
+	})
+	if !ok {
+		return ""
+	}
+	return reader.ActiveInterviewID(ctx, runID)
 }
 
 // loadRunSourceContents returns the full content of the sources linked to run.
@@ -614,7 +625,7 @@ func transcriptFromSession(session domain.InterviewSession) string {
 // that already references a real run source keeps that source id; every other
 // evidence item (interview quotes, synthetic ids) is attributed to the created
 // interview source.
-func saveInterviewTree(ctx context.Context, store finalizeStore, runID, profession, transcript string, nodes []domain.Node, keepSources map[string]bool) error {
+func saveInterviewTree(ctx context.Context, store finalizeStore, runID, profession, transcript string, nodes []domain.Node, keepSources map[string]bool, interviewData ...any) error {
 	if store == nil {
 		return fmt.Errorf("postgres store is not configured")
 	}
@@ -628,6 +639,26 @@ func saveInterviewTree(ctx context.Context, store finalizeStore, runID, professi
 		return fmt.Errorf("repair tree: %w", err)
 	}
 	converted := assignUUIDsPreservingSources(repaired, sourceID, keepSources)
+	interviewID := ""
+	interviewSourceIDs := map[string]bool{}
+	if len(interviewData) > 0 {
+		if value, ok := interviewData[0].(string); ok {
+			interviewID = value
+		}
+	}
+	if len(interviewData) > 1 {
+		if value, ok := interviewData[1].(map[string]bool); ok {
+			interviewSourceIDs = value
+		}
+	}
+	for i := range converted {
+		for j := range converted[i].Evidence {
+			e := &converted[i].Evidence[j]
+			if e.SourceID == sourceID.String() || interviewSourceIDs[strings.ToLower(strings.TrimSpace(e.SourceID))] {
+				e.InterviewID = interviewID
+			}
+		}
+	}
 	rootCount := 0
 	for _, node := range converted {
 		if node.ParentID == nil {
@@ -646,6 +677,19 @@ func saveInterviewTree(ctx context.Context, store finalizeStore, runID, professi
 		log.Printf("chat: snapshot failed for run %s: %v", runID, snapErr)
 	}
 	return nil
+}
+
+func knownInterviewSourceIDs(sources []domain.Source) map[string]bool {
+	out := map[string]bool{}
+	for _, source := range sources {
+		if source.Type == domain.SourceInterview {
+			id := strings.ToLower(strings.TrimSpace(source.ID))
+			if id != "" {
+				out[id] = true
+			}
+		}
+	}
+	return out
 }
 
 // assignUUIDsPreservingSources is assignUUIDs with provenance retention: an
@@ -675,10 +719,12 @@ func assignUUIDsPreservingSources(nodes []domain.Node, interviewSourceID pgtype.
 				source = strings.ToLower(strings.TrimSpace(evidence.SourceID))
 			}
 			converted.Evidence = append(converted.Evidence, domain.Evidence{
-				ID:       newUUID().String(),
-				SourceID: source,
-				RefID:    evidence.RefID,
-				Quote:    evidence.Quote,
+				ID:          newUUID().String(),
+				SourceID:    source,
+				RefID:       evidence.RefID,
+				Quote:       evidence.Quote,
+				ClaimOrigin: evidence.ClaimOrigin,
+				InterviewID: evidence.InterviewID,
 			})
 		}
 		out = append(out, converted)

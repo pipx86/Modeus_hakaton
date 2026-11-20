@@ -48,6 +48,7 @@ import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-mode
 import {
   apiClient,
   type ActivityNode,
+  type ChatMessage,
   type Evidence,
   type Insights,
   type NodeType,
@@ -1388,7 +1389,7 @@ export function Research() {
     (role === null && import.meta.env.MODE === "test")
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
-  const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
+  const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string; transcript?: ChatMessage[]; respondent?: string } | null>(null)
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
   /** Фильтр вкладки «Программа»: открыта из панели узла дерева. */
   const [programNodeId, setProgramNodeId] = useState<string | null>(null)
@@ -1397,6 +1398,8 @@ export function Research() {
     async (item: Evidence) => {
       let refId = item.ref_id
       let quote = item.quote
+      let transcript: ChatMessage[] | undefined
+      let respondent: string | undefined
       try {
         const { data } = await apiClient.GET(
           "/runs/{id}/evidence/{evidence_id}/context",
@@ -1406,10 +1409,13 @@ export function Research() {
           refId = data.match.message_id || refId
           quote = data.match.quote || quote
         }
+        const context = data as unknown as { messages?: ChatMessage[]; evidence?: { respondent_name?: string } } | undefined
+        if (Array.isArray(context?.messages)) transcript = context.messages
+        respondent = context?.evidence?.respondent_name || undefined
       } catch {
         // Контекст необязателен: остаётся переход по ref_id/тексту цитаты.
       }
-      setChatFocus({ refId, quote })
+      setChatFocus({ refId, quote, transcript, respondent })
       setTab("chat")
     },
     [id],

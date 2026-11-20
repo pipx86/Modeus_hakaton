@@ -196,6 +196,10 @@ export interface ReviewQueueItem {
   status: ReviewEvidenceStatus
 }
 
+export async function generateProgramLinks(runId:string):Promise<ProgramLink[]> {
+  return requestApi(`/runs/${encodeURIComponent(runId)}/program-links/generate`,{method:"POST"})
+}
+
 /**
  * Ошибка raw-запроса к API. В отличие от `{data,error}` openapi-клиента здесь
  * выбрасывается исключение: хендлеры ловят его и точечно обрабатывают
@@ -539,6 +543,8 @@ export type ProgramLinkStatus = "proposed" | "approved" | "rejected"
 export interface ProgramLink {
   id: string
   run_id: string
+  snapshot_id?: string
+  snapshot_version?: number
   node_id: string
   node_title: string
   node_type: NodeType
@@ -553,6 +559,18 @@ export interface ProgramLink {
   reason: string
   source: "system" | "methodist"
   reviewed_at: string | null
+  evidence?: Evidence[]
+}
+
+export interface ProgramLinkTarget { competency_id:string;competency_title:string;ksa_id:string|null;ksa_title:string|null }
+export async function getProgramLinkTargets(programId:string):Promise<ProgramLinkTarget[]> {
+  const program=await requestApi<{
+    competencies?:Array<{id:string;title:string;ksa?:Array<{id:string;title:string}>}>
+  }>(`/academic/programs/${encodeURIComponent(programId)}`)
+  return (program.competencies??[]).flatMap((competency)=>[
+    {competency_id:competency.id,competency_title:competency.title,ksa_id:null,ksa_title:null},
+    ...(competency.ksa??[]).map((ksa)=>({competency_id:competency.id,competency_title:competency.title,ksa_id:ksa.id,ksa_title:ksa.title})),
+  ])
 }
 
 /**
@@ -571,13 +589,14 @@ export async function reviewProgramLink(
   linkId: string,
   status: NodeReviewDecision,
   reason = "",
+  target?: {competency_id:string;ksa_id:string|null},
 ): Promise<ProgramLink> {
   return requestApi<ProgramLink>(
     `/runs/${encodeURIComponent(runId)}/program-links/${encodeURIComponent(linkId)}/review`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, reason }),
+      body: JSON.stringify({ status, reason, ...target }),
     },
   )
 }

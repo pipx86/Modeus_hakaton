@@ -49,8 +49,8 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 		t.Fatalf("ошибка выдачи источников: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("FROM evidence WHERE").WithArgs(dbNode, dbSource).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
-			AddRow(dbEvidence, dbNode, dbSource, "r1", "Старая цитата", "approved"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "claim_origin", "interview_id"}).
+			AddRow(dbEvidence, dbNode, dbSource, "r1", "Старая цитата", "approved", "source_statement", ""))
 	resp = callAPI(h, http.MethodGet, "/api/v1/evidences?node_id="+dbNode+"&source_id="+dbSource, user, nil)
 	var evidences []domain.Evidence
 	if err := json.Unmarshal(resp.Body.Bytes(), &evidences); resp.Code != 200 || err != nil || len(evidences) != 1 ||
@@ -73,8 +73,8 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 		t.Fatalf("проверка полей цитаты: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("INSERT INTO evidence").WithArgs(dbNode, dbSource, "Новая цитата", "r2").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
-			AddRow(dbEvidence, dbNode, dbSource, "r2", "Новая цитата", "pending"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "claim_origin", "interview_id"}).
+			AddRow(dbEvidence, dbNode, dbSource, "r2", "Новая цитата", "pending", "unclassified", ""))
 	resp = callAPI(h, http.MethodPost, "/api/v1/evidences", admin, createBody)
 	var evidence domain.Evidence
 	if err := json.Unmarshal(resp.Body.Bytes(), &evidence); resp.Code != 201 || err != nil ||
@@ -82,8 +82,8 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 		t.Fatalf("созданное подтверждение: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	pool.ExpectQuery("UPDATE evidence SET quote").WithArgs(dbEvidence, "Исправленная цитата").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
-			AddRow(dbEvidence, dbNode, dbSource, "r2", "Исправленная цитата", domain.EvidenceApproved))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "claim_origin", "interview_id"}).
+			AddRow(dbEvidence, dbNode, dbSource, "r2", "Исправленная цитата", domain.EvidenceApproved, "unclassified", ""))
 	url := "/api/v1/evidences/" + dbEvidence
 	resp = callAPI(h, http.MethodPatch, url, admin, []byte(`{"quote":" Исправленная цитата "}`))
 	if err := json.Unmarshal(resp.Body.Bytes(), &evidence); resp.Code != 200 || err != nil ||
@@ -91,8 +91,8 @@ func TestPostgresEvidenceAndSourceRoutes(t *testing.T) {
 		t.Fatalf("исправленная цитата с прежним статусом: %d %s, %v", resp.Code, resp.Body.String(), err)
 	}
 	pool.ExpectQuery("FROM evidence WHERE id=").WithArgs(dbEvidence).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "approved"}).
-			AddRow(dbEvidence, dbNode, dbSource, "r2", "Исправленная цитата", "approved", false))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "approved", "claim_origin", "interview_id"}).
+			AddRow(dbEvidence, dbNode, dbSource, "r2", "Исправленная цитата", "approved", false, "unclassified", ""))
 	resp = callAPI(h, http.MethodGet, url, user, nil)
 	var details struct {
 		domain.Evidence
@@ -175,8 +175,8 @@ func TestPostgresSnapshotsHTTPKeepVersionTreeAndRunOwnership(t *testing.T) {
 		t.Fatalf("снимок до сохранения дерева: %d %s", resp.Code, resp.Body.String())
 	}
 	pool.ExpectQuery("FROM runs WHERE id=").WithArgs(dbRun).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished"}).
-			AddRow(dbRun, "Инженер", domain.RunDone, domain.StageDone, domain.RunTypeBatch, "", &root, nil, nil))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished", "result_kind", "program_id"}).
+			AddRow(dbRun, "Инженер", domain.RunDone, domain.StageDone, domain.RunTypeBatch, "", &root, nil, nil, "", ""))
 	pool.ExpectBegin()
 	pool.ExpectQuery("SELECT id, root_node_id FROM runs").WithArgs(runID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "root"}).AddRow(runID, rootID))

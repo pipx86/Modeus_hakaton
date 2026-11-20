@@ -44,8 +44,8 @@ func testPostgresAPI(t *testing.T) (pgxmock.PgxPoolIface, *api.PGStore) {
 }
 
 func runRow() *pgxmock.Rows {
-	return pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished"}).
-		AddRow(dbRun, "Инженер", domain.RunRunning, domain.StageAnalysis, domain.RunTypeBatch, "", nil, nil, nil)
+	return pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished", "result_kind", "program_id"}).
+		AddRow(dbRun, "Инженер", domain.RunRunning, domain.StageAnalysis, domain.RunTypeBatch, "", nil, nil, nil, "", "")
 }
 
 func TestPostgresRunReadThroughHTTP(t *testing.T) {
@@ -136,8 +136,8 @@ func TestPostgresTreeAndAnswerMapping(t *testing.T) {
 	}
 	expectRun()
 	pool.ExpectQuery("FROM evidence e JOIN nodes").WithArgs(dbRun).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status"}).
-			AddRow(dbEvidence, dbNode, dbSource, "r1", "Цитата", "rejected"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "ref", "quote", "status", "claim_origin", "interview_id"}).
+			AddRow(dbEvidence, dbNode, dbSource, "r1", "Цитата", "rejected", "source_statement", ""))
 	answers, err := state.GetAnswers(dbRun)
 	if err != nil || len(answers) != 1 || answers[0].Status != domain.EvidenceRejected || answers[0].RefID != "r1" {
 		t.Fatalf("подтверждения: %#v, %v", answers, err)
@@ -286,7 +286,7 @@ func TestPostgresUpdateNodeReplacesEvidenceAtomically(t *testing.T) {
 			pool.ExpectQuery("UPDATE nodes SET title").WithArgs(dbNode, patch.Title, patch.Description).
 				WillReturnRows(pgxmock.NewRows([]string{"id", "type", "title", "description", "parent"}).
 					AddRow(dbNode, domain.NodeType("role"), title, "", nil))
-			insert := pool.ExpectExec("INSERT INTO evidence").WithArgs(dbEvidence, dbNode, dbSource, e.Quote, e.RefID)
+			insert := pool.ExpectExec("INSERT INTO evidence").WithArgs(dbEvidence, dbNode, dbSource, e.Quote, e.RefID, e.ClaimOrigin, e.InterviewID)
 			if failure == "conflict" {
 				insert.WillReturnResult(pgxmock.NewResult("INSERT", 0))
 				pool.ExpectRollback()
@@ -325,7 +325,8 @@ func TestPostgresUpdateNodeReplacesEvidenceAtomically(t *testing.T) {
 
 func TestPostgresRunsAndSourcesLists(t *testing.T) {
 	pool, pg := testPostgresAPI(t)
-	pool.ExpectQuery("FROM runs ORDER BY created_at DESC").WillReturnRows(runRow())
+	pool.ExpectQuery("FROM runs ORDER BY created_at DESC").WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished"}).
+		AddRow(dbRun, "Инженер", domain.RunRunning, domain.StageAnalysis, domain.RunTypeBatch, "", nil, nil, nil))
 	runs, err := pg.ListRuns()
 	if err != nil || len(runs) != 1 || runs[0].ID != dbRun {
 		t.Fatalf("список исследований: %#v, %v", runs, err)
@@ -391,17 +392,16 @@ func TestPostgresSaveTreeConvertsHierarchyAndPreservesConcurrentWinner(t *testin
 			citation := node.Evidence[0]
 			citationID := pgUUID(t, citation.ID)
 			ref := pgtype.Text{String: citation.RefID, Valid: citation.RefID != ""}
-			pool.ExpectQuery("INSERT INTO evidence").WithArgs(citationID, id, source, citation.Quote, false, ref).
-				WillReturnRows(pgxmock.NewRows([]string{"id", "node", "source", "quote", "approved", "created", "run", "ref", "status"}).
-					AddRow(citationID, id, source, citation.Quote, false, stamp, run, ref, "pending"))
+			pool.ExpectExec("INSERT INTO evidence").WithArgs(citationID, id, source, citation.Quote, false, ref, string(citation.ClaimOrigin), pgtype.UUID{}).
+				WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		}
 		update := pool.ExpectExec("UPDATE runs SET root_node_id").WithArgs(run, root)
 		if concurrent {
 			update.WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 			pool.ExpectRollback()
 			pool.ExpectQuery("FROM runs WHERE id=").WithArgs(dbRun).
-				WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished"}).
-					AddRow(dbRun, "Инженер", domain.RunDone, domain.StageDone, domain.RunTypeBatch, "", &rootID, nil, nil))
+				WillReturnRows(pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished", "result_kind", "program_id"}).
+					AddRow(dbRun, "Инженер", domain.RunDone, domain.StageDone, domain.RunTypeBatch, "", &rootID, nil, nil, "", ""))
 		} else {
 			update.WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 			pool.ExpectCommit()

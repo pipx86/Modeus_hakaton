@@ -8,7 +8,7 @@ import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { type Run, type RunStatus } from "@/lib/api/client"
+import { type ChatMessage, type Run, type RunStatus } from "@/lib/api/client"
 import { getInterviewProgress, type InterviewProgress, attachInterviewEvidence, attachInterviewLink } from "@/lib/api/client"
 import { downloadText } from "@/lib/export-tree"
 import { chatTranscriptToMarkdown } from "@/lib/export-chat"
@@ -64,14 +64,14 @@ interface ChatTabProps {
   runStatus?: RunStatus
   stage?: Run["stage"]
   /** Цитата, к которой нужно прокрутить историю (переход из диалога обоснования). */
-  focus?: { refId?: string; quote: string } | null
+  focus?: { refId?: string; quote: string; transcript?: ChatMessage[]; respondent?: string } | null
   /** Только просмотр: композер и отправка скрыты. */
   readOnly?: boolean
 }
 
 export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = false }: ChatTabProps) {
   const {
-    messages,
+    messages: runMessages,
     loading,
     loadError,
     draft,
@@ -84,6 +84,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
     send,
     retry,
   } = useChatStream({ runId, active, runStatus, stage })
+  const messages = focus?.transcript ?? runMessages
   const bottomRef = useRef<HTMLDivElement>(null)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const [progress, setProgress] = useState<InterviewProgress | null>(null)
@@ -213,6 +214,11 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
 
   return (
     <div className="space-y-3">
+      {focus?.transcript && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+          Показано интервью{focus.respondent ? ` респондента «${focus.respondent}»` : ""}, связанное с этим основанием.
+        </div>
+      )}
       {progress && (
         <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">

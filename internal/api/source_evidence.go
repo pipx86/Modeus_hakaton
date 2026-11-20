@@ -21,7 +21,7 @@ const visibleSource = `($2::boolean OR s.type <> 'interview' OR NOT EXISTS (
 ))`
 
 func (p *PGStore) listSources(ctx context.Context) ([]domain.Source, error) {
-	rows, err := p.Pool.Query(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),s.created_at
+	rows, err := p.Pool.Query(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),COALESCE(s.vacancy_published_at,s.created_at)
 		FROM sources s WHERE `+visibleSource+` ORDER BY s.created_at DESC,s.id LIMIT 1000`,
 		auth.Subject(ctx), auth.RoleFromCtx(ctx) == auth.RoleAdmin)
 	if err != nil {
@@ -43,7 +43,7 @@ func (p *PGStore) getSource(ctx context.Context, id string) (domain.Source, erro
 	if !validUUID(id) {
 		return item, ErrNotFound
 	}
-	err := p.Pool.QueryRow(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),s.created_at
+	err := p.Pool.QueryRow(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),COALESCE(s.vacancy_published_at,s.created_at)
 		FROM sources s WHERE s.id=$3 AND `+visibleSource,
 		auth.Subject(ctx), auth.RoleFromCtx(ctx) == auth.RoleAdmin, id).Scan(&item.ID, &item.Type, &item.Title, &item.Content, &item.SourceURL, &item.CreatedAt)
 	return item, translate(err)
@@ -62,7 +62,7 @@ func (p *PGStore) listEvidences(ctx context.Context, nodeID, sourceID string) ([
 		}
 		sourceArg = sourceID
 	}
-	rows, err := p.Pool.Query(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending') FROM evidence WHERE ($1::uuid IS NULL OR node_id=$1) AND ($2::uuid IS NULL OR source_id=$2) ORDER BY created_at,id LIMIT 1000`, nodeArg, sourceArg)
+	rows, err := p.Pool.Query(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending'),claim_origin,COALESCE(interview_id::text,'') FROM evidence WHERE ($1::uuid IS NULL OR node_id=$1) AND ($2::uuid IS NULL OR source_id=$2) ORDER BY created_at,id LIMIT 1000`, nodeArg, sourceArg)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (p *PGStore) listEvidences(ctx context.Context, nodeID, sourceID string) ([
 	for rows.Next() {
 		var item domain.Evidence
 		var st string
-		if err = rows.Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st); err != nil {
+		if err = rows.Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st, &item.ClaimOrigin, &item.InterviewID); err != nil {
 			return nil, err
 		}
 		item.Status = domain.EvidenceStatus(st)
@@ -84,7 +84,7 @@ func (p *PGStore) createEvidence(ctx context.Context, nodeID string, item domain
 		return domain.Evidence{}, &domain.TreeValidationError{Code: "INVALID_EVIDENCE", Details: "нужны UUID узла и источника, непустая цитата"}
 	}
 	var st string
-	err := p.Pool.QueryRow(ctx, `INSERT INTO evidence(node_id,source_id,quote,ref_id) VALUES($1,$2,$3,NULLIF($4,'')) RETURNING id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending')`, nodeID, item.SourceID, item.Quote, item.RefID).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st)
+	err := p.Pool.QueryRow(ctx, `INSERT INTO evidence(node_id,source_id,quote,ref_id) VALUES($1,$2,$3,NULLIF($4,'')) RETURNING id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending'),claim_origin,COALESCE(interview_id::text,'')`, nodeID, item.SourceID, item.Quote, item.RefID).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st, &item.ClaimOrigin, &item.InterviewID)
 	item.Status = domain.EvidenceStatus(st)
 	if item.Status == "" {
 		item.Status = domain.EvidencePending
@@ -105,12 +105,14 @@ func (p *PGStore) UpdateEvidenceQuote(id, quote string) (*domain.Evidence, error
 	ctx, cancel := operation()
 	defer cancel()
 	var item domain.Evidence
+	var status string
 	err := p.Pool.QueryRow(ctx, `UPDATE evidence SET quote=$2 WHERE id=$1
-RETURNING id::text, COALESCE(node_id::text,''), source_id::text, COALESCE(ref_id,''), quote, COALESCE(status,'pending')`,
-		id, quote).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &item.Status)
+RETURNING id::text, COALESCE(node_id::text,''), source_id::text, COALESCE(ref_id,''), quote, COALESCE(status,'pending'), claim_origin, COALESCE(interview_id::text,'')`,
+		id, quote).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &status, &item.ClaimOrigin, &item.InterviewID)
 	if err != nil {
 		return nil, translate(err)
 	}
+	item.Status = domain.EvidenceStatus(status)
 	return &item, nil
 }
 
@@ -120,8 +122,8 @@ func (p *PGStore) getEvidence(ctx context.Context, id string) (evidenceDetails, 
 		return item, ErrNotFound
 	}
 	var st string
-	err := p.Pool.QueryRow(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending'),approved FROM evidence WHERE id=$1`, id).
-		Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st, &item.Approved)
+	err := p.Pool.QueryRow(ctx, `SELECT id::text,node_id::text,source_id::text,COALESCE(ref_id,''),quote,COALESCE(status,'pending'),approved,claim_origin,COALESCE(interview_id::text,'') FROM evidence WHERE id=$1`, id).
+		Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &st, &item.Approved, &item.ClaimOrigin, &item.InterviewID)
 	item.Status = domain.EvidenceStatus(st)
 	if item.Status == "" {
 		item.Status = domain.EvidencePending

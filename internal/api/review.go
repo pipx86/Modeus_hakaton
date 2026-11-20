@@ -109,7 +109,7 @@ WHERE l.run_id = $1 AND l.id = $2`, runID, linkID)
 }
 
 // ReviewProgramLink сохраняет решение методиста по связи.
-func (p *PGStore) ReviewProgramLink(runID, linkID, status, reason, reviewer string) (*domain.ProgramLink, error) {
+func (p *PGStore) ReviewProgramLink(runID, linkID, status, reason, reviewer string, target ...string) (*domain.ProgramLink, error) {
 	if p == nil || p.Pool == nil {
 		return nil, ErrServiceUnavailable
 	}
@@ -120,14 +120,29 @@ func (p *PGStore) ReviewProgramLink(runID, linkID, status, reason, reviewer stri
 	defer cancel()
 	// Причина решения дополняет объяснение системы, а не затирает его: методист
 	// должен видеть, почему связь была предложена.
+	competencyID, ksaID := "", ""
+	if len(target) > 0 {
+		competencyID = target[0]
+	}
+	if len(target) > 1 {
+		ksaID = target[1]
+	}
+	if competencyID != "" && !validUUID(competencyID) || ksaID != "" && !validUUID(ksaID) {
+		return nil, &domain.TreeValidationError{Code: "INVALID_PROGRAM_LINK_TARGET", Details: "нужны UUID компетенции и ЗУН"}
+	}
+	if competencyID == "" && ksaID != "" {
+		return nil, &domain.TreeValidationError{Code: "INVALID_PROGRAM_LINK_TARGET", Details: "при выборе ЗУН нужна его компетенция"}
+	}
 	exec, err := p.Pool.Exec(ctx, `UPDATE activity_program_links
 SET status = $3,
     reason = CASE WHEN btrim($4) = '' THEN reason ELSE left(reason || ' | методист: ' || btrim($4), 2000) END,
+    competency_id = COALESCE(NULLIF($6,'')::uuid,competency_id),
+    ksa_id = CASE WHEN $6 <> '' THEN NULLIF($7,'')::uuid ELSE ksa_id END,
     source = 'methodist',
     reviewed_by = btrim($5),
     reviewed_at = now(),
     updated_at = now()
-WHERE run_id = $1 AND id = $2`, runID, linkID, status, reason, reviewer)
+	WHERE run_id = $1 AND id = $2`, runID, linkID, status, reason, reviewer, competencyID, ksaID)
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -240,15 +255,16 @@ func normalizeRunResult(kind, programID string) (string, string, error) {
 
 // programLinksQuery — общий SELECT для чтения связи с подписями узла, программы
 // и компетенции, чтобы интерфейсу не приходилось дозапрашивать справочники.
-const programLinksQuery = `SELECT l.id::text, l.run_id::text, l.node_id::text, n.title, n.type,
+const programLinksQuery = `SELECT l.id::text, l.run_id::text, COALESCE(l.snapshot_id::text,''), COALESCE(s.version,0), l.node_id::text, n.title, n.type,
        l.program_id::text, p.title, l.competency_id::text, c.title,
        COALESCE(l.ksa_id::text, ''), COALESCE(k.title, ''),
-       l.status, l.reason, l.source, l.reviewed_at
+       l.status, l.reason, l.source, l.reviewed_at, COALESCE(s.tree,'null'::jsonb)
 FROM activity_program_links l
 JOIN nodes n ON n.id = l.node_id
 JOIN education_programs p ON p.id = l.program_id
 JOIN program_competencies c ON c.id = l.competency_id
-LEFT JOIN competency_ksa k ON k.id = l.ksa_id`
+LEFT JOIN competency_ksa k ON k.id = l.ksa_id
+LEFT JOIN snapshots s ON s.id=l.snapshot_id`
 
 func scanProgramLinks(rows interface {
 	Next() bool
@@ -260,10 +276,23 @@ func scanProgramLinks(rows interface {
 	for rows.Next() {
 		var link domain.ProgramLink
 		var reviewedAt pgtype.Timestamptz
-		if err := rows.Scan(&link.ID, &link.RunID, &link.NodeID, &link.NodeTitle, &link.NodeType,
+		var tree []byte
+		if err := rows.Scan(&link.ID, &link.RunID, &link.SnapshotID, &link.SnapshotVersion, &link.NodeID, &link.NodeTitle, &link.NodeType,
 			&link.ProgramID, &link.ProgramTitle, &link.CompetencyID, &link.CompetencyTitle,
-			&link.KsaID, &link.KsaTitle, &link.Status, &link.Reason, &link.Source, &reviewedAt); err != nil {
+			&link.KsaID, &link.KsaTitle, &link.Status, &link.Reason, &link.Source, &reviewedAt, &tree); err != nil {
 			return nil, err
+		}
+		if len(tree) > 0 && string(tree) != "null" {
+			nodes, err := parseSnapshotTree(tree)
+			if err != nil {
+				return nil, err
+			}
+			for _, node := range nodes {
+				if node.ID == link.NodeID {
+					link.Evidence = node.Evidence
+					break
+				}
+			}
 		}
 		if reviewedAt.Valid {
 			at := reviewedAt.Time
@@ -382,8 +411,10 @@ func (s *Server) handleReviewProgramLink(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var req struct {
-		Status string `json:"status"`
-		Reason string `json:"reason,omitempty"`
+		Status       string `json:"status"`
+		Reason       string `json:"reason,omitempty"`
+		CompetencyID string `json:"competency_id,omitempty"`
+		KsaID        string `json:"ksa_id,omitempty"`
 	}
 	if !decodeReviewBody(w, r, &req) {
 		return
@@ -396,7 +427,11 @@ func (s *Server) handleReviewProgramLink(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	link, err := pg.ReviewProgramLink(r.PathValue("id"), r.PathValue("link_id"), req.Status, req.Reason, auth.Subject(r.Context()))
+	if req.CompetencyID != "" && !validUUID(req.CompetencyID) || req.KsaID != "" && !validUUID(req.KsaID) || req.CompetencyID == "" && req.KsaID != "" {
+		writeErr(w, 422, "INVALID_PROGRAM_LINK_TARGET", "для исправления нужны UUID компетенции и связанного ЗУН")
+		return
+	}
+	link, err := pg.ReviewProgramLink(r.PathValue("id"), r.PathValue("link_id"), req.Status, req.Reason, auth.Subject(r.Context()), req.CompetencyID, req.KsaID)
 	if err != nil {
 		writeReviewError(w, err, "не удалось сохранить решение по сопоставлению")
 		return
@@ -446,11 +481,14 @@ func decodeReviewBody(w http.ResponseWriter, r *http.Request, dest any) bool {
 
 // writeReviewError переводит ошибки проверки в HTTP-ответы.
 func writeReviewError(w http.ResponseWriter, err error, message string) {
+	var validation *domain.TreeValidationError
 	switch {
 	case errors.Is(err, ErrNotFound):
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", message)
 	case errors.Is(err, ErrServiceUnavailable):
 		writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "проверка требует PostgreSQL")
+	case errors.As(err, &validation):
+		writeErr(w, http.StatusUnprocessableEntity, "INVALID_PROGRAM_LINK_TARGET", "выбранная компетенция или ЗУН не относится к программе исследования")
 	default:
 		logging.Logger.Error("review_store_failed", "error", err)
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", message)

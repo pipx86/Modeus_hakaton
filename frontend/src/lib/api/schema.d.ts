@@ -44,6 +44,465 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Проверить готовность PostgreSQL */
+        get: operations["getReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vacancies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Найти вакансии hh.ru
+         * @description Границы дат включительны и вычисляются по московскому времени.
+         */
+        get: operations["listVacancies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vacancies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить вакансию */
+        get: operations["getVacancy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vacancies/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить объём и даты каталога */
+        get: operations["getVacancyInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vacancies/stats/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Посчитать вакансии по опыту и зарплате */
+        get: operations["getVacancySummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vacancies/stats/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить частоты регионов, работодателей и навыков */
+        get: operations["getVacancyRankings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Найти импортированные учебные программы
+         * @description Чтение доступно ролям admin и user.
+         */
+        get: operations["listAcademicPrograms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/programs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Получить программу с компетенциями и ЗУН
+         * @description Чтение доступно ролям admin и user.
+         */
+        get: operations["getAcademicProgram"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/programs/{id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Сверить программу со справочником
+         * @description Чтение доступно ролям admin и user.
+         */
+        get: operations["getAcademicProgramSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/academic/analyze-gap-local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Сверить программу со справочником
+         * @description Требуется роль admin.
+         */
+        post: operations["analyzeAcademicGap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/taxonomies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Перечислить импортированные справочники
+         * @description Чтение доступно ролям admin и user.
+         */
+        get: operations["listLocalTaxonomies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/taxonomies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Получить справочник с элементами
+         * @description Чтение доступно ролям admin и user.
+         */
+        get: operations["getLocalTaxonomy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forecast/observed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Измерить изменение частоты навыков
+         * @description Для окна из M месяцев нужно M+1 последовательных месячных снимков.
+         */
+        get: operations["getObservedSkillChange"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forecast/engine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Проверить наличие истории для прогнозирования */
+        get: operations["getSkillForecastStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forecast/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить линейные прогнозы с пагинацией */
+        get: operations["listSkillForecasts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forecast/top": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить навыки по росту или падению частоты */
+        get: operations["getTopSkillForecasts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forecast/popular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить прогнозы частых навыков */
+        get: operations["getPopularSkillForecasts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forecast/{skill}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Построить линейный прогноз по навыку
+         * @description Горизонт ограничен числом наблюдений. При недостаточной истории выдаётся текущее значение с нулевым горизонтом.
+         */
+        get: operations["getSkillForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Перечислить свои подписки на публикации */
+        get: operations["listPublicationSubscriptions"];
+        put?: never;
+        /** Создать подписку на публикации */
+        post: operations["createPublicationSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Удалить подписку */
+        delete: operations["deletePublicationSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Перечислить свои уведомления */
+        get: operations["listPublicationNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Посчитать непрочитанные уведомления */
+        get: operations["countUnreadPublicationNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Отметить уведомление прочитанным */
+        post: operations["markPublicationNotificationRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Выдать подписки сборщику публикаций
+         * @description Операторский маршрут. Требуется роль admin.
+         */
+        get: operations["listPublicationPollingTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/new-publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Принять результаты проверки подписки
+         * @description Операторский маршрут. Требуется роль admin.
+         */
+        post: operations["recordPublicationUpdates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sources": {
         parameters: {
             query?: never;
@@ -421,7 +880,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Used materials of a research run
+         * @description Returns the materials attached to the run through `run_sources` together with the number of tree-node evidence items that quote each source (`evidence_count`). The count is scoped to this run only: the same material linked to several runs reports each run's own quotes, and a material attached but never quoted honestly reports zero. Read-only card 10 of the MVP plan. Access matches the interview endpoints: the run owner or an administrator (roles admin, user, specialist).
+         */
+        get: operations["listRunSources"];
         put?: never;
         /**
          * Attach a standard or vacancy source to a run
@@ -626,7 +1089,7 @@ export interface paths {
         };
         /**
          * Stream run progress (SSE)
-         * @description `text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`, `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously delivered events are skipped, and the stream closes when the run reaches done or failed.
+         * @description `text/event-stream`. Pipeline events are `stage_change`, `error` and `done` with `data` containing `stage`, `status`, `pct` and, when applicable, `message`. Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status` events. Heartbeats are sent as `event: heartbeat`. The client may reconnect with `Last-Event-ID`; previously delivered events are skipped, and the stream closes when the run reaches done or failed. Access is limited to the owner and administrators for runs with an owner.
          */
         get: operations["streamRunEvents"];
         put?: never;
@@ -655,6 +1118,190 @@ export interface paths {
          * @description Records the respondent answer and schedules the next question. Only the owner or an administrator may answer a run with an owner.
          */
         post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/interviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List respondent interviews of a run
+         * @description Returns every respondent interview of the research run, oldest first. A run keeps at most one active interview; finished interviews stay as history with their own dialog, so the answers of different specialists are never mixed.
+         */
+        get: operations["listRunInterviews"];
+        put?: never;
+        /**
+         * Start a new respondent interview
+         * @description Closes the active interview of the run, opens a new one for the given respondent and resets the interviewer cursor, so the dialog starts from the first question instead of resuming the previous respondent. Only chat runs that are not finished accept a new interview.
+         */
+        post: operations["startRunInterview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/interviews/{interview_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the dialog of one interview
+         * @description Returns the messages of exactly one respondent interview, so the dialogs of several respondents of the same run never mix.
+         */
+        get: operations["listInterviewMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/interviews/{interview_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evidence items born from one interview
+         * @description Returns the tree-node evidence items whose `ref_id` points at a message of exactly this interview of the run, so the methodologist sees which answers became the grounds of the tree. Evidence whose anchor points at a search fragment instead of an interview message is not listed, and the answers of another respondent or another run can never leak into the card. An interview that does not belong to the run (or does not exist) is 404. Read-only card 14 of the MVP plan.
+         */
+        get: operations["listInterviewEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nodes/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review one activity tree node
+         * @description Stores the methodologist decision on a node: approved or rejected, with an optional comment. The evidence of the node is kept as is, so approving or rejecting a node never removes its quotes.
+         */
+        post: operations["reviewNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/program-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List activity-to-program links of a run
+         * @description Returns the proposals and decisions that connect activity tree nodes with educational program competencies. Until the methodologist approves a link it stays `proposed` and is not a fact. Candidates are produced by the core (card 22); this endpoint only reads and reviews them.
+         */
+        get: operations["listProgramLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/program-links/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Предложить сопоставления узлов с выбранной программой
+         * @description Создаёт снимок дерева, анализирует основания и сохраняет до трёх кандидатов на узел как proposed. Методист принимает итоговое решение.
+         */
+        post: operations["generateProgramLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/program-links/{link_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review one activity-to-program link
+         * @description Approves or rejects a proposed link. The methodologist comment is appended to the system explanation instead of replacing it, so the reason a link was proposed stays visible.
+         */
+        post: operations["reviewProgramLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/review/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review progress of a research run
+         * @description Counts how many nodes, evidence items and program links are already reviewed, so the methodologist sees from one place what is checked and what still needs attention.
+         */
+        get: operations["getReviewSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/program-coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Coverage of the educational program by the activity tree
+         * @description Groups every tree node of the run by program coverage: `confirmed` when at least one link to a program competency is approved, `proposed` when there are only proposals from the core, `none` when there are no links or all of them are rejected (rejected links stay visible in `links`). `competencies` contains approved links only, grouped per competency with their `links_count`. When the run has no selected program (`result_kind` is not `program`) or no links at all, the response is still 200 with `counts.none` equal to `counts.total` and empty `competencies`, so the UI can show its empty state. Read-only card 24 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).
+         */
+        get: operations["getProgramCoverage"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -784,7 +1431,7 @@ export interface paths {
         };
         /**
          * Diff two snapshots of a run
-         * @description Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros, story says the trees are identical). `story` is a deterministic one-line Russian summary of the diff and `story_lines` is the same story line by line (header with counts, then one line per change, at most 20 detail lines followed by an "Ещё изменений: N." overflow line); the counts in both always agree with `summary`.
+         * @description Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Each changed node additionally carries the additive `evidence_added` and `evidence_removed` arrays (card 19 of the MVP plan): evidence items present only in head or only in base, compared by evidence id and sorted by id; editing a quote under the same id is a field change, not an add/remove. Equal snapshots produce an empty diff (all arrays empty, summary zeros, story says the trees are identical). `story` is a deterministic one-line Russian summary of the diff and `story_lines` is the same story line by line (header with counts, then one line per change, at most 20 detail lines followed by an "Ещё изменений: N." overflow line); the counts in both always agree with `summary`.
          */
         get: operations["diffRunSnapshots"];
         put?: never;
@@ -826,7 +1473,7 @@ export interface paths {
         put?: never;
         /**
          * Register a user
-         * @description Creates an account with email and password. The first registered user becomes admin, all following users get the user role. Returns a 24-hour JWT.
+         * @description Creates an account with email and password. The first registered user becomes admin, all following users get the user role. Returns a 24-hour JWT. Passwords must contain at least 8 characters and occupy at most 72 UTF-8 bytes.
          */
         post: operations["registerUser"];
         delete?: never;
@@ -879,6 +1526,90 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MarketVacancy: {
+            id?: string;
+            /** Format: uuid */
+            source_id?: string;
+            name?: string;
+            description?: string;
+            alternate_url?: string;
+            /** Format: date-time */
+            published_at?: string | null;
+            area?: string;
+            employer_id?: string;
+            employer_name?: string;
+            employer_logo?: string;
+            experience_id?: string;
+            experience?: string;
+            salary_from?: number | null;
+            salary_to?: number | null;
+            salary_currency?: string;
+            key_skills?: string[];
+            parsed_skills?: string[];
+            snippet?: {
+                requirement?: string;
+                responsibility?: string;
+            };
+        };
+        NameCount: {
+            name?: string;
+            count?: number;
+        };
+        LocalAcademicProgram: {
+            /** Format: uuid */
+            id?: string;
+            title?: string;
+            organization?: string | null;
+            code?: string | null;
+            source_ids?: string[];
+            competencies?: {
+                /** Format: uuid */
+                id?: string;
+                code?: string;
+                title?: string;
+                description?: string | null;
+                taxonomy_item_ids?: string[];
+                ksa?: {
+                    /** Format: uuid */
+                    id?: string;
+                    kind?: string;
+                    title?: string;
+                    taxonomy_item_ids?: string[];
+                }[];
+            }[];
+        };
+        LocalTaxonomy: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            version?: string;
+            item_count?: number;
+            items?: {
+                /** Format: uuid */
+                id?: string;
+                /** Format: uuid */
+                parent_id?: string | null;
+                code?: string;
+                title?: string;
+                description?: string | null;
+            }[];
+        };
+        MarketSkillForecast: {
+            skill?: string;
+            current_frequency?: number;
+            next_year_frequency?: number;
+            predicted_growth?: number;
+            predicted_change_pct?: number;
+            confidence?: number;
+            forecast_months?: number;
+            data_points?: number;
+            method?: string;
+            engine_used?: string;
+            trend_direction?: string;
+            mape?: number | null;
+            uncertainty_lower?: number | null;
+            uncertainty_upper?: number | null;
+        };
         HealthResponse: {
             status: string;
         };
@@ -903,7 +1634,7 @@ export interface components {
         /** @enum {string} */
         RunStatus: "pending" | "running" | "done" | "degraded" | "failed";
         /**
-         * @description chat runs are driven by the interview chat; batch runs by the batch pipeline.
+         * @description chat runs are driven by the interview chat; batch runs by the batch pipeline; learning runs produce an individual study plan.
          * @enum {string}
          */
         RunType: "batch" | "chat" | "learning";
@@ -920,6 +1651,10 @@ export interface components {
             ref_id?: string;
             quote: string;
             status?: components["schemas"]["EvidenceStatus"];
+            /** @enum {string} */
+            claim_origin?: "source_statement" | "model_interpretation" | "unclassified";
+            /** Format: uuid */
+            interview_id?: string;
         };
         /** @description Evidence plus the legacy `approved` flag. */
         EvidenceDetails: {
@@ -929,6 +1664,10 @@ export interface components {
             ref_id?: string;
             quote: string;
             status?: components["schemas"]["EvidenceStatus"];
+            /** @enum {string} */
+            claim_origin?: "source_statement" | "model_interpretation" | "unclassified";
+            /** Format: uuid */
+            interview_id?: string;
             /** @description True when status is approved. */
             approved: boolean;
         };
@@ -947,6 +1686,15 @@ export interface components {
             parent_id?: string;
             zun?: components["schemas"]["Zun"];
             evidence: components["schemas"]["Evidence"][];
+            /**
+             * @description Methodologist decision on the node itself (not on its evidence).
+             * @enum {string}
+             */
+            review_status?: "pending" | "approved" | "rejected";
+            /** @description Optional methodologist comment stored with the decision. */
+            review_comment?: string;
+            /** Format: date-time */
+            reviewed_at?: string;
         };
         Source: {
             id: string;
@@ -1053,11 +1801,17 @@ export interface components {
             stage?: "created" | "interview" | "analysis" | "synthesis" | "review" | "done" | "failed";
             /** @description Account id that created the run; empty for legacy runs. */
             created_by?: string;
+            /**
+             * @description Expected result of the research. `activity` is the description of the activity only (default); `program` also compares it with an educational program.
+             * @enum {string}
+             */
+            result_kind?: "activity" | "program";
+            /** @description Educational program used for the comparison; required when result_kind is program. */
+            program_id?: string;
         };
         Snapshot: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
             run_id: string;
             version: number;
             /** @description Stored snapshot document (`schema_version`, `root_node_id`, `nodes`); the server compares it internally and returns nodes in domain form. */
@@ -1073,6 +1827,15 @@ export interface components {
             id: string;
             version: number;
         };
+        /** @description Compact reference to one evidence item that a snapshot diff reports as added or removed (card 19 of the MVP plan): the id, the quote and the source, which is enough for the UI to open the original material. */
+        SnapshotEvidenceRef: {
+            /** @description Evidence id. */
+            id: string;
+            /** @description Quoted text of the evidence item. */
+            quote: string;
+            /** @description Source the quote belongs to. */
+            source_id: string;
+        };
         /** @description A node present in both snapshots whose fields changed. */
         SnapshotNodeChange: {
             id: string;
@@ -1080,6 +1843,10 @@ export interface components {
             after: components["schemas"]["Node"];
             /** @description Changed fields in the fixed contract order. */
             fields: ("title" | "description" | "type" | "parent_id" | "evidence")[];
+            /** @description Evidence items that exist only in the head version of the node (card 19), sorted by id. Editing a quote under the same evidence id is reported through fields = [evidence] and does not appear here. Always an array, empty when nothing was added. Run-to-run comparison keeps it empty because evidence ids of independent runs never match. */
+            evidence_added: components["schemas"]["SnapshotEvidenceRef"][];
+            /** @description Evidence items that exist only in the base version of the node (card 19), sorted by id. Always an array, empty when nothing was removed. */
+            evidence_removed: components["schemas"]["SnapshotEvidenceRef"][];
         };
         SnapshotDiffSummary: {
             added: number;
@@ -1115,8 +1882,12 @@ export interface components {
             /** @description Node title for reviewer context. */
             node_title?: string;
             source_id: string;
-            /** @description Source title for reviewer context. */
             source_title?: string;
+            /**
+             * @description Source title for reviewer context.
+             * @enum {string}
+             */
+            source_type?: "vacancy" | "interview" | "standard" | "document";
             /** @description Source URL for reviewer context, when the source has one. */
             source_url?: string;
             /** @description Anchor of the quoted fragment inside the source. */
@@ -1162,6 +1933,156 @@ export interface components {
             approved: number;
             skipped: number;
         };
+        RunInterview: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            run_id: string;
+            respondent_name?: string;
+            respondent_role?: string;
+            /** @description Anonymised external label of the respondent (channel or code), never personal contact data. */
+            respondent_ref?: string;
+            /** @enum {string} */
+            status: "active" | "completed" | "failed";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        /** @description Anonymised respondent descriptor. All fields are optional and at most 120 characters long. */
+        RespondentInput: {
+            respondent_name?: string;
+            respondent_role?: string;
+            respondent_ref?: string;
+        };
+        NodeReviewResult: {
+            id: string;
+            node_id: string;
+            /** @enum {string} */
+            review_status: "pending" | "approved" | "rejected";
+            review_comment?: string;
+            /** Format: date-time */
+            reviewed_at?: string;
+            /** @description Evidence from the immutable snapshot used when the link was suggested. */
+            evidence?: components["schemas"]["Evidence"][];
+        };
+        ProgramLink: {
+            id: string;
+            run_id: string;
+            /** Format: uuid */
+            snapshot_id?: string;
+            snapshot_version?: number;
+            node_id: string;
+            node_title?: string;
+            /** @enum {string} */
+            node_type?: "role" | "function" | "task" | "action";
+            program_id: string;
+            program_title?: string;
+            competency_id: string;
+            competency_title?: string;
+            ksa_id?: string;
+            ksa_title?: string;
+            /** @enum {string} */
+            status: "proposed" | "approved" | "rejected";
+            /** @description Why the system proposed the link, plus the methodologist note. */
+            reason?: string;
+            /** @enum {string} */
+            source?: "system" | "methodist";
+            /** Format: date-time */
+            reviewed_at?: string;
+            /** @description Основания из снимка, к которому привязано сопоставление. */
+            evidence?: components["schemas"]["Evidence"][];
+        };
+        ReviewCounts: {
+            pending?: number;
+            approved?: number;
+            rejected?: number;
+            total?: number;
+        };
+        LinkCounts: {
+            proposed?: number;
+            approved?: number;
+            rejected?: number;
+            total?: number;
+        };
+        ReviewSummary: {
+            nodes?: components["schemas"]["ReviewCounts"];
+            evidence?: components["schemas"]["ReviewCounts"];
+            links?: components["schemas"]["LinkCounts"];
+        };
+        /** @description One material used by a research run (card 10 of the MVP plan). */
+        RunSourceCard: {
+            id: string;
+            type: components["schemas"]["SourceType"];
+            title: string;
+            /** @description Original URL; empty string when the material was uploaded without one. */
+            source_url: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Number of evidence items of this run's tree that quote the source. Zero when the material was attached but never quoted. */
+            evidence_count: number;
+        };
+        /** @description Evidence item born from an answer of one respondent interview (card 14 of the MVP plan): evidence.ref_id points at a run_chat_messages.id of that interview. */
+        InterviewEvidence: {
+            evidence_id: string;
+            node_id: string;
+            node_title: string;
+            node_type: components["schemas"]["NodeType"];
+            quote: string;
+            source_id: string;
+            source_title: string;
+            status: components["schemas"]["EvidenceStatus"];
+        };
+        /** @description Link between a tree node and a program competency inside the coverage report. */
+        ProgramCoverageLink: {
+            link_id: string;
+            node_id: string;
+            competency_id: string;
+            competency_title: string;
+            /** @enum {string} */
+            status: "proposed" | "approved" | "rejected";
+            /** @description Why the system proposed the link, plus the methodologist note. */
+            reason: string;
+        };
+        /** @description One tree node and its links to program competencies (card 24 of the MVP plan). */
+        ProgramCoverageNode: {
+            node_id: string;
+            node_title: string;
+            node_type: components["schemas"]["NodeType"];
+            /**
+             * @description confirmed when at least one link is approved; proposed when only proposals exist; none when there are no links or all are rejected.
+             * @enum {string}
+             */
+            status: "confirmed" | "proposed" | "none";
+            /** @description All links of the node, including rejected ones, in creation order. */
+            links: components["schemas"]["ProgramCoverageLink"][];
+        };
+        /** @description Competency with its approved links count; proposals are not counted. */
+        ProgramCoverageCompetency: {
+            competency_id: string;
+            competency_title: string;
+            links_count: number;
+        };
+        /** @description Node distribution by coverage status; confirmed + proposed + none always equals total. */
+        ProgramCoverageCounts: {
+            confirmed: number;
+            proposed: number;
+            none: number;
+            total: number;
+        };
+        /** @description JSON body of GET /runs/{id}/program-coverage (card 24 of the MVP plan). */
+        ProgramCoverage: {
+            run_id: string;
+            /** @description Selected program; null when the run result kind is not program. */
+            program_id: string | null;
+            /** @description Title of the selected program; null together with program_id. */
+            program_title: string | null;
+            /** @description Every node of the run tree in tree order (level, id). */
+            nodes: components["schemas"]["ProgramCoverageNode"][];
+            /** @description Approved links grouped per competency, most covered first (then by title and id). Empty array when no link is approved yet. */
+            competencies: components["schemas"]["ProgramCoverageCompetency"][];
+            counts: components["schemas"]["ProgramCoverageCounts"];
+        };
         ChatMessage: {
             id: string;
             /** @enum {string} */
@@ -1185,6 +2106,7 @@ export interface components {
             /** Format: email */
             email: string;
             display_name: string;
+            /** @description At most 72 UTF-8 bytes, including multibyte characters. */
             password: string;
         };
         LoginRequest: {
@@ -1538,10 +2460,16 @@ export interface components {
             node_title?: string;
             source_id: string;
             source_title?: string;
+            source_type?: components["schemas"]["SourceType"];
             source_url?: string;
             ref_id?: string;
             quote: string;
             status: components["schemas"]["EvidenceStatus"];
+            /** @enum {string} */
+            claim_origin?: "source_statement" | "model_interpretation" | "unclassified";
+            /** Format: uuid */
+            interview_id?: string;
+            respondent_name?: string;
         };
         /** @description One saved interview chat message; sequence is the 1-based position in the dialog. */
         ChatTranscriptMessage: {
@@ -1746,7 +2674,12 @@ export interface operations {
     ingestConfiguredFiles: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Идентификатор запроса. Результат сохраняется в течение часа для владельца JWT. */
+                "Idempotency-Key"?: string;
+                /** @description Ключ импорта, если Idempotency-Key отсутствует. */
+                "X-Run-ID"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1794,6 +2727,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Ключ уже использован для другого списка источников */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Сбой загрузки настроенных файлов */
             500: {
                 headers: {
@@ -1832,6 +2772,1623 @@ export interface operations {
                      */
                     "application/json": components["schemas"]["HealthResponse"];
                 };
+            };
+        };
+    };
+    getReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Проверить готовность PostgreSQL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "ok" | "not_ready";
+                        problems?: string[];
+                    };
+                };
+            };
+            /** @description PostgreSQL или миграции недоступны */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "ok" | "not_ready";
+                        problems?: string[];
+                    };
+                };
+            };
+        };
+    };
+    listVacancies: {
+        parameters: {
+            query?: {
+                search?: string;
+                region?: string;
+                employer?: string;
+                experience?: "junior" | "middle" | "senior";
+                date_from?: string;
+                date_to?: string;
+                months?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Найти вакансии hh.ru */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items?: components["schemas"]["MarketVacancy"][];
+                        total?: number;
+                        limit?: number;
+                        offset?: number;
+                        has_more?: boolean;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getVacancy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить вакансию */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketVacancy"];
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getVacancyInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить объём и даты каталога */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        count?: number;
+                        with_skills?: number;
+                        date_range?: {
+                            /** Format: date */
+                            from?: string;
+                            /** Format: date */
+                            to?: string;
+                        } | null;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getVacancySummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Посчитать вакансии по опыту и зарплате */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        total?: number;
+                        by_experience?: {
+                            junior?: number;
+                            middle?: number;
+                            senior?: number;
+                        };
+                        salary_by_currency?: {
+                            currency?: string;
+                            count?: number;
+                            average?: number;
+                            min?: number;
+                            max?: number;
+                        }[];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getVacancyRankings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить частоты регионов, работодателей и навыков */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        top_regions?: components["schemas"]["NameCount"][];
+                        top_employers?: components["schemas"]["NameCount"][];
+                        top_skills?: components["schemas"]["NameCount"][];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAcademicPrograms: {
+        parameters: {
+            query?: {
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Найти импортированные учебные программы */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items?: components["schemas"]["LocalAcademicProgram"][];
+                        total?: number;
+                        limit?: number;
+                        offset?: number;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAcademicProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить программу с компетенциями и ЗУН */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAcademicProgram"];
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAcademicProgramSummary: {
+        parameters: {
+            query?: {
+                taxonomy_id?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Сверить программу со справочником */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        program_id?: string;
+                        /** Format: uuid */
+                        taxonomy_id?: string | null;
+                        competencies?: number;
+                        matched_competencies?: number;
+                        unmatched_competencies?: {
+                            /** Format: uuid */
+                            id?: string;
+                            code?: string;
+                            title?: string;
+                        }[];
+                        ksa?: number;
+                        matched_ksa?: number;
+                        unmatched_ksa?: {
+                            /** Format: uuid */
+                            id?: string;
+                            kind?: string;
+                            title?: string;
+                            /** Format: uuid */
+                            competency_id?: string;
+                        }[];
+                        taxonomy_items?: number;
+                        matched_taxonomy_items?: number;
+                        uncovered_taxonomy_items?: {
+                            /** Format: uuid */
+                            id?: string;
+                            code?: string;
+                            title?: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    analyzeAcademicGap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    program_id: string;
+                    /** Format: uuid */
+                    taxonomy_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Сверить программу со справочником */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        program_id?: string;
+                        /** Format: uuid */
+                        taxonomy_id?: string | null;
+                        competencies?: number;
+                        matched_competencies?: number;
+                        unmatched_competencies?: {
+                            /** Format: uuid */
+                            id?: string;
+                            code?: string;
+                            title?: string;
+                        }[];
+                        ksa?: number;
+                        matched_ksa?: number;
+                        unmatched_ksa?: {
+                            /** Format: uuid */
+                            id?: string;
+                            kind?: string;
+                            title?: string;
+                            /** Format: uuid */
+                            competency_id?: string;
+                        }[];
+                        taxonomy_items?: number;
+                        matched_taxonomy_items?: number;
+                        uncovered_taxonomy_items?: {
+                            /** Format: uuid */
+                            id?: string;
+                            code?: string;
+                            title?: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Программа или справочник не найдены */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listLocalTaxonomies: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Перечислить импортированные справочники */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTaxonomy"][];
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getLocalTaxonomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить справочник с элементами */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTaxonomy"];
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getObservedSkillChange: {
+        parameters: {
+            query?: {
+                series?: string;
+                n?: number;
+                months?: 1 | 3 | 6 | 12;
+                sort?: "growth" | "popular";
+                min_freq?: number;
+                direction?: "declining" | "growing" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Измерить изменение частоты навыков */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        series?: string;
+                        direction?: string;
+                        n?: number;
+                        months?: number;
+                        required_points?: number;
+                        max_points?: number;
+                        forecasts?: {
+                            skill?: string;
+                            points?: number;
+                            /** Format: date */
+                            first_month?: string;
+                            /** Format: date */
+                            last_month?: string;
+                            first_frequency?: number;
+                            last_frequency?: number;
+                            observed_change_pct?: number;
+                        }[];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSkillForecastStatus: {
+        parameters: {
+            query?: {
+                series?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Проверить наличие истории для прогнозирования */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        series?: string;
+                        engine?: string;
+                        snapshots?: number;
+                        ready?: boolean;
+                        /** Format: date */
+                        first_month?: string | null;
+                        /** Format: date */
+                        last_month?: string | null;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listSkillForecasts: {
+        parameters: {
+            query?: {
+                series?: string;
+                months?: number;
+                limit?: number;
+                offset?: number;
+                min_freq?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить линейные прогнозы с пагинацией */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        series?: string;
+                        method?: string;
+                        months?: number;
+                        limit?: number;
+                        offset?: number;
+                        total?: number;
+                        direction?: string;
+                        forecasts?: components["schemas"]["MarketSkillForecast"][];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getTopSkillForecasts: {
+        parameters: {
+            query?: {
+                series?: string;
+                months?: number;
+                n?: number;
+                min_freq?: number;
+                sort?: "growth" | "popular";
+                direction?: "growing" | "declining";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить навыки по росту или падению частоты */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        series?: string;
+                        method?: string;
+                        months?: number;
+                        limit?: number;
+                        offset?: number;
+                        total?: number;
+                        direction?: string;
+                        forecasts?: components["schemas"]["MarketSkillForecast"][];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPopularSkillForecasts: {
+        parameters: {
+            query?: {
+                series?: string;
+                months?: number;
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Получить прогнозы частых навыков */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        series?: string;
+                        method?: string;
+                        months?: number;
+                        limit?: number;
+                        offset?: number;
+                        total?: number;
+                        direction?: string;
+                        forecasts?: components["schemas"]["MarketSkillForecast"][];
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSkillForecast: {
+        parameters: {
+            query?: {
+                series?: string;
+                months?: number;
+            };
+            header?: never;
+            path: {
+                skill: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Построить линейный прогноз по навыку */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketSkillForecast"];
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPublicationSubscriptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Перечислить свои подписки на публикации */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subscriptions?: {
+                            /** Format: uuid */
+                            id?: string;
+                            topic?: string;
+                            /** @enum {string} */
+                            source?: "openalex" | "arxiv" | "openalex+arxiv";
+                            email?: string | null;
+                            telegram_chat_id?: string | null;
+                            is_active?: boolean;
+                            /** Format: date-time */
+                            last_checked_at?: string | null;
+                            /** Format: date-time */
+                            created_at?: string;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createPublicationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    topic: string;
+                    /** @enum {string} */
+                    source?: "openalex" | "arxiv" | "openalex+arxiv";
+                    telegram_chat_id?: string;
+                    /** Format: email */
+                    email?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Создать подписку на публикации */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        /** Format: uuid */
+                        id?: string;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deletePublicationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Удалить подписку */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "ok";
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPublicationNotifications: {
+        parameters: {
+            query?: {
+                limit?: number;
+                unread_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Перечислить свои уведомления */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notifications?: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: uuid */
+                            subscription_id?: string | null;
+                            title?: string;
+                            body?: string;
+                            /** Format: uri */
+                            article_url?: string;
+                            /** @enum {string} */
+                            article_source?: "openalex" | "arxiv";
+                            severity?: string;
+                            is_read?: boolean;
+                            /** Format: date-time */
+                            created_at?: string;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    countUnreadPublicationNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Посчитать непрочитанные уведомления */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        unread_count?: number;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    markPublicationNotificationRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Отметить уведомление прочитанным */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "ok";
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Запись не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPublicationPollingTargets: {
+        parameters: {
+            query?: {
+                after_id?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Выдать подписки сборщику публикаций */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subscriptions?: {
+                            /** Format: uuid */
+                            id?: string;
+                            topic?: string;
+                            /** @enum {string} */
+                            source?: "openalex" | "arxiv" | "openalex+arxiv";
+                            /** Format: date-time */
+                            last_checked_at?: string | null;
+                        }[];
+                        total?: number;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recordPublicationUpdates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    subscription_id: string;
+                    articles: {
+                        title: string;
+                        abstract?: string;
+                        /** Format: uri */
+                        url: string;
+                        /** @enum {string} */
+                        source: "openalex" | "arxiv";
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Принять результаты проверки подписки */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok?: boolean;
+                        created?: number;
+                    };
+                };
+            };
+            /** @description Некорректные параметры */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нужен JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Недостаточно прав */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Подписка не найдена */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL недоступна */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2516,16 +5073,13 @@ export interface operations {
                      * @enum {string}
                      */
                     type?: "chat" | "batch" | "learning";
-                    /** @description Optional interview transcript for a batch run. Chat runs ignore it. */
+                    /** @description Optional interview transcript for a batch run. Chat runs ignore it. Batch runs with a transcript require a configured LLM analyst. */
                     transcript?: string;
-                    /** @description Optional public GitHub username; adds project skills to a chat or learning interview. */
+                    /** @description Optional public GitHub profile used to personalize an interview. */
                     github_username?: string;
-                    /** @description Explicit consent for using the public GitHub profile. */
                     github_consent?: boolean;
-                    /** @description Optional resume or HH profile text used to personalise the interview. */
-                    profile_context?: string;
-                    /** @description Public GitHub repositories that must be excluded from the interview profile. */
                     github_exclude?: string[];
+                    profile_context?: string;
                 };
             };
         };
@@ -2781,6 +5335,34 @@ export interface operations {
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
             504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    listRunSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of used materials with their evidence count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSourceCard"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     attachRunSource: {
@@ -3942,6 +6524,396 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listRunInterviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of interviews. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunInterview"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    startRunInterview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RespondentInput"];
+            };
+        };
+        responses: {
+            /** @description The new interview. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunInterview"];
+                };
+            };
+            /** @description Malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The run is not a chat run or is already finished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "RUN_FINISHED",
+                     *       "message": "нельзя начать интервью в завершённом исследовании"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The respondent descriptor is too long. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            /** @description The interview was created but the dialog could not be started. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listInterviewMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Interview id. */
+                interview_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of chat messages of that interview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listInterviewEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Interview id; it must belong to the run in the path. */
+                interview_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of evidence items born from the answers of that interview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewEvidence"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    reviewNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Node id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "approved" | "rejected";
+                    comment?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The saved decision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeReviewResult"];
+                };
+            };
+            /** @description Malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Unknown decision or too long comment. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listProgramLinks: {
+        parameters: {
+            query?: {
+                /** @description Filter by link status. */
+                status?: "proposed" | "approved" | "rejected";
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Array of links with node, program and competency titles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramLink"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    generateProgramLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Кандидаты и ранее сохранённые решения */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramLink"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Для исследования не выбрана программа или дерево не содержит оснований */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description PostgreSQL или модель сопоставления недоступны */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reviewProgramLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+                /** @description Link id. */
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "approved" | "rejected";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The updated link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramLink"];
+                };
+            };
+            /** @description Malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Unknown decision. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getReviewSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Review progress counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getProgramCoverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Program coverage report; a run without program or links returns an empty coverage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramCoverage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     getRunConflicts: {

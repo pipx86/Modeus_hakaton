@@ -22,8 +22,11 @@ SELECT jsonb_build_object(
             'evidence', COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
                     'id', e.id, 'ref_id', e.ref_id, 'quote', e.quote, 'approved', e.approved,
+                    'status', COALESCE(e.status,'pending'),
+                    'claim_origin', e.claim_origin, 'interview_id', e.interview_id,
                     'source', jsonb_build_object(
-                        'id', s.id, 'type', s.type, 'title', s.title, 'source_url', s.source_url
+                        'id', s.id, 'type', s.type, 'title', s.title, 'source_url', s.source_url,
+                        'created_at', COALESCE(s.vacancy_published_at,s.created_at)
                     )
                 ) ORDER BY e.created_at, e.id)
                 FROM evidence e JOIN sources s ON s.id = e.source_id WHERE e.node_id = n.id

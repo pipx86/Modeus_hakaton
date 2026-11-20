@@ -194,6 +194,33 @@ func evidenceSourceIDs(entities []agent.ExtractedEntity) map[string]bool {
 	return ids
 }
 
+// classifyEvidenceOrigin makes the distinction explicit for every extracted
+// claim. Only a title reproduced inside its quoted source is marked as a
+// source statement; a paraphrase remains a model interpretation grounded by
+// the verbatim quote. Unknown historical/legacy values stay unclassified.
+func classifyEvidenceOrigin(entities []agent.ExtractedEntity, in agent.AnalystInput) {
+	contents := sourceContents(in)
+	for i := range entities {
+		for j := range entities[i].Evidence {
+			evidence := &entities[i].Evidence[j]
+			if evidence.ClaimOrigin.Valid() && evidence.ClaimOrigin != "" && evidence.ClaimOrigin != domain.ClaimUnclassified {
+				continue
+			}
+			_, ok := contents[evidence.SourceID]
+			if !ok {
+				evidence.ClaimOrigin = domain.ClaimUnclassified
+				continue
+			}
+			claim := strings.TrimSpace(entities[i].Title)
+			if claim != "" && strings.Contains(strings.ToLower(evidence.Quote), strings.ToLower(claim)) {
+				evidence.ClaimOrigin = domain.ClaimSourceStatement
+			} else {
+				evidence.ClaimOrigin = domain.ClaimModelInterpretation
+			}
+		}
+	}
+}
+
 // Analyze extracts entities, normalizes them, removes duplicates and links them
 // to the taxonomy. The result is a connected role → function → task → action
 // tree in which every node has evidence.
@@ -224,6 +251,7 @@ func (a *Agent) Analyze(ctx context.Context, in agent.AnalystInput) (agent.Analy
 		}
 		entities = append(entities, extra...)
 	}
+	classifyEvidenceOrigin(entities, in)
 	entities = NormalizeEntities(entities)
 	nodes := make([]domain.Node, 0, len(entities))
 	for _, group := range splitEntitiesByProvenance(entities, in.Sources) {
@@ -318,11 +346,18 @@ func sourceExtractionInstruction(source domain.Source) string {
 
 Сейчас передан РОВНО ОДИН источник (` + string(source.Type) + `, id=` + source.ID + `).
 Извлеки из его content все элементы деятельности (роль, функции, задачи,
-действия), которые в нём описаны. НЕ используй транскрипт и не придумывай
+	 действия), которые в нём описаны. НЕ используй транскрипт и не придумывай
 цитаты: каждый evidence.quote — дословный фрагмент content этого источника,
 evidence.source_id=` + source.ID + `, evidence.ref_id — номер строки или пункта.
 Формулировки title бери дословно из источника: если роль названа «` +
 		firstContentLine(source.Content) + `», title должен сохранять это название.
+Для каждого утверждения укажи evidence.claim_origin: source_statement, если
+формулировка title буквально присутствует в цитате, иначе model_interpretation.
+Разделяй функцию (повторяющаяся область ответственности), задачу (ограниченный
+результат с несколькими шагами) и действие (один наблюдаемый шаг с результатом).
+Извлекай конкретные действия и задачи, если source это описывает. Не додумывай
+инструменты, шаги и результаты, которых нет в цитате. Не объединяй дублирующие
+формулировки, если у них разные объекты или результаты.
 Верни минимум одну сущность (например, роль), если в источнике описана
 профессиональная деятельность.`
 }
@@ -377,6 +412,18 @@ const sourceAttributionRules = `## Источники и атрибуция ци
   взята цитата; для цитат из интервью используй source_id=` + InterviewSourceID + `.
 - evidence.quote — дословный фрагмент content выбранного источника (или
   transcript у источника интервью).
+- Для каждого evidence укажи claim_origin: source_statement, если title
+  дословно есть внутри quote; model_interpretation, если title обобщает или
+  интерпретирует дословную цитату. Никогда не выдавай интерпретацию за цитату.
+- Утверждение — это title узла с уровнем type (role/function/task/action).
+  Сохраняй дословный fragment в evidence.quote и не переписывай его под title.
+- Функция — устойчивая повторяющаяся область ответственности; задача —
+  ограниченный результат с несколькими шагами; действие — один наблюдаемый
+  шаг с проверяемым результатом. Извлекай конкретные задачи и действия, когда
+  они описаны в материале. Не придумывай отсутствующие шаги, инструменты,
+  исполнителей или результаты.
+- Дедуплицируй одинаковые формулировки только если совпадают объект и результат;
+  сохраняй отдельные утверждения, если отличаются объект, условия или результат.
 - ОБЯЗАТЕЛЬНО извлеки элементы деятельности из КАЖДОГО standard/vacancy
   источника, если они там описаны. Не ограничивайся транскриптом: standard и
   vacancy — равноправные источники evidence.

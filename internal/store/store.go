@@ -35,11 +35,13 @@ type TreeNode struct {
 }
 
 type TreeEvidence struct {
-	ID       pgtype.UUID
-	SourceID pgtype.UUID
-	RefID    pgtype.Text
-	Quote    string
-	Approved bool
+	ID          pgtype.UUID
+	SourceID    pgtype.UUID
+	RefID       pgtype.Text
+	Quote       string
+	Approved    bool
+	ClaimOrigin string
+	InterviewID pgtype.UUID
 }
 
 // SaveTree создаёт новое дерево исследования без корня; готовое дерево не заменяется.
@@ -73,7 +75,7 @@ func (s *Store) SaveTree(ctx context.Context, runID pgtype.UUID, root TreeNode) 
 			if !e.ID.Valid || !e.SourceID.Valid {
 				return errors.New("evidence ID and source ID are required")
 			}
-			if _, err := q.CreateEvidence(ctx, db.CreateEvidenceParams{ID: e.ID, NodeID: n.ID, SourceID: e.SourceID, Quote: e.Quote, Approved: e.Approved, RefID: e.RefID}); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO evidence (id,node_id,source_id,quote,approved,ref_id,claim_origin,interview_id) VALUES ($1,$2,$3,$4,$5,$6,COALESCE(NULLIF($7,''),'unclassified'),$8)`, e.ID, n.ID, e.SourceID, e.Quote, e.Approved, e.RefID, e.ClaimOrigin, e.InterviewID); err != nil {
 				return fmt.Errorf("create evidence: %w", err)
 			}
 		}

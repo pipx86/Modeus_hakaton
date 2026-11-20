@@ -58,9 +58,7 @@ func expectNode(pool pgxmock.PgxPoolIface, id, runID, parentID pgtype.UUID, leve
 }
 
 func expectEvidence(pool pgxmock.PgxPoolIface, e store.TreeEvidence, nodeID, runID pgtype.UUID) {
-	pool.ExpectQuery("INSERT INTO evidence").WithArgs(anyArgs(6)...).WillReturnRows(pgxmock.NewRows([]string{
-		"id", "node_id", "source_id", "quote", "approved", "created_at", "run_id", "ref_id", "status",
-	}).AddRow(e.ID, nodeID, e.SourceID, e.Quote, e.Approved, time.Now(), runID, e.RefID, "pending"))
+	pool.ExpectExec("INSERT INTO evidence").WithArgs(anyArgs(8)...).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 }
 
 func TestSaveTreeUnit(t *testing.T) {
@@ -131,7 +129,7 @@ func TestSaveTreeUnit(t *testing.T) {
 		runID := testUUID(500)
 		root := testTree()
 		expectNode(pool, root.ID, runID, pgtype.UUID{}, 0, "role", root.Title)
-		pool.ExpectQuery("INSERT INTO evidence").WithArgs(anyArgs(6)...).WillReturnError(errors.New("сбой подтверждения"))
+		pool.ExpectExec("INSERT INTO evidence").WithArgs(anyArgs(8)...).WillReturnError(errors.New("сбой подтверждения"))
 		pool.ExpectRollback()
 		if err := s.SaveTree(context.Background(), runID, root); err == nil {
 			t.Fatal("ожидалась ошибка")

@@ -111,15 +111,19 @@ type chatTranscriptMessage struct {
 // SourceTitle/SourceURL дублируют то, что уже отдаёт очередь проверки, чтобы
 // панель «почему этот узел» не делала дополнительные запросы.
 type evidenceContextItem struct {
-	ID          string                `json:"id"`
-	NodeID      string                `json:"node_id"`
-	NodeTitle   string                `json:"node_title,omitempty"`
-	SourceID    string                `json:"source_id"`
-	SourceTitle string                `json:"source_title,omitempty"`
-	SourceURL   string                `json:"source_url,omitempty"`
-	RefID       string                `json:"ref_id,omitempty"`
-	Quote       string                `json:"quote"`
-	Status      domain.EvidenceStatus `json:"status"`
+	ID             string                `json:"id"`
+	NodeID         string                `json:"node_id"`
+	NodeTitle      string                `json:"node_title,omitempty"`
+	SourceID       string                `json:"source_id"`
+	SourceTitle    string                `json:"source_title,omitempty"`
+	SourceType     domain.SourceType     `json:"source_type,omitempty"`
+	SourceURL      string                `json:"source_url,omitempty"`
+	RefID          string                `json:"ref_id,omitempty"`
+	Quote          string                `json:"quote"`
+	Status         domain.EvidenceStatus `json:"status"`
+	ClaimOrigin    domain.ClaimOrigin    `json:"claim_origin,omitempty"`
+	InterviewID    string                `json:"interview_id,omitempty"`
+	RespondentName string                `json:"respondent_name,omitempty"`
 }
 
 // evidenceTranscriptMatch — найденное сообщение и позиция цитаты в нём.
@@ -160,6 +164,10 @@ type evidenceTranscriptReader interface {
 	listEvidenceTranscriptMessages(ctx context.Context, runID string) ([]chatTranscriptMessage, error)
 }
 
+type interviewTranscriptReader interface {
+	listInterviewTranscriptMessages(context.Context, string, string) ([]chatTranscriptMessage, error)
+}
+
 // getRunEvidenceContext ищет подтверждение строго внутри прогона: evidence.id
 // и evidence.run_id. Подтверждение другого прогона неотличимо от
 // несуществующего (404), чтобы endpoint нельзя было использовать для чтения
@@ -174,14 +182,15 @@ func (p *PGStore) getRunEvidenceContext(ctx context.Context, runID, evidenceID s
 	}
 	var status string
 	err := p.Pool.QueryRow(ctx, `SELECT e.id::text,e.node_id::text,COALESCE(n.title,''),
- e.source_id::text,COALESCE(s.title,''),COALESCE(s.source_url,''),
- COALESCE(e.ref_id,''),e.quote,COALESCE(e.status,'pending')
+	e.source_id::text,COALESCE(s.title,''),s.type,COALESCE(s.source_url,''),
+	COALESCE(e.ref_id,''),e.quote,COALESCE(e.status,'pending'),COALESCE(e.claim_origin,'unclassified'),COALESCE(e.interview_id::text,''),COALESCE(i.respondent_name,'')
 FROM evidence e
 JOIN nodes n ON n.id=e.node_id
 JOIN sources s ON s.id=e.source_id
+LEFT JOIN run_interviews i ON i.id=e.interview_id
 WHERE e.id=$1 AND e.run_id=$2`, evidenceID, runID).
-		Scan(&item.ID, &item.NodeID, &item.NodeTitle, &item.SourceID, &item.SourceTitle,
-			&item.SourceURL, &item.RefID, &item.Quote, &status)
+		Scan(&item.ID, &item.NodeID, &item.NodeTitle, &item.SourceID, &item.SourceTitle, &item.SourceType,
+			&item.SourceURL, &item.RefID, &item.Quote, &status, &item.ClaimOrigin, &item.InterviewID, &item.RespondentName)
 	if err != nil {
 		return item, translate(err)
 	}
@@ -219,6 +228,23 @@ FROM run_chat_messages WHERE run_id=$1 ORDER BY sequence,id LIMIT 500`, runID)
 	return messages, rows.Err()
 }
 
+func (p *PGStore) listInterviewTranscriptMessages(ctx context.Context, runID, interviewID string) ([]chatTranscriptMessage, error) {
+	rows, err := p.Pool.Query(ctx, `SELECT id,role,content,sequence,created_at FROM run_chat_messages WHERE run_id=$1 AND interview_id=$2 ORDER BY sequence,id LIMIT 500`, runID, interviewID)
+	if err != nil {
+		return nil, translate(err)
+	}
+	defer rows.Close()
+	messages := make([]chatTranscriptMessage, 0, 32)
+	for rows.Next() {
+		var m chatTranscriptMessage
+		if err = rows.Scan(&m.ID, &m.Role, &m.Content, &m.Sequence, &m.CreatedAt); err != nil {
+			return nil, translate(err)
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}
+
 // getRunEvidenceContext — in-memory реализация: подтверждение ищется среди
 // evidence прогона, заголовки узла/источника подтягиваются из memStore.
 func (m *memStore) getRunEvidenceContext(_ context.Context, runID, evidenceID string) (evidenceContextItem, error) {
@@ -245,12 +271,14 @@ func (m *memStore) getRunEvidenceContext(_ context.Context, runID, evidenceID st
 		return item, ErrNotFound
 	}
 	item = evidenceContextItem{
-		ID:       evidence.ID,
-		NodeID:   evidence.NodeID,
-		SourceID: evidence.SourceID,
-		RefID:    evidence.RefID,
-		Quote:    evidence.Quote,
-		Status:   m.evidenceStatusLocked(evidence.ID, evidence),
+		ID:          evidence.ID,
+		NodeID:      evidence.NodeID,
+		SourceID:    evidence.SourceID,
+		RefID:       evidence.RefID,
+		Quote:       evidence.Quote,
+		Status:      m.evidenceStatusLocked(evidence.ID, evidence),
+		ClaimOrigin: evidence.ClaimOrigin,
+		InterviewID: evidence.InterviewID,
 	}
 	for _, node := range m.nodes[runID] {
 		if node.ID == evidence.NodeID {
@@ -260,6 +288,7 @@ func (m *memStore) getRunEvidenceContext(_ context.Context, runID, evidenceID st
 	}
 	if source, ok := m.sources[evidence.SourceID]; ok {
 		item.SourceTitle = source.Title
+		item.SourceType = source.Type
 		item.SourceURL = source.SourceURL
 	}
 	return item, nil
@@ -670,7 +699,22 @@ func (s *Server) handleEvidenceContext(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось получить подтверждение")
 		return
 	}
-	messages, err := s.resolveEvidenceTranscriptMessages(r.Context(), runID)
+	var messages []chatTranscriptMessage
+	if evidence.InterviewID != "" {
+		if scoped, ok := s.store.(interviewTranscriptReader); ok {
+			messages, err = scoped.listInterviewTranscriptMessages(r.Context(), runID, evidence.InterviewID)
+		} else {
+			messages = []chatTranscriptMessage{}
+		}
+	} else if evidence.SourceType == domain.SourceInterview {
+		if _, isPG := s.store.(*PGStore); isPG {
+			messages = []chatTranscriptMessage{}
+		} else {
+			messages, err = s.resolveEvidenceTranscriptMessages(r.Context(), runID)
+		}
+	} else {
+		messages = []chatTranscriptMessage{}
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось загрузить историю интервью")
 		return

@@ -57,6 +57,8 @@ func ValidProgramLinkDecision(value string) bool {
 type ProgramLink struct {
 	ID              string            `json:"id"`
 	RunID           string            `json:"run_id"`
+	SnapshotID      string            `json:"snapshot_id,omitempty"`
+	SnapshotVersion int32             `json:"snapshot_version,omitempty"`
 	NodeID          string            `json:"node_id"`
 	NodeTitle       string            `json:"node_title"`
 	NodeType        NodeType          `json:"node_type"`
@@ -70,6 +72,7 @@ type ProgramLink struct {
 	Reason          string            `json:"reason"`
 	Source          string            `json:"source"`
 	ReviewedAt      *time.Time        `json:"reviewed_at,omitempty"`
+	Evidence        []Evidence        `json:"evidence,omitempty"`
 }
 
 // ReviewCounts — распределение элементов по статусам проверки.

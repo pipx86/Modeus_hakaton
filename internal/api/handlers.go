@@ -8,6 +8,7 @@ import (
 	"activity-descriptor/internal/githubprofile"
 	"activity-descriptor/internal/idempotency"
 	"activity-descriptor/internal/ingestion"
+	"activity-descriptor/internal/llm"
 	"activity-descriptor/internal/logging" // === NEW: Импорт логгера ===
 	"activity-descriptor/internal/sse"
 	"activity-descriptor/internal/steps"
@@ -41,18 +42,19 @@ type profileSkillsChat interface {
 }
 
 type Server struct {
-	importFiles  ingestion.ImportFiles
-	store        Store
-	autoStart    bool
-	chat         chatStarter
-	idemStore    idempotency.Store
-	eventStore   sse.EventStore
-	ssePoll      time.Duration
-	sseHeartbeat time.Duration
-	batchPlan    steps.BatchPlan
-	deferredAPI  bool
-	learningPlan LearningPlanner
-	github       githubEvaluator
+	importFiles    ingestion.ImportFiles
+	store          Store
+	autoStart      bool
+	chat           chatStarter
+	idemStore      idempotency.Store
+	eventStore     sse.EventStore
+	ssePoll        time.Duration
+	sseHeartbeat   time.Duration
+	batchPlan      steps.BatchPlan
+	deferredAPI    bool
+	learningPlan   LearningPlanner
+	programMatcher llm.ChatClient
+	github         githubEvaluator
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
 	// или явно отключённая настройка SOURCE_AUTO_INDEX).
@@ -93,6 +95,10 @@ func (s *Server) SetBatchPlan(plan steps.BatchPlan) { s.batchPlan = plan }
 
 // SetLearningPlanner wires the optional learning-plan generator.
 func (s *Server) SetLearningPlanner(planner LearningPlanner) { s.learningPlan = planner }
+
+// SetProgramMatcher wires the language model used for evidence-grounded
+// curriculum mapping. Without it, suggestions are unavailable rather than guessed.
+func (s *Server) SetProgramMatcher(client llm.ChatClient) { s.programMatcher = client }
 
 // batchPipeline returns the configured batch plan, or the vacancy-only default
 // when the server was built without the cmd/server LLM wiring (tests, demo
@@ -158,6 +164,7 @@ func (s *Server) Routes() http.Handler {
 	// (карточки 18, 23 и 26 плана MVP).
 	mux.HandleFunc("POST /api/v1/nodes/{id}/review", s.handleReviewNode)
 	mux.HandleFunc("GET /api/v1/runs/{id}/program-links", s.handleListProgramLinks)
+	mux.HandleFunc("POST /api/v1/runs/{id}/program-links/generate", s.handleGenerateProgramLinks)
 	mux.HandleFunc("POST /api/v1/runs/{id}/program-links/{link_id}/review", s.handleReviewProgramLink)
 	mux.HandleFunc("GET /api/v1/runs/{id}/review/summary", s.handleReviewSummary)
 	// Покрытие образовательной программы узлами дерева (карточка 24).

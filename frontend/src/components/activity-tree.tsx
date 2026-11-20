@@ -171,6 +171,12 @@ function EvidenceList({
                     {source.title}
                   </span>
                   <span>· {SOURCE_PRIORITY[source.type]}</span>
+                  {source.created_at && <span>· дата источника {new Intl.DateTimeFormat("ru-RU", { year: "numeric", month: "short", day: "numeric" }).format(new Date(source.created_at))}</span>}
+                </span>
+              )}
+              {item.claim_origin && (
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">
+                  {item.claim_origin === "source_statement" ? "Утверждение источника" : item.claim_origin === "model_interpretation" ? "Интерпретация модели" : "Происхождение не проверено"}
                 </span>
               )}
               {typeof confidence === "number" && (
@@ -224,6 +230,7 @@ function EvidenceList({
             <p className="whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
               {item.quote}
             </p>
+            {item.ref_id && <p className="text-xs text-muted-foreground">Фрагмент источника: {item.ref_id}</p>}
           </li>
         )
       })}

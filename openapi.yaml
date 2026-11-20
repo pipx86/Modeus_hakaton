@@ -2032,7 +2032,7 @@ paths:
                   minLength: 1
                 type:
                   type: string
-                  enum: [chat, batch]
+                  enum: [chat, batch, learning]
                   description: >-
                     chat starts the interactive interviewer; batch runs the
                     domain.Orchestrate pipeline. Omitted means chat when the
@@ -2042,6 +2042,16 @@ paths:
                   description: >-
                     Optional interview transcript for a batch run. Chat runs
                     ignore it. Batch runs with a transcript require a configured LLM analyst.
+                github_username:
+                  type: string
+                  description: Optional public GitHub profile used to personalize an interview.
+                github_consent:
+                  type: boolean
+                github_exclude:
+                  type: array
+                  items: { type: string }
+                profile_context:
+                  type: string
             example:
               profession: Аналитик данных
               type: batch
@@ -3654,6 +3664,27 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /runs/{id}/program-links/generate:
+    post:
+      tags: [review]
+      operationId: generateProgramLinks
+      summary: Предложить сопоставления узлов с выбранной программой
+      description: Создаёт снимок дерева, анализирует основания и сохраняет до трёх кандидатов на узел как proposed. Методист принимает итоговое решение.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Кандидаты и ранее сохранённые решения
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProgramLink" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: Для исследования не выбрана программа или дерево не содержит оснований }
+        "503": { description: PostgreSQL или модель сопоставления недоступны }
   /runs/{id}/program-links/{link_id}/review:
     post:
       tags: [review]
@@ -3686,6 +3717,14 @@ paths:
                 reason:
                   type: string
                   maxLength: 2000
+        competency_id:
+          type: string
+          format: uuid
+          description: Optional corrected competency target.
+        ksa_id:
+          type: string
+          format: uuid
+          description: Optional corrected KSA belonging to competency_id.
       responses:
         "200":
           description: The updated link.
@@ -4702,8 +4741,8 @@ components:
       enum: [pending, running, done, degraded, failed]
     RunType:
       type: string
-      enum: [batch, chat]
-      description: chat runs are driven by the interview chat; batch runs by the batch pipeline.
+      enum: [batch, chat, learning]
+      description: chat runs are driven by the interview chat; batch runs by the batch pipeline; learning runs produce an individual study plan.
     EvidenceStatus:
       type: string
       enum: [pending, approved, rejected]
@@ -4730,6 +4769,12 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/EvidenceStatus"
+        claim_origin:
+          type: string
+          enum: [source_statement, model_interpretation, unclassified]
+        interview_id:
+          type: string
+          format: uuid
     EvidenceDetails:
       type: object
       description: Evidence plus the legacy `approved` flag.
@@ -4752,6 +4797,12 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/EvidenceStatus"
+        claim_origin:
+          type: string
+          enum: [source_statement, model_interpretation, unclassified]
+        interview_id:
+          type: string
+          format: uuid
         approved:
           type: boolean
           description: True when status is approved.
@@ -5005,7 +5056,6 @@ components:
           format: uuid
         run_id:
           type: string
-          format: uuid
         version:
           type: integer
           minimum: 1
@@ -5173,6 +5223,9 @@ components:
           minLength: 1
         source_title:
           type: string
+        source_type:
+          type: string
+          enum: [vacancy, interview, standard, document]
           description: Source title for reviewer context.
         source_url:
           type: string
@@ -5325,6 +5378,10 @@ components:
         reviewed_at:
           type: string
           format: date-time
+        evidence:
+          type: array
+          description: Evidence from the immutable snapshot used when the link was suggested.
+          items: { $ref: "#/components/schemas/Evidence" }
     ProgramLink:
       type: object
       required: [id, run_id, node_id, program_id, competency_id, status]
@@ -5334,6 +5391,11 @@ components:
           type: string
         run_id:
           type: string
+        snapshot_id:
+          type: string
+          format: uuid
+        snapshot_version:
+          type: integer
         node_id:
           type: string
         node_title:
@@ -5365,6 +5427,10 @@ components:
         reviewed_at:
           type: string
           format: date-time
+        evidence:
+          type: array
+          description: Основания из снимка, к которому привязано сопоставление.
+          items: { $ref: "#/components/schemas/Evidence" }
     ReviewCounts:
       type: object
       additionalProperties: false
@@ -6461,6 +6527,8 @@ components:
           minLength: 1
         source_title:
           type: string
+        source_type:
+          $ref: "#/components/schemas/SourceType"
         source_url:
           type: string
         ref_id:
@@ -6469,6 +6537,14 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/EvidenceStatus"
+        claim_origin:
+          type: string
+          enum: [source_statement, model_interpretation, unclassified]
+        interview_id:
+          type: string
+          format: uuid
+        respondent_name:
+          type: string
     ChatTranscriptMessage:
       type: object
       description: One saved interview chat message; sequence is the 1-based position in the dialog.

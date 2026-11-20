@@ -42,10 +42,13 @@ import { NODE_TYPE_LABELS } from "@/components/activity-tree-model"
 import {
   ApiRequestError,
   listProgramLinks,
+  generateProgramLinks,
+  getProgramLinkTargets,
   reviewProgramLink,
   type NodeReviewDecision,
   type ProgramLink,
   type ProgramLinkStatus,
+  type ProgramLinkTarget,
 } from "@/lib/api/client"
 
 const STATUS_LABEL: Record<ProgramLinkStatus, string> = {
@@ -135,6 +138,9 @@ function LinkCard({
   rowError,
   onComment,
   onDecide,
+  targets,
+  selectedTarget,
+  onTargetChange,
 }: {
   link: ProgramLink
   readOnly: boolean
@@ -142,7 +148,10 @@ function LinkCard({
   comment: string
   rowError?: string | null
   onComment: (value: string) => void
-  onDecide: (status: NodeReviewDecision) => void
+  onDecide: (status: NodeReviewDecision, targetValue:string) => void
+  targets: ProgramLinkTarget[]
+  selectedTarget:string
+  onTargetChange:(value:string)=>void
 }) {
   return (
     <li className="space-y-3 rounded-lg border bg-muted/20 p-3">
@@ -172,6 +181,12 @@ function LinkCard({
         <p className="text-[11px] text-muted-foreground">Программа: {link.program_title}</p>
       )}
       <p className="text-xs text-muted-foreground">{link.reason}</p>
+      {link.evidence?.length ? (
+        <details className="rounded-md border bg-background px-3 py-2 text-sm">
+          <summary className="cursor-pointer font-medium">Основания из версии дерева {link.snapshot_version ? `v${link.snapshot_version}` : ""} ({link.evidence.length})</summary>
+          <ul className="mt-2 space-y-2">{link.evidence.map((item)=><li key={item.id} className="border-t pt-2"><p className="whitespace-pre-wrap">«{item.quote}»</p><p className="mt-1 text-xs text-muted-foreground">Фрагмент: {item.ref_id||"не указан"} · {item.claim_origin==="source_statement"?"утверждение источника":item.claim_origin==="model_interpretation"?"интерпретация модели":"происхождение не классифицировано"}</p></li>)}</ul>
+        </details>
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         <span>{link.source === "system" ? "Предложение системы" : "Решение методиста"}</span>
         {link.reviewed_at && <span>проверено {formatShortDate(link.reviewed_at)}</span>}
@@ -179,6 +194,12 @@ function LinkCard({
 
       {!readOnly && (
         <div className="space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor={`program-link-target-${link.id}`}>Исправить цель сопоставления</Label>
+            <select id={`program-link-target-${link.id}`} value={selectedTarget} onChange={(event)=>onTargetChange(event.target.value)} disabled={busy} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
+              {targets.map((target)=><option key={`${target.competency_id}|${target.ksa_id??""}`} value={`${target.competency_id}|${target.ksa_id??""}`}>{target.competency_title}{target.ksa_title?` — ${target.ksa_title}`:" — вся компетенция"}</option>)}
+            </select>
+          </div>
           <div className="space-y-1">
             <Label htmlFor={`program-link-comment-${link.id}`}>
               Комментарий к решению (необязательно)
@@ -199,7 +220,7 @@ function LinkCard({
           )}
           <div className="flex flex-wrap gap-2">
             {link.status !== "approved" && (
-              <Button size="sm" disabled={busy} onClick={() => onDecide("approved")}>
+              <Button size="sm" disabled={busy} onClick={() => onDecide("approved", selectedTarget)}>
                 {busy ? (
                   <Loader2Icon className="size-3.5 animate-spin" />
                 ) : (
@@ -213,7 +234,7 @@ function LinkCard({
                 size="sm"
                 variant="outline"
                 disabled={busy}
-                onClick={() => onDecide("rejected")}
+                onClick={() => onDecide("rejected", selectedTarget)}
               >
                 <XIcon className="size-3.5" />
                 Отклонить
@@ -294,6 +315,9 @@ export function ProgramLinksTab({
   const [error, setError] = useState<string | null>(null)
   const [notAvailable, setNotAvailable] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [targets,setTargets]=useState<ProgramLinkTarget[]>([])
+  const [selectedTargets,setSelectedTargets]=useState<Record<string,string>>({})
   const [comments, setComments] = useState<Record<string, string>>({})
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null)
 
@@ -306,6 +330,8 @@ export function ProgramLinksTab({
         const rows = Array.isArray(data) ? data : []
         // Фильтр на клиенте страхует случай, когда бэкенд проигнорировал node_id.
         setLinks(nodeId ? rows.filter((row) => row.node_id === nodeId) : rows)
+        const programID=rows[0]?.program_id
+        if(programID){try{setTargets(await getProgramLinkTargets(programID))}catch{setTargets([])}}
         setError(null)
         setNotAvailable(false)
       } catch (cause) {
@@ -331,12 +357,15 @@ export function ProgramLinksTab({
     void load()
   }, [load])
 
-  const decide = async (link: ProgramLink, status: NodeReviewDecision) => {
+  const decide = async (link: ProgramLink, status: NodeReviewDecision, targetValue:string) => {
     if (busyId) return
     setBusyId(link.id)
     setRowError(null)
     try {
-      await reviewProgramLink(runId, link.id, status, (comments[link.id] ?? "").trim())
+      const [competency_id,ksa_id]=targetValue.split("|")
+      const original=`${link.competency_id}|${link.ksa_id??""}`
+      const target=targetValue!==original?{competency_id,ksa_id:ksa_id||null}:undefined
+      await reviewProgramLink(runId, link.id, status, (comments[link.id] ?? "").trim(),target)
       setComments((previous) => ({ ...previous, [link.id]: "" }))
       toast.success(status === "approved" ? "Связь подтверждена" : "Связь отклонена")
       await load(true)
@@ -344,6 +373,21 @@ export function ProgramLinksTab({
       setRowError({ id: link.id, message: describeLinksError(cause) })
     } finally {
       setBusyId(null)
+    }
+  }
+
+  const generate = async () => {
+    if (generating) return
+    setGenerating(true)
+    try {
+      await generateProgramLinks(runId)
+      toast.success("Предложения сопоставления подготовлены")
+      await load(true)
+    } catch (cause) {
+      setError(describeLinksError(cause))
+      toast.error("Не удалось подготовить сопоставления", { description: describeLinksError(cause) })
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -368,15 +412,12 @@ export function ProgramLinksTab({
               формирует ядро системы, решение по каждой связи принимает методист.
             </CardDescription>
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Обновить список сопоставлений"
-            disabled={loading || refreshing}
-            onClick={() => void load(true)}
-          >
-            <RefreshCwIcon className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex items-center gap-2">
+            {!readOnly && <Button variant="outline" size="sm" onClick={() => void generate()} disabled={generating||loading}>{generating?<Loader2Icon className="size-4 animate-spin"/>:<RefreshCwIcon className="size-4"/>}Сформировать предложения</Button>}
+            <Button variant="ghost" size="icon-sm" aria-label="Обновить список сопоставлений" disabled={loading || refreshing} onClick={() => void load(true)}>
+              <RefreshCwIcon className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -439,7 +480,10 @@ export function ProgramLinksTab({
                   onComment={(value) =>
                     setComments((previous) => ({ ...previous, [link.id]: value }))
                   }
-                  onDecide={(status) => void decide(link, status)}
+                  onDecide={(status,target) => void decide(link, status,target)}
+                  targets={targets}
+                  selectedTarget={selectedTargets[link.id]??`${link.competency_id}|${link.ksa_id??""}`}
+                  onTargetChange={(value)=>setSelectedTargets(old=>({...old,[link.id]:value}))}
                 />
               ))}
             </LinkGroup>
@@ -455,7 +499,10 @@ export function ProgramLinksTab({
                   onComment={(value) =>
                     setComments((previous) => ({ ...previous, [link.id]: value }))
                   }
-                  onDecide={(status) => void decide(link, status)}
+                  onDecide={(status,target) => void decide(link, status,target)}
+                  targets={targets}
+                  selectedTarget={selectedTargets[link.id]??`${link.competency_id}|${link.ksa_id??""}`}
+                  onTargetChange={(value)=>setSelectedTargets(old=>({...old,[link.id]:value}))}
                 />
               ))}
             </LinkGroup>
@@ -471,7 +518,10 @@ export function ProgramLinksTab({
                   onComment={(value) =>
                     setComments((previous) => ({ ...previous, [link.id]: value }))
                   }
-                  onDecide={(status) => void decide(link, status)}
+                  onDecide={(status,target) => void decide(link, status,target)}
+                  targets={targets}
+                  selectedTarget={selectedTargets[link.id]??`${link.competency_id}|${link.ksa_id??""}`}
+                  onTargetChange={(value)=>setSelectedTargets(old=>({...old,[link.id]:value}))}
                 />
               ))}
             </LinkGroup>

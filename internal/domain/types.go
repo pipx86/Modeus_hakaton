@@ -108,13 +108,34 @@ func (s EvidenceStatus) Valid() bool {
 	}
 }
 
+// ClaimOrigin describes how the activity statement relates to its quoted
+// source. Legacy evidence stays unclassified until a reviewer checks it.
+type ClaimOrigin string
+
+const (
+	ClaimSourceStatement     ClaimOrigin = "source_statement"
+	ClaimModelInterpretation ClaimOrigin = "model_interpretation"
+	ClaimUnclassified       ClaimOrigin = "unclassified"
+)
+
+func (o ClaimOrigin) Valid() bool {
+	switch o {
+	case ClaimSourceStatement, ClaimModelInterpretation, ClaimUnclassified, "":
+		return true
+	default:
+		return false
+	}
+}
+
 type Evidence struct {
-	ID       string         `json:"id"`
-	NodeID   string         `json:"node_id,omitempty"`
-	SourceID string         `json:"source_id"`
-	RefID    string         `json:"ref_id,omitempty"`
-	Quote    string         `json:"quote"`
-	Status   EvidenceStatus `json:"status,omitempty"`
+	ID          string         `json:"id"`
+	NodeID      string         `json:"node_id,omitempty"`
+	SourceID    string         `json:"source_id"`
+	RefID       string         `json:"ref_id,omitempty"`
+	Quote       string         `json:"quote"`
+	Status      EvidenceStatus `json:"status,omitempty"`
+	ClaimOrigin ClaimOrigin    `json:"claim_origin,omitempty"`
+	InterviewID string         `json:"interview_id,omitempty"`
 }
 
 // Validate enforces the fields required by the AI agent contract.
@@ -126,6 +147,8 @@ func (e Evidence) Validate() error {
 		return ErrEvidenceQuote
 	case strings.TrimSpace(e.RefID) == "":
 		return ErrEvidenceRef
+	case !e.ClaimOrigin.Valid():
+		return errors.New("INVALID_CLAIM_ORIGIN")
 	default:
 		return nil
 	}

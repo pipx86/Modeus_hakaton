@@ -242,6 +242,7 @@ func run(ctx context.Context, c config) error {
 		chatService.SetFinalizer(unavailableChatTree)
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
+	app.SetProgramMatcher(analystClient)
 	app.SetGitHubEvaluator(githubprofile.New(os.Getenv("GITHUB_TOKEN")))
 	app.SetBatchPlan(batchPlan)
 	if learningPlanner != nil {

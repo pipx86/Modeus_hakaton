@@ -163,14 +163,16 @@ type snapshotTreeDocumentNode struct {
 // (source + approved), и возможный плоский формат (source_id + status): парсер
 // поддерживает оба, чтобы не зависеть от версии схемы конкретного снимка.
 type snapshotTreeDocumentEvidence struct {
-	ID       string                      `json:"id"`
-	NodeID   string                      `json:"node_id"`
-	SourceID string                      `json:"source_id"`
-	RefID    *string                     `json:"ref_id"`
-	Quote    string                      `json:"quote"`
-	Approved bool                        `json:"approved"`
-	Status   string                      `json:"status"`
-	Source   *snapshotTreeDocumentSource `json:"source"`
+	ID          string                      `json:"id"`
+	NodeID      string                      `json:"node_id"`
+	SourceID    string                      `json:"source_id"`
+	RefID       *string                     `json:"ref_id"`
+	Quote       string                      `json:"quote"`
+	Approved    bool                        `json:"approved"`
+	Status      string                      `json:"status"`
+	ClaimOrigin string                      `json:"claim_origin"`
+	InterviewID string                      `json:"interview_id"`
+	Source      *snapshotTreeDocumentSource `json:"source"`
 }
 
 type snapshotTreeDocumentSource struct {
@@ -232,11 +234,13 @@ func parseSnapshotTree(raw json.RawMessage) ([]domain.Node, error) {
 // status напрямую; оба варианта дают одинаковый результат.
 func presentSnapshotEvidence(nodeID string, raw snapshotTreeDocumentEvidence) domain.Evidence {
 	evidence := domain.Evidence{
-		ID:       raw.ID,
-		NodeID:   nodeID,
-		SourceID: raw.SourceID,
-		RefID:    stringOrEmpty(raw.RefID),
-		Quote:    raw.Quote,
+		ID:          raw.ID,
+		NodeID:      nodeID,
+		SourceID:    raw.SourceID,
+		RefID:       stringOrEmpty(raw.RefID),
+		Quote:       raw.Quote,
+		ClaimOrigin: domain.ClaimOrigin(raw.ClaimOrigin),
+		InterviewID: raw.InterviewID,
 	}
 	if evidence.SourceID == "" && raw.Source != nil {
 		evidence.SourceID = raw.Source.ID
