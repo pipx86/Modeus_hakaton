@@ -217,7 +217,7 @@ func TestEvidenceContextHandlerSuccess(t *testing.T) {
 	stub := &evidenceContextStub{
 		item: evidenceContextItem{
 			ID: "ev-1", NodeID: "node-1", NodeTitle: "Роль", SourceID: "src-1",
-			SourceTitle: "Интервью", SourceURL: "https://example.org/interview",
+			SourceTitle: "Интервью", SourceType: domain.SourceInterview, SourceURL: "https://example.org/interview",
 			RefID: "answer-2", Quote: "PostgreSQL", Status: domain.EvidencePending,
 		},
 		messages: transcriptMessages(),
@@ -301,7 +301,7 @@ func TestEvidenceContextHandlerErrors(t *testing.T) {
 		}
 	})
 	t.Run("messages error", func(t *testing.T) {
-		server := NewServer(&evidenceContextStub{item: evidenceContextItem{ID: "ev-1"}, messagesErr: errors.New("boom")})
+		server := NewServer(&evidenceContextStub{item: evidenceContextItem{ID: "ev-1", SourceType: domain.SourceInterview}, messagesErr: errors.New("boom")})
 		recorder := doMentorHandler(t, server.handleEvidenceContext, http.MethodGet, "/", "admin", "",
 			map[string]string{"id": "run-1", "evidence_id": "ev-1"})
 		if recorder.Code != http.StatusInternalServerError {
@@ -325,8 +325,12 @@ func TestEvidenceContextChatFallback(t *testing.T) {
 	runID := zunSeedRun(t, store, "Аналитик данных",
 		domain.Node{ID: "node-1", Type: domain.NodeRole, Title: "Роль"},
 	)
+	interviewSource, sourceErr := store.CreateSource(domain.Source{Type: domain.SourceInterview, Title: "Интервью"})
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	store.seedEvidence(domain.Evidence{
-		ID: "ev-1", NodeID: "node-1", SourceID: "55555555-5555-5555-5555-555555555555",
+		ID: "ev-1", NodeID: "node-1", SourceID: interviewSource.ID,
 		RefID: "answer-2", Quote: "Использую PostgreSQL", Status: domain.EvidencePending,
 	}, runID)
 	chatStub := &evidenceContextChatStub{messages: []chat.Message{

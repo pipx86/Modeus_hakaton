@@ -319,8 +319,8 @@ func runCardsTestUUID(t *testing.T, value string) pgtype.UUID {
 // runCardsGetRunRow — строка runs в том порядке, в котором её читает GetRun
 // (этот же запрос выполняет s.allowInterviewAccess).
 func runCardsGetRunRow(runID, createdBy string) *pgxmock.Rows {
-	return pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished"}).
-		AddRow(runID, "Аналитик данных", domain.RunDone, domain.StageDone, domain.RunTypeBatch, createdBy, nil, nil, nil)
+	return pgxmock.NewRows([]string{"id", "profession", "status", "stage", "type", "created_by", "root", "started", "finished", "result_kind", "program_id"}).
+		AddRow(runID, "Аналитик данных", domain.RunDone, domain.StageDone, domain.RunTypeBatch, createdBy, nil, nil, nil, "activity", "")
 }
 
 func TestListRunSourceCardsPostgresMock(t *testing.T) {
