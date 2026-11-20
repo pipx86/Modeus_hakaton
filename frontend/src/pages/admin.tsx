@@ -72,6 +72,13 @@ interface AdminSource {
   content?: string
 }
 
+interface AdminUser {
+  id: string
+  email: string
+  display_name: string
+  role: string
+}
+
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   vacancy: "Вакансия",
   interview: "Интервью",
@@ -140,6 +147,8 @@ export function Admin() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [sources, setSources] = useState<AdminSource[]>([])
   const [sourceQuality, setSourceQuality] = useState<SourceQualityItem[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [userRoleSaving, setUserRoleSaving] = useState<string | null>(null)
   const [materialsOpen, setMaterialsOpen] = useState(true)
   const [sourceType, setSourceType] = useState("document")
   const [sourceTitle, setSourceTitle] = useState("")
@@ -161,6 +170,62 @@ export function Admin() {
       setSourceQuality([])
     }
   }, [])
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) throw new Error(`users: ${response.status}`)
+      const payload = (await response.json()) as unknown
+      if (!Array.isArray(payload)) {
+        setUsers([])
+        return
+      }
+      setUsers(
+        payload.filter(
+          (item): item is AdminUser =>
+            !!item &&
+            typeof item === "object" &&
+            typeof (item as AdminUser).id === "string" &&
+            typeof (item as AdminUser).email === "string" &&
+            typeof (item as AdminUser).role === "string",
+        ),
+      )
+    } catch {
+      setUsers([])
+    }
+  }, [])
+
+  const updateUserRole = async (user: AdminUser, nextRole: string) => {
+    if (nextRole === user.role) return
+    setUserRoleSaving(user.id)
+    try {
+      const token = getValidToken() ?? apiToken
+      const response = await fetch(`${apiBaseUrl}/users/${encodeURIComponent(user.id)}/role`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ role: nextRole }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string }
+        throw new Error(body.message ?? `users: ${response.status}`)
+      }
+      const updated = (await response.json()) as AdminUser
+      setUsers((previous) => previous.map((item) => (item.id === updated.id ? updated : item)))
+      toast.success("Роль обновлена", { description: `${user.email}: ${ROLE_LABEL[nextRole] ?? nextRole}` })
+    } catch (cause) {
+      toast.error("Не удалось изменить роль", {
+        description: cause instanceof Error ? cause.message : "Проверьте права и повторите.",
+      })
+    } finally {
+      setUserRoleSaving(null)
+    }
+  }
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -241,6 +306,7 @@ export function Admin() {
       await loadMetrics()
       await loadPromptVersions()
       await loadSourceQuality()
+      await loadUsers()
       if (cancelled) return
       if (runsResponse.data) setRuns(runsResponse.data)
       if (sourcesResponse.data) setSources(sourcesResponse.data)
@@ -250,7 +316,7 @@ export function Admin() {
     return () => {
       cancelled = true
     }
-  }, [isAdmin, loadMetrics, loadPromptVersions, loadSourceQuality])
+  }, [isAdmin, loadMetrics, loadPromptVersions, loadSourceQuality, loadUsers])
   useEffect(() => {
     if (!isAdmin) return
     const timer = window.setTimeout(() => {
@@ -584,6 +650,57 @@ export function Admin() {
           }
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Пользователи и роли</CardTitle>
+          <CardDescription>
+            Назначение ролей администратора, специалиста и пользователя. Специалист проверяет
+            цитаты и источники.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {users.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Пользователи не загружены.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-3 font-medium">Пользователь</th>
+                    <th className="py-2 pr-3 font-medium">Email</th>
+                    <th className="py-2 pr-3 font-medium">Роль</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b last:border-b-0">
+                      <td className="py-2 pr-3">{user.display_name || "-"}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{user.email}</td>
+                      <td className="py-2 pr-3">
+                        <Select
+                          value={user.role}
+                          disabled={userRoleSaving === user.id}
+                          onValueChange={(value) => void updateUserRole(user, value)}
+                        >
+                          <SelectTrigger className="h-8 w-40" aria-label={`Роль ${user.email}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Администратор</SelectItem>
+                            <SelectItem value="specialist">Специалист</SelectItem>
+                            <SelectItem value="user">Пользователь</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

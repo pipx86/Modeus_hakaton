@@ -3,14 +3,26 @@ package main
 import (
 	"context"
 
-	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/learning"
 )
+
+// learningFinalizeStore is the part of the PostgreSQL store needed to finish a
+// learning run. The interface keeps the finalizer testable without a database.
+type learningFinalizeStore interface {
+	GetRun(runID string) (*domain.Run, error)
+	SetStage(runID string, stage domain.Stage) error
+	SaveLearningPlan(runID string, plan learning.Plan) error
+}
+
+type learningPlanRunner interface {
+	PlanFromTranscript(ctx context.Context, profession, transcript string) (learning.Plan, error)
+}
 
 // newHybridFinalizer keeps the normal tree pipeline for interview runs and
 // turns a learning run into a saved learning plan after its interview.
-func newHybridFinalizer(pgStore *api.PGStore, treeFinalizer chat.Finalizer, planner *learningPlannerAdapter) chat.Finalizer {
+func newHybridFinalizer(pgStore learningFinalizeStore, treeFinalizer chat.Finalizer, planner learningPlanRunner) chat.Finalizer {
 	if planner == nil {
 		return treeFinalizer
 	}

@@ -212,7 +212,7 @@ describe("админка", () => {
     renderAdmin()
     await screen.findByText("Data Scientist")
 
-    await user.click(screen.getAllByRole("combobox")[0])
+    await user.click(screen.getByRole("combobox", { name: "Фильтр по агенту" }))
     await user.click(await screen.findByRole("option", { name: "Аналитик" }))
 
     await waitFor(() => {
@@ -268,7 +268,7 @@ describe("админка", () => {
     renderAdmin()
     await screen.findByText("Data Scientist")
 
-    await user.click(screen.getAllByRole("combobox")[1])
+    await user.click(screen.getByRole("combobox", { name: "Фильтр по статусу" }))
     await user.click(await screen.findByRole("option", { name: "error" }))
 
     await waitFor(() => {

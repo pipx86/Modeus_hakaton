@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -20,6 +21,7 @@ type authUserStore interface {
 	CreateUser(ctx context.Context, email, displayName, passwordHash, role string) (*domain.User, error)
 	UserByEmail(ctx context.Context, email string) (*domain.User, error)
 	ListUsers(ctx context.Context) ([]domain.User, error)
+	UpdateUserRole(ctx context.Context, id, role string) error
 }
 
 var _ authUserStore = (*PGStore)(nil)
@@ -102,6 +104,30 @@ func (p *PGStore) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return p.ExistingUsers(ctx)
 }
 
+func (p *PGStore) UpdateUserRole(_ context.Context, id, role string) error {
+	if !validUUID(id) {
+		return ErrNotFound
+	}
+	switch role {
+	case string(auth.RoleAdmin), string(auth.RoleUser), string(auth.RoleSpecialist):
+	default:
+		return errors.New("INVALID_ROLE")
+	}
+	ctx, cancel := operation()
+	defer cancel()
+	tag, err := p.Pool.Exec(ctx, `
+		UPDATE users
+		SET role_id = (SELECT id FROM roles WHERE code = $2), updated_at = now()
+		WHERE id = $1`, id, role)
+	if err != nil {
+		return translate(err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (m *memStore) ListUsers(_ context.Context) ([]domain.User, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -117,6 +143,21 @@ func (m *memStore) CountUsers(_ context.Context) (int, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.users), nil
+}
+
+func (m *memStore) UpdateUserRole(_ context.Context, id, role string) error {
+	if role != "admin" && role != "user" && role != "specialist" {
+		return errors.New("INVALID_ROLE")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	user.Role = role
+	m.users[id] = user
+	return nil
 }
 
 func (m *memStore) CreateUser(_ context.Context, email, displayName, passwordHash, role string) (*domain.User, error) {

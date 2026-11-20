@@ -163,6 +163,23 @@ func TestExtractRepairsQuoteMismatch(t *testing.T) {
 	}
 }
 
+func TestExtractSalvagesValidEntitiesAfterQuoteMismatch(t *testing.T) {
+	bogus := `{"entities":[{"id":"a1","type":"task","title":"Писать SQL-запросы",
+  "evidence":[{"id":"e1","source_id":"src-1","ref_id":"msg-1","quote":"этой фразы нет в транскрипте"}]}]}`
+	client := &fakeClient{t: t, responses: []string{bogus, bogus, demoEntities}}
+	analyst, err := New(client)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	out, err := analyst.Extract(context.Background(), demoInput(t))
+	if err != nil {
+		t.Fatalf("salvaged extraction: %v", err)
+	}
+	if len(out.Entities) == 0 {
+		t.Fatal("salvaged extraction returned no entities")
+	}
+}
+
 func TestExtractFailsAfterRepairs(t *testing.T) {
 	bogus := `{"entities":[{"id":"a1","type":"task","title":"Писать SQL-запросы",
   "evidence":[{"id":"e1","source_id":"src-1","ref_id":"msg-1","quote":"этой фразы нет в транскрипте"}]}]}`
@@ -174,8 +191,8 @@ func TestExtractFailsAfterRepairs(t *testing.T) {
 	if _, err := analyst.Extract(context.Background(), demoInput(t)); !errors.Is(err, ErrModel) {
 		t.Fatalf("Extract error = %v, want ErrModel", err)
 	}
-	if client.calls != 2 {
-		t.Fatalf("model calls = %d, want 2 (initial + one repair)", client.calls)
+	if client.calls != 3 {
+		t.Fatalf("model calls = %d, want 3 (initial + repair + salvage)", client.calls)
 	}
 }
 
