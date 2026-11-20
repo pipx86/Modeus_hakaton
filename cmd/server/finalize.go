@@ -21,6 +21,7 @@ import (
 	"activity-descriptor/internal/llmobs"
 	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/search"
+	"activity-descriptor/internal/steps"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -412,50 +413,25 @@ func validSourceUUID(value string) bool {
 // back to the Interview list, which keeps the already supported interview-only
 // path working when provenance cannot be established. Node ids, hierarchy and
 // evidence are passed through unchanged: partitioning only chooses a slot.
+//
+// The rules live in steps.PartitionNodesByProvenance so the chat finalizer and
+// the batch AI chain cannot drift apart and always detect the same cross-source
+// conflicts (карточки 9 и 17 плана MVP).
 func partitionEntitiesByProvenance(entities []agent.ExtractedEntity, sources []domain.Source) (interview, standard, vacancy []domain.Node) {
-	sourceTypes := make(map[string]domain.SourceType, len(sources))
-	for _, source := range sources {
-		sourceTypes[source.ID] = source.Type
-	}
+	nodes := make([]domain.Node, 0, len(entities))
 	for _, entity := range entities {
-		node := entity.Node
-		switch classifyEntityProvenance(node, sourceTypes) {
-		case domain.SourceStandard:
-			standard = append(standard, node)
-		case domain.SourceVacancy:
-			vacancy = append(vacancy, node)
-		default:
-			interview = append(interview, node)
-		}
+		nodes = append(nodes, entity.Node)
 	}
-	return interview, standard, vacancy
+	return steps.PartitionNodesByProvenance(nodes, sources)
 }
 
 // classifyEntityProvenance reports the single non-interview source type shared
 // by all evidence of the node. Anything mixed, unknown or interview-backed is
-// reported as interview so the caller keeps the safe default.
+// reported as interview so the caller keeps the safe default. It delegates to the
+// shared batch rule: a source type maps to its own slot only when every quote is
+// backed by that type.
 func classifyEntityProvenance(node domain.Node, sourceTypes map[string]domain.SourceType) domain.SourceType {
-	if len(node.Evidence) == 0 {
-		return domain.SourceInterview
-	}
-	provenance := domain.SourceType("")
-	for _, evidence := range node.Evidence {
-		sourceType, ok := sourceTypes[evidence.SourceID]
-		if !ok {
-			return domain.SourceInterview
-		}
-		if sourceType != domain.SourceStandard && sourceType != domain.SourceVacancy {
-			return domain.SourceInterview
-		}
-		if provenance == "" {
-			provenance = sourceType
-			continue
-		}
-		if provenance != sourceType {
-			return domain.SourceInterview
-		}
-	}
-	return provenance
+	return steps.ClassifyNodeProvenance(node, sourceTypes)
 }
 
 // buildSynthesizerInput assembles the deterministic merge input. The analyst

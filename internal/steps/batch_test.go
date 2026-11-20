@@ -12,6 +12,7 @@ import (
 var _ domain.Store = (*fakeAITreeStore)(nil)
 var _ AITreeStore = (*fakeAITreeStore)(nil)
 var _ TranscriptStore = (*fakeAITreeStore)(nil)
+var _ synthesisReviewStore = (*fakeAITreeStore)(nil)
 
 func stepNames(steps []domain.Step) []domain.Stage {
 	out := make([]domain.Stage, 0, len(steps))
@@ -196,6 +197,11 @@ func TestBatchOrchestratorProducesAndPersistsTree(t *testing.T) {
 	}
 	if store.created != 1 {
 		t.Fatalf("created interview sources = %d, want 1", store.created)
+	}
+	// The batch review step stores the synthesis review exactly like the chat
+	// finalizer, so the conflicts endpoint sees batch runs as well.
+	if reviewRunID, _, _ := store.Review(run.ID); reviewRunID != run.ID {
+		t.Fatalf("synthesis review persisted for %q, want %q", reviewRunID, run.ID)
 	}
 	if client.CallCount() != 1 {
 		t.Fatalf("analyst calls = %d, want 1", client.CallCount())

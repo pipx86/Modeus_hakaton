@@ -14,6 +14,7 @@ import (
 	"activity-descriptor/internal/api"
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/steps"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -160,6 +161,54 @@ func TestFinalizeInterviewPartitionsGlobalSourcesIntoVacancy(t *testing.T) {
 	// The fallback source is attached to the run so provenance survives.
 	if !reflect.DeepEqual(store.linkedIDs, []string{"global-vacancy-1"}) {
 		t.Fatalf("linked source ids = %+v", store.linkedIDs)
+	}
+}
+
+// TestFinalizerAndBatchPartitionAgree fences the chat/batch parity of карточки 9
+// и 17: the chat finalizer and the batch AI chain must route the same analyst
+// output into the same synthesizer slots, so the same input produces the same
+// resolved conflict in both paths. It fails as soon as one path grows its own
+// provenance rules again.
+func TestFinalizerAndBatchPartitionAgree(t *testing.T) {
+	metadata, _ := provenanceRunSources()
+	entities := conflictingProvenanceEntities()
+	interviewChat, standardChat, vacancyChat := partitionEntitiesByProvenance(entities, metadata)
+
+	nodes := make([]domain.Node, 0, len(entities))
+	for _, entity := range entities {
+		nodes = append(nodes, entity.Node)
+	}
+	interviewBatch, standardBatch, vacancyBatch := steps.PartitionNodesByProvenance(nodes, metadata)
+
+	for name, pair := range map[string][2][]domain.Node{
+		"interview": {interviewChat, interviewBatch},
+		"standard":  {standardChat, standardBatch},
+		"vacancy":   {vacancyChat, vacancyBatch},
+	} {
+		if !reflect.DeepEqual(pair[0], pair[1]) {
+			t.Fatalf("%s slot differs: chat=%+v batch=%+v", name, pair[0], pair[1])
+		}
+	}
+
+	chatOutput, err := synthesizer.Merge(agent.SynthesizerInput{
+		Profession: "Аналитик данных", Sources: metadata,
+		Interview: interviewChat, Standard: standardChat, Vacancy: vacancyChat,
+	})
+	if err != nil {
+		t.Fatalf("chat merge: %v", err)
+	}
+	batchOutput, err := synthesizer.Merge(agent.SynthesizerInput{
+		Profession: "Аналитик данных", Sources: metadata,
+		Interview: interviewBatch, Standard: standardBatch, Vacancy: vacancyBatch,
+	})
+	if err != nil {
+		t.Fatalf("batch merge: %v", err)
+	}
+	if !reflect.DeepEqual(chatOutput.Conflicts, batchOutput.Conflicts) {
+		t.Fatalf("conflicts differ: chat=%+v batch=%+v", chatOutput.Conflicts, batchOutput.Conflicts)
+	}
+	if len(chatOutput.Conflicts) != 1 || chatOutput.Conflicts[0].Winner.SourceType != domain.SourceStandard {
+		t.Fatalf("conflicts = %+v, want one standard-win title conflict", chatOutput.Conflicts)
 	}
 }
 

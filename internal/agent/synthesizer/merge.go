@@ -23,12 +23,19 @@ type sourcedNode struct {
 // groupNodes validates every input node and groups nodes by canonical id.
 // Source priorities come from the declared sources (or the source type when a
 // source is not declared).
+//
+// Every node keeps the declared source its own evidence points at, so a
+// competing value names the material it really came from even when several
+// sources share one type (two standards, two vacancies). Without that, all
+// values of a slot would be attributed to the first source of the type and the
+// expert could not trace the losing value back to its origin.
 func groupNodes(in agent.SynthesizerInput) (map[string][]sourcedNode, []string, error) {
 	groups := make(map[string][]sourcedNode)
 	ids := make([]string, 0)
+	declared := declaredSourcesByID(in.Sources)
 
 	appendSource := func(sourceType domain.SourceType, nodes []domain.Node) error {
-		source := findSource(in.Sources, sourceType)
+		slot := findSource(in.Sources, sourceType)
 		for _, node := range nodes {
 			if strings.TrimSpace(node.ID) == "" {
 				return fmt.Errorf("%w: node without id from %s", ErrInvalidInput, sourceType)
@@ -42,7 +49,7 @@ func groupNodes(in agent.SynthesizerInput) (map[string][]sourcedNode, []string, 
 			if _, seen := groups[node.ID]; !seen {
 				ids = append(ids, node.ID)
 			}
-			groups[node.ID] = append(groups[node.ID], sourcedNode{source: source, node: node})
+			groups[node.ID] = append(groups[node.ID], sourcedNode{source: nodeSource(slot, node, declared), node: node})
 		}
 		return nil
 	}
@@ -57,6 +64,32 @@ func groupNodes(in agent.SynthesizerInput) (map[string][]sourcedNode, []string, 
 	}
 	sort.Strings(ids)
 	return groups, ids, nil
+}
+
+// declaredSourcesByID indexes the declared source metadata by id.
+func declaredSourcesByID(sources []domain.Source) map[string]domain.Source {
+	declared := make(map[string]domain.Source, len(sources))
+	for _, source := range sources {
+		if source.ID == "" {
+			continue
+		}
+		declared[source.ID] = source
+	}
+	return declared
+}
+
+// nodeSource returns the declared source that actually backs the node. The
+// first evidence item referring to a declared source of the node's slot type
+// wins; otherwise the slot source is used, so a node whose provenance cannot be
+// resolved still gets a stable, non-invented basis.
+func nodeSource(slot domain.Source, node domain.Node, declared map[string]domain.Source) domain.Source {
+	for _, evidence := range node.Evidence {
+		source, ok := declared[evidence.SourceID]
+		if ok && source.Type == slot.Type {
+			return source
+		}
+	}
+	return slot
 }
 
 // Merge combines nodes from all three sources, resolves conflicts by source

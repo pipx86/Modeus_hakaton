@@ -20,10 +20,16 @@ import (
 // for the lifetime of one Orchestrate call, so a resumed run rebuilds it from
 // the persisted transcript before the steps are executed.
 const (
-	DataKeyTranscript        = "transcript"
-	DataKeyInterviewNodes    = "interview_nodes"
-	DataKeyTree              = "tree"
-	DataKeyConflicts         = "conflicts"
+	DataKeyTranscript     = "transcript"
+	DataKeyInterviewNodes = "interview_nodes"
+	DataKeyTree           = "tree"
+	DataKeyConflicts      = "conflicts"
+	DataKeyMessages       = "agent_messages"
+	// DataKeySourceMetadata holds the declared sources (id, type, title,
+	// priority) the analyst was given, without their content. The synthesis step
+	// needs it to route every node to the slot its evidence proves and to
+	// attribute a conflict value to the material it came from.
+	DataKeySourceMetadata    = "source_metadata"
 	DataKeyInterviewSourceID = "interview_source_id"
 	DataKeySourceIDs         = "source_ids"
 )
@@ -115,6 +121,10 @@ func (s *AgentAnalysisStep) ExecuteWithData(ctx context.Context, run *domain.Run
 		}
 	}
 	run.Data[DataKeySourceIDs] = sourceIDs
+	// Keep the declared provenance of every material the analyst could quote so
+	// the synthesis step routes the resulting nodes into the same
+	// interview/standard/vacancy slots as the chat finalizer.
+	run.Data[DataKeySourceMetadata] = sourceMetadata(sources)
 
 	nodes := make([]domain.Node, 0, len(analysis.Entities))
 	for _, entity := range analysis.Entities {
@@ -175,8 +185,33 @@ func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID, professi
 	return clustered.Sources
 }
 
-// AgentSynthesisStep merges interview nodes into one tree and stores the result
-// in run.Data[DataKeyTree] and run.Data[DataKeyConflicts].
+// sourceMetadata returns the declared sources without their content: synthesis
+// only needs ids, types, titles and priorities to route evidence into the right
+// slot and to name the material a conflict value came from. Keeping content out
+// of run.Data avoids holding every document twice for the run.
+func sourceMetadata(sources []domain.Source) []domain.Source {
+	out := make([]domain.Source, 0, len(sources))
+	for _, source := range sources {
+		out = append(out, domain.Source{
+			ID:       source.ID,
+			Type:     source.Type,
+			Title:    source.Title,
+			Priority: source.EffectivePriority(),
+		})
+	}
+	return out
+}
+
+// AgentSynthesisStep merges the analyst nodes into one tree and stores the result
+// in run.Data[DataKeyTree], run.Data[DataKeyConflicts] and
+// run.Data[DataKeyMessages].
+//
+// The nodes are first routed into the interview/standard/vacancy input slots by
+// the provenance of their evidence, exactly like the chat finalizer does. Without
+// that routing every node would sit in the Interview slot, the deterministic
+// merge would never see two sources disagree on one element and a batch run would
+// silently keep one of the values instead of reporting the conflict
+// (карточка 9 плана MVP).
 type AgentSynthesisStep struct {
 	// Synthesizer is the hybrid synthesis agent: the deterministic merge always
 	// runs, and the optional LLM only normalizes titles/descriptions. A nil
@@ -203,6 +238,12 @@ func (s *AgentSynthesisStep) Execute(ctx context.Context, run *domain.Run) error
 	if !ok || len(nodes) == 0 {
 		return fmt.Errorf("agent synthesis step: run.Data[%s] is empty", DataKeyInterviewNodes)
 	}
+	// The declared sources carry the ids, types and priorities the merge needs to
+	// detect a cross-source disagreement and to name the material behind every
+	// competing value. A step constructed without the analyst step (direct
+	// callers, tests) simply has no metadata and keeps the interview-only path.
+	sources, _ := run.Data[DataKeySourceMetadata].([]domain.Source)
+	interviewNodes, standardNodes, vacancyNodes := PartitionNodesByProvenance(nodes, sources)
 	synth := s.Synthesizer
 	if synth == nil {
 		agentInstance, err := synthesizer.New()
@@ -217,7 +258,10 @@ func (s *AgentSynthesisStep) Execute(ctx context.Context, run *domain.Run) error
 	ctx = llmobs.WithRunID(ctx, run.ID)
 	out, err := synth.Synthesize(ctx, agent.SynthesizerInput{
 		Profession: run.Profession,
-		Interview:  nodes,
+		Sources:    sources,
+		Interview:  interviewNodes,
+		Standard:   standardNodes,
+		Vacancy:    vacancyNodes,
 	})
 	if err != nil {
 		return fmt.Errorf("agent synthesis step: synthesize: %w", err)
@@ -230,6 +274,7 @@ func (s *AgentSynthesisStep) Execute(ctx context.Context, run *domain.Run) error
 	}
 	run.Data[DataKeyTree] = out.Tree
 	run.Data[DataKeyConflicts] = out.Conflicts
+	run.Data[DataKeyMessages] = out.Messages
 	return nil
 }
 
@@ -265,6 +310,14 @@ type treeExistenceChecker interface {
 	TreeExists(ctx context.Context, runID string) (bool, error)
 }
 
+// synthesisReviewStore is the optional capability that persists the resolved
+// conflicts and the synthesizer's agent memory for expert review. *api.PGStore
+// implements it through SaveSynthesisReview; a store without it keeps working
+// because review storage is auxiliary.
+type synthesisReviewStore interface {
+	SaveSynthesisReview(ctx context.Context, runID string, conflicts []domain.Conflict, messages []agent.AgentMessage) error
+}
+
 // Execute implements domain.Step.
 func (s *SaveAITreeStep) Execute(ctx context.Context, run *domain.Run) error {
 	if run == nil {
@@ -277,6 +330,11 @@ func (s *SaveAITreeStep) Execute(ctx context.Context, run *domain.Run) error {
 	if s.Store == nil {
 		return fmt.Errorf("save AI tree step: tree store is required")
 	}
+	// Persist the review artifacts before the tree, exactly like the chat
+	// finalizer: the expert must see the disagreements even if the tree write
+	// fails afterwards, and GET /runs/{id}/conflicts has to return the same data
+	// for a batch run as for a chat run (карточка 9 плана MVP).
+	s.saveSynthesisReview(ctx, run)
 	if existing, ok := s.Store.(treeExistenceChecker); ok {
 		found, err := existing.TreeExists(ctx, run.ID)
 		if err != nil {
@@ -330,6 +388,26 @@ func (s *SaveAITreeStep) nextID() string {
 		return s.NewID()
 	}
 	return newUUIDString()
+}
+
+// saveSynthesisReview stores the conflicts and messages the synthesis step put
+// into run.Data. The presence of DataKeyConflicts is what marks "this execution
+// synthesized a tree": a step that never ran the synthesizer must not wipe
+// previously stored review rows with an empty list. Storage failures are logged
+// and never fail an otherwise valid run, same as in the chat finalizer.
+func (s *SaveAITreeStep) saveSynthesisReview(ctx context.Context, run *domain.Run) {
+	conflicts, synthesized := run.Data[DataKeyConflicts].([]domain.Conflict)
+	if !synthesized {
+		return
+	}
+	store, ok := s.Store.(synthesisReviewStore)
+	if !ok {
+		return
+	}
+	messages, _ := run.Data[DataKeyMessages].([]agent.AgentMessage)
+	if err := store.SaveSynthesisReview(ctx, run.ID, conflicts, messages); err != nil {
+		log.Printf("save AI tree step: persist synthesis review for run %s: %v", run.ID, err)
+	}
 }
 
 // assignAITreeUUIDs rewrites the analyst tree into the shape the database

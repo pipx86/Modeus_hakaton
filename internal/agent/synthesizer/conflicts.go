@@ -10,8 +10,11 @@ import (
 )
 
 // DetectConflicts finds nodes that share a canonical id but disagree on title or
-// description across sources. Values are ordered by source priority, and the
-// winner is the highest-priority value (interview > standard > vacancy).
+// description across sources. Values are collected in source-slot order
+// (interview, standard, vacancy), each one keeps the source and priority it came
+// from, and the winner is the highest-priority value (interview > standard >
+// vacancy > document). The losing values stay in the list: a higher source type
+// priority must never hide the other position, it only decides the merged field.
 func DetectConflicts(groups map[string][]sourcedNode, ids []string) []domain.Conflict {
 	conflicts := make([]domain.Conflict, 0)
 	for _, id := range ids {
