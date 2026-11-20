@@ -115,8 +115,8 @@ func TestPostgresTreeAndAnswerMapping(t *testing.T) {
 		pool.ExpectQuery("FROM runs WHERE id=").WithArgs(dbRun).WillReturnRows(runRow())
 	}
 	treeRows := func(data []byte) *pgxmock.Rows {
-		return pgxmock.NewRows([]string{"id", "type", "title", "description", "parent", "evidence", "zun"}).
-			AddRow(dbNode, domain.NodeType("role"), "Инженер", "Описание", nil, data, []byte(`{"knowledge":["Диагностика"]}`))
+		return pgxmock.NewRows([]string{"id", "type", "title", "description", "parent", "evidence", "zun", "review_status", "review_comment", "reviewed_at"}).
+			AddRow(dbNode, domain.NodeType("role"), "Инженер", "Описание", nil, data, []byte(`{"knowledge":["Диагностика"]}`), "pending", "", nil)
 	}
 	citation, err := json.Marshal([]domain.Evidence{{ID: dbEvidence, SourceID: dbSource, Quote: "Цитата"}})
 	if err != nil {
@@ -386,8 +386,8 @@ func TestPostgresSaveTreeConvertsHierarchyAndPreservesConcurrentWinner(t *testin
 			}
 			description := pgtype.Text{String: node.Description, Valid: node.Description != ""}
 			pool.ExpectQuery("INSERT INTO nodes").WithArgs(id, run, parent, int16(level), string(node.Type), node.Title, description).
-				WillReturnRows(pgxmock.NewRows([]string{"id", "run", "parent", "level", "type", "title", "description", "created", "updated", "zun"}).
-					AddRow(id, run, parent, int16(level), string(node.Type), node.Title, description, stamp, stamp, []byte(nil)))
+				WillReturnRows(pgxmock.NewRows([]string{"id", "run", "parent", "level", "type", "title", "description", "created", "updated", "zun", "review_status", "review_comment", "reviewed_at", "reviewed_by"}).
+					AddRow(id, run, parent, int16(level), string(node.Type), node.Title, description, stamp, stamp, []byte(nil), "pending", "", nil, ""))
 			citation := node.Evidence[0]
 			citationID := pgUUID(t, citation.ID)
 			ref := pgtype.Text{String: citation.RefID, Valid: citation.RefID != ""}

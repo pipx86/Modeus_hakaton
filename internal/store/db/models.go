@@ -8,6 +8,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActivityProgramLink struct {
+	ID           pgtype.UUID        `json:"id"`
+	RunID        pgtype.UUID        `json:"run_id"`
+	NodeID       pgtype.UUID        `json:"node_id"`
+	ProgramID    pgtype.UUID        `json:"program_id"`
+	CompetencyID pgtype.UUID        `json:"competency_id"`
+	KsaID        pgtype.UUID        `json:"ksa_id"`
+	Status       string             `json:"status"`
+	Reason       string             `json:"reason"`
+	Source       string             `json:"source"`
+	ReviewedBy   string             `json:"reviewed_by"`
+	ReviewedAt   pgtype.Timestamptz `json:"reviewed_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type AgentMessage struct {
 	ID            pgtype.UUID        `json:"id"`
 	RunID         pgtype.UUID        `json:"run_id"`
@@ -140,16 +156,20 @@ type LlmUsage struct {
 }
 
 type Node struct {
-	ID          pgtype.UUID        `json:"id"`
-	RunID       pgtype.UUID        `json:"run_id"`
-	ParentID    pgtype.UUID        `json:"parent_id"`
-	Level       int16              `json:"level"`
-	Type        string             `json:"type"`
-	Title       string             `json:"title"`
-	Description pgtype.Text        `json:"description"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	Zun         []byte             `json:"zun"`
+	ID            pgtype.UUID        `json:"id"`
+	RunID         pgtype.UUID        `json:"run_id"`
+	ParentID      pgtype.UUID        `json:"parent_id"`
+	Level         int16              `json:"level"`
+	Type          string             `json:"type"`
+	Title         string             `json:"title"`
+	Description   pgtype.Text        `json:"description"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	Zun           []byte             `json:"zun"`
+	ReviewStatus  string             `json:"review_status"`
+	ReviewComment string             `json:"review_comment"`
+	ReviewedAt    pgtype.Timestamptz `json:"reviewed_at"`
+	ReviewedBy    string             `json:"reviewed_by"`
 }
 
 type PiiFinding struct {
@@ -245,6 +265,8 @@ type Run struct {
 	Stage          string             `json:"stage"`
 	Type           string             `json:"type"`
 	DegradedReason pgtype.Text        `json:"degraded_reason"`
+	ResultKind     string             `json:"result_kind"`
+	ProgramID      pgtype.UUID        `json:"program_id"`
 }
 
 type RunChatMessage struct {

@@ -13,7 +13,7 @@ import (
 
 const createNode = `-- name: CreateNode :one
 INSERT INTO nodes (id, run_id, parent_id, level, type, title, description)
-VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun
+VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun, review_status, review_comment, reviewed_at, reviewed_by
 `
 
 type CreateNodeParams struct {
@@ -48,6 +48,10 @@ func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) (Node, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Zun,
+		&i.ReviewStatus,
+		&i.ReviewComment,
+		&i.ReviewedAt,
+		&i.ReviewedBy,
 	)
 	return i, err
 }
@@ -65,7 +69,7 @@ func (q *Queries) DeleteNode(ctx context.Context, id pgtype.UUID) (int64, error)
 }
 
 const getNode = `-- name: GetNode :one
-SELECT id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun FROM nodes WHERE id = $1
+SELECT id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun, review_status, review_comment, reviewed_at, reviewed_by FROM nodes WHERE id = $1
 `
 
 func (q *Queries) GetNode(ctx context.Context, id pgtype.UUID) (Node, error) {
@@ -82,12 +86,16 @@ func (q *Queries) GetNode(ctx context.Context, id pgtype.UUID) (Node, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Zun,
+		&i.ReviewStatus,
+		&i.ReviewComment,
+		&i.ReviewedAt,
+		&i.ReviewedBy,
 	)
 	return i, err
 }
 
 const listNodesByRun = `-- name: ListNodesByRun :many
-SELECT id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun FROM nodes WHERE run_id = $1 ORDER BY level, created_at, id
+SELECT id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun, review_status, review_comment, reviewed_at, reviewed_by FROM nodes WHERE run_id = $1 ORDER BY level, created_at, id
 `
 
 func (q *Queries) ListNodesByRun(ctx context.Context, runID pgtype.UUID) ([]Node, error) {
@@ -110,6 +118,10 @@ func (q *Queries) ListNodesByRun(ctx context.Context, runID pgtype.UUID) ([]Node
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Zun,
+			&i.ReviewStatus,
+			&i.ReviewComment,
+			&i.ReviewedAt,
+			&i.ReviewedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -140,7 +152,7 @@ func (q *Queries) SetRunRoot(ctx context.Context, arg SetRunRootParams) (int64, 
 
 const updateNode = `-- name: UpdateNode :one
 UPDATE nodes SET parent_id = $2, level = $3, type = $4, title = $5, description = $6, updated_at = now()
-WHERE id = $1 RETURNING id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun
+WHERE id = $1 RETURNING id, run_id, parent_id, level, type, title, description, created_at, updated_at, zun, review_status, review_comment, reviewed_at, reviewed_by
 `
 
 type UpdateNodeParams struct {
@@ -173,6 +185,10 @@ func (q *Queries) UpdateNode(ctx context.Context, arg UpdateNodeParams) (Node, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Zun,
+		&i.ReviewStatus,
+		&i.ReviewComment,
+		&i.ReviewedAt,
+		&i.ReviewedBy,
 	)
 	return i, err
 }

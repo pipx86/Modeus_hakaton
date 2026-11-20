@@ -221,7 +221,8 @@ describe("ProgramLinksTab", () => {
     })
     render(<ProgramLinksTab runId="7" nodeId="n-1" onClearNodeFilter={onClear} />)
 
-    expect(await screen.findByText("Анализ метрик")).toBeInTheDocument()
+    // Название узла есть и в строке связи, и в баннере фильтра.
+    expect((await screen.findAllByText("Анализ метрик")).length).toBeGreaterThan(0)
     expect(screen.queryByText("Другая связь")).not.toBeInTheDocument()
     expect(screen.getByText(/Показаны сопоставления узла/)).toBeInTheDocument()
     expect(

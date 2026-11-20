@@ -103,11 +103,16 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 		var n domain.Node
 		var data []byte
 		var zun []byte
-		if err = rows.Scan(&n.ID, &n.Type, &n.Title, &n.Description, &n.ParentID, &data, &zun); err != nil {
+		var reviewedAt pgtype.Timestamptz
+		if err = rows.Scan(&n.ID, &n.Type, &n.Title, &n.Description, &n.ParentID, &data, &zun, &n.ReviewStatus, &n.ReviewComment, &reviewedAt); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(data, &n.Evidence); err != nil {
 			return nil, err
+		}
+		if reviewedAt.Valid {
+			at := reviewedAt.Time
+			n.ReviewedAt = &at
 		}
 		if len(zun) > 0 && string(zun) != "null" {
 			var parsed domain.Zun
