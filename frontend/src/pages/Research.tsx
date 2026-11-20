@@ -39,6 +39,7 @@ import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
 import { ZunSuggestionsDialog } from "@/components/zun-suggestions-dialog"
 import { LearningPlanView } from "@/components/learning-plan-view"
+import { agentLabel } from "@/lib/agent-labels"
 import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -1350,8 +1351,8 @@ function TreeTab({
                 {cost.by_agent.map((item) => (
                   <div key={item.agent} className="space-y-0.5">
                     <div className="flex justify-between gap-2">
-                      <span className="truncate" title={item.agent}>
-                        {item.agent}
+                      <span className="truncate" title={agentLabel(item.agent)}>
+                        {agentLabel(item.agent)}
                       </span>
                       <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
                     </div>

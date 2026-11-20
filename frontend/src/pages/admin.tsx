@@ -27,6 +27,7 @@ import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
 import { scoreSource, scoreTone, type SourceQualityItem } from "@/lib/source-quality"
+import { agentLabel } from "@/lib/agent-labels"
 import {
   averageHistogramMs,
   fetchMetricsText,
@@ -727,7 +728,7 @@ export function Admin() {
                 <tbody>
                   {promptVersions.map((version) => (
                     <tr key={version.id} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{version.agent}</td>
+                      <td className="py-2 pr-3">{agentLabel(version.agent)}</td>
                       <td className="py-2 pr-3 font-mono text-xs">{version.version}</td>
                       <td className="py-2 pr-3">
                         <Badge variant={version.status === "active" ? "default" : "secondary"}>
@@ -823,7 +824,7 @@ export function Admin() {
                             )
                           : "-"}
                       </td>
-                      <td className="py-2 pr-3">{request.agent}</td>
+                      <td className="py-2 pr-3">{agentLabel(request.agent)}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{request.model}</td>
                       <td className="py-2 pr-3">
                         <Badge variant={request.status === "ok" ? "secondary" : "destructive"}>
@@ -927,7 +928,7 @@ export function Admin() {
                 <tbody>
                   {agents.map((agent) => (
                     <tr key={agent.agent} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{agent.agent}</td>
+                      <td className="py-2 pr-3">{agentLabel(agent.agent)}</td>
                       <td className="py-2 pr-3">{agent.calls}</td>
                       <td className="py-2 pr-3">{agent.errors}</td>
                       <td className="py-2">{formatMs(agent.avgMs)}</td>
