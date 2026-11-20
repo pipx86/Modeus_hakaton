@@ -269,6 +269,13 @@ type RunChatSession struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
+type RunLearningPlan struct {
+	RunID     pgtype.UUID        `json:"run_id"`
+	Plan      []byte             `json:"plan"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RunSource struct {
 	RunID     pgtype.UUID        `json:"run_id"`
 	SourceID  pgtype.UUID        `json:"source_id"`
