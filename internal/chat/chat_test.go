@@ -225,7 +225,7 @@ func TestServiceCallsFinalizerAfterInterview(t *testing.T) {
 	}
 }
 
-func TestServicePostsFinalCourses(t *testing.T) {
+func TestServicePostsResearchResult(t *testing.T) {
 	service := NewService(fakeInterviewer{}, nil)
 	service.SetFinalizer(func(context.Context, string, string, domain.InterviewSession) (domain.RunStatus, error) {
 		return domain.RunDone, nil
@@ -248,7 +248,7 @@ func TestServicePostsFinalCourses(t *testing.T) {
 			return false
 		}
 		last := messages[len(messages)-1].Content
-		return strings.Contains(last, "Интервью завершено") && strings.Contains(last, "https://stepik.org/course/300883/promo")
+		return strings.Contains(last, "Интервью завершено") && strings.Contains(last, "«Дерево»")
 	})
 }
 

@@ -66,13 +66,10 @@ type runSourceLinker interface {
 	LinkRunSources(ctx context.Context, runID string, sourceIDs []string) error
 }
 
-// finalizerDeps are the collaborators of one finalization. zunClient is
-// optional and only used for the best-effort knowledge/skills enrichment.
 type finalizerDeps struct {
 	store       finalizeStore
 	analyst     interviewAnalyst
 	synthesizer synthesisRunner
-	zunClient   llm.ChatClient
 	retrievers  []sourceRetriever
 	// baseSources selects materials of the existing source base by profession.
 	// Without it an interview run that starts with no attached sources reaches
@@ -133,7 +130,6 @@ func newTreeFinalizerWithSelector(store finalizeStore, analystClient, synthesize
 			store:       store,
 			analyst:     analystAgent,
 			synthesizer: synthesizerAgent,
-			zunClient:   analystClient,
 			retrievers:  retrievers,
 			baseSources: baseSources,
 		}, runID, profession, session)
@@ -217,7 +213,7 @@ func finalizeInterview(ctx context.Context, deps finalizerDeps, runID, professio
 	}
 
 	setFinalizeStage(deps.store, runID, domain.StageReview)
-	nodes := enrichZun(ctx, deps.zunClient, profession, synthesis.Tree)
+	nodes := synthesis.Tree
 	if err := saveInterviewTree(ctx, deps.store, runID, profession, transcript, nodes, knownSourceIDs(provenanceSources)); err != nil {
 		return domain.RunFailed, fmt.Errorf("finalizer: save tree: %w", err)
 	}

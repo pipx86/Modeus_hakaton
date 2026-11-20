@@ -252,7 +252,7 @@ func TestRecommendationsThroughRunMessagesAPI(t *testing.T) {
 			messages := read()
 			last := messages[len(messages)-1]
 			if tc.fallback {
-				if last.Role != "agent" || !strings.Contains(last.Content, "Резервные рекомендации") || !strings.Contains(last.Content, "SQL-отчёты") || len(messages) != 14 {
+				if last.Role != "agent" || !strings.Contains(last.Content, "Ответы сохранены") || strings.Contains(last.Content, "Резервные рекомендации") || len(messages) != 14 {
 					t.Fatalf("нет содержательного резервного сообщения: %+v", last)
 				}
 			} else if tc.want == domain.RunDone {

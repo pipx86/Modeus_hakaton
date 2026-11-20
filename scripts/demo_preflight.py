@@ -8,7 +8,7 @@ the expert review queue) and prints one PASS/WARN/FAIL line per check.
 Full mode additionally drives a real interview -> analysis -> synthesis run
 through the HTTP API: it creates a run, answers the six scripted questions,
 waits for the pipeline, then verifies the result (status done, tree nodes,
-final Stepik message, snapshot, conflicts). The successful run is kept as a
+final research message, snapshot, conflicts). The successful run is kept as a
 demo backup on purpose.
 
 The script is stdlib-only, cross-platform and never prints secrets. Exit code 0
@@ -1041,7 +1041,7 @@ def run_full_pipeline(args, context: dict, checks: list[CheckResult]) -> dict:
         "snapshots": 0,
         "conflicts": 0,
         "messages": 0,
-        "final_stepik": False,
+        "final_message": False,
         "elapsed_s": 0.0,
         "kept": True,
     }
@@ -1234,7 +1234,7 @@ def run_full_pipeline(args, context: dict, checks: list[CheckResult]) -> dict:
     except DemoAPIError as exc:
         checks.append(CheckResult("full: tree nodes", FAIL, str(exc), "check backend health"))
 
-    # Final Stepik message -------------------------------------------------- #
+    # Final research message -------------------------------------------------- #
     try:
         messages = _messages(client, run_id)
         summary["messages"] = len(messages)
@@ -1249,34 +1249,13 @@ def run_full_pipeline(args, context: dict, checks: list[CheckResult]) -> dict:
                     "check logs/app.log; a backend restart drops the in-memory chat session",
                 )
             )
-        elif "stepik" in content.lower():
-            summary["final_stepik"] = True
-            checks.append(
-                CheckResult(
-                    "full: final message",
-                    PASS,
-                    f"last agent message contains Stepik course links ({len(content)} characters)",
-                )
-            )
-        elif profession_has_stepik_courses(args.profession):
-            checks.append(
-                CheckResult(
-                    "full: final message",
-                    FAIL,
-                    "the final agent message has no Stepik links",
-                    "the closing message must list Stepik courses for supported professions; check logs/app.log",
-                )
-            )
         else:
-            checks.append(
-                CheckResult(
-                    "full: final message",
-                    WARN,
-                    f"the final agent message is a closing message, but profession {args.profession!r} "
-                    "is outside the Stepik course catalogue",
-                    "the scripted demo uses Data Analyst; use --profession 'Data Analyst' for the Stepik check",
-                )
-            )
+            summary["final_message"] = "Интервью завершено" in content and "Дерево" in content
+            checks.append(CheckResult(
+                "full: final message",
+                PASS if summary["final_message"] else FAIL,
+                "research closing message found" if summary["final_message"] else "research closing message missing",
+            ))
     except (DemoAPIError, PipelineError) as exc:
         checks.append(
             CheckResult(
@@ -1347,7 +1326,7 @@ def run_full_pipeline(args, context: dict, checks: list[CheckResult]) -> dict:
         args,
         f"Demo run {run_id} finished: status={summary['status']}, tree_nodes={summary['tree_nodes']}, "
         f"snapshots={summary['snapshots']}, conflicts={summary['conflicts']}, "
-        f"stepik_message={summary['final_stepik']}, elapsed={format_duration(elapsed)}",
+        f"closing_message={summary['final_message']}, elapsed={format_duration(elapsed)}",
     )
     return summary
 
@@ -1418,7 +1397,7 @@ def render_human(checks: list[CheckResult], mode: str, args, pipeline: dict | No
         print(
             f"DEMO RUN (kept as backup): {pipeline['run_id']} | status={pipeline.get('status')} | "
             f"tree_nodes={pipeline.get('tree_nodes')} | snapshots={pipeline.get('snapshots')} | "
-            f"stepik_message={pipeline.get('final_stepik')} | elapsed={format_duration(pipeline.get('elapsed_s') or 0)}"
+            f"closing_message={pipeline.get('final_message')} | elapsed={format_duration(pipeline.get('elapsed_s') or 0)}"
         )
     print(f"total time: {format_duration(elapsed_s)}")
     print(

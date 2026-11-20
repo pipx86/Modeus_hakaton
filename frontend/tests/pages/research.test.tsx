@@ -649,20 +649,14 @@ describe("Research", () => {
     ).toBeInTheDocument()
   })
 
-  it("копирует ссылку для просмотра", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
-    })
-    stubRun()
-
+  it("предлагает локальный экспорт дерева и печать", async () => {
+    stubRun({ tree: [{ id: "role", type: "role", title: "Аналитик", evidence: [] }] })
     renderPage()
     await screen.findByRole("heading", { name: "Data Scientist" })
-    fireEvent.click(screen.getByRole("button", { name: "Поделиться ссылкой" }))
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
-    expect(writeText.mock.calls[0][0]).toContain("/research/7?view=readonly")
+    expect(screen.queryByRole("button", { name: "Поделиться ссылкой" })).not.toBeInTheDocument()
+    act(() => screen.getByRole("tab", { name: "Дерево" }).focus())
+    expect(await screen.findByRole("button", { name: "Скачать JSON" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Скачать Markdown" })).toBeInTheDocument()
   })
 
   it("вызывает печать страницы", async () => {

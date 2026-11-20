@@ -64,7 +64,7 @@ func sameChatMessage(a, b chat.Message) bool {
 }
 
 // TestChatHistorySurvivesRestart is the end-to-end check for durable chat: a
-// real PostgreSQL keeps the greeting, questions, answers and the final courses
+// real PostgreSQL keeps the greeting, questions, answers and the final research
 // message, and a fresh chat.Service (a restarted backend) serves them through
 // the unchanged GET /api/v1/runs/{id}/messages contract.
 func TestChatHistorySurvivesRestart(t *testing.T) {
@@ -157,8 +157,8 @@ func TestChatHistorySurvivesRestart(t *testing.T) {
 	}
 	final := waitForChatMessages(t, handler, run.ID, 14)
 	last := final[len(final)-1]
-	if last.Role != "agent" || !strings.Contains(last.Content, "Интервью завершено") || !strings.Contains(last.Content, "https://stepik.org/course/300883/promo") {
-		t.Fatalf("final courses message was not persisted: %+v", last)
+	if last.Role != "agent" || !strings.Contains(last.Content, "Интервью завершено") || !strings.Contains(last.Content, "«Дерево»") {
+		t.Fatalf("final research message was not persisted: %+v", last)
 	}
 
 	// The store is idempotent per (run_id, sequence): a retried write is a no-op.

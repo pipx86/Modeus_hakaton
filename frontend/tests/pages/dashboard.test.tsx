@@ -1,8 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
+import { storeToken, clearToken } from "@/lib/auth"
 import { Dashboard } from "@/pages/Dashboard"
+
+afterEach(clearToken)
+
+function signInAdmin() {
+  storeToken(`test.${btoa(JSON.stringify({ role: "admin", sub: "admin" }))}.sig`)
+}
 
 function renderPage() {
   return render(
@@ -36,10 +43,11 @@ describe("Dashboard", () => {
     expect(screen.getByText("Frontend Developer")).toBeInTheDocument()
     expect(screen.getByText("Завершено")).toBeInTheDocument()
     expect(screen.getByText("Интервью")).toBeInTheDocument()
-    expect(screen.getByText("Активность за 14 дней")).toBeInTheDocument()
+    expect(screen.queryByText("Активность за 14 дней")).not.toBeInTheDocument()
   })
 
   it("считает количество исследований и активных", async () => {
+    signInAdmin()
     setFetchHandler(async () => ({
       status: 200,
       body: [
@@ -183,6 +191,7 @@ describe("Dashboard", () => {
   })
 
   it("форматирует среднюю длительность в минутах", async () => {
+    signInAdmin()
     setFetchHandler(async () => ({
       status: 200,
       body: [

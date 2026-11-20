@@ -13,8 +13,6 @@ import { Login } from "@/pages/login"
 import { NewResearch } from "@/pages/NewResearch"
 import { NotFound } from "@/pages/not-found"
 import { Research } from "@/pages/Research"
-import { CompareRuns } from "@/pages/CompareRuns"
-import { Forecast } from "@/pages/Forecast"
 
 function App() {
   return (
@@ -48,26 +46,6 @@ function App() {
                 <RequireAuth>
                   <ErrorBoundary key="research" variant="inline">
                     <Research />
-                  </ErrorBoundary>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="compare"
-              element={
-                <RequireAuth>
-                  <ErrorBoundary key="compare" variant="inline">
-                    <CompareRuns />
-                  </ErrorBoundary>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="forecast"
-              element={
-                <RequireAuth>
-                  <ErrorBoundary key="forecast" variant="inline">
-                    <Forecast />
                   </ErrorBoundary>
                 </RequireAuth>
               }

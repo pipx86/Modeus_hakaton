@@ -10,6 +10,7 @@ import (
 )
 
 func TestDashboardCorrelation(t *testing.T) {
+	t.Setenv("MODEUS_ENABLE_DEFERRED_API", "true")
 	store := newMemStore()
 	start := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
 	for index, nodes := range [][]domain.Node{
@@ -89,6 +90,7 @@ func TestDashboardCorrelation(t *testing.T) {
 }
 
 func TestDashboardCorrelationEmpty(t *testing.T) {
+	t.Setenv("MODEUS_ENABLE_DEFERRED_API", "true")
 	handler := NewServer(newMemStore()).Routes()
 	recorder := do(t, handler, http.MethodGet, "/api/v1/dashboard/correlation", "admin", "")
 	if recorder.Code != http.StatusOK {

@@ -17,6 +17,9 @@ export function treeToMarkdown(nodes: ActivityNode[]): string {
     const evidence = (node.evidence ?? []).length
     const suffix = evidence > 0 ? ` - обоснований: ${evidence}` : ""
     lines.push(`${shift}- ${node.title} _(${NODE_TYPE_LABELS[node.type]})_${suffix}`)
+    for (const item of node.evidence ?? []) {
+      lines.push(`${shift}  > ${item.quote.replace(/\r?\n/g, "\n" + shift + "  > ")} (${item.source_id})`)
+    }
     node.children.forEach((child) => walk(child, depth + 1))
   }
   buildTree(nodes).forEach((root) => walk(root, 0))
@@ -30,6 +33,8 @@ export function treeToJson(nodes: ActivityNode[]): string {
     type: node.type,
     title: node.title,
     evidence: (node.evidence ?? []).length,
+    description: node.description,
+    evidence_details: node.evidence ?? [],
     zun: node.zun ?? null,
     children: node.children.map(walk),
   })

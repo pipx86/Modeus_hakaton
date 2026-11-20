@@ -237,8 +237,6 @@ interface RowProps {
   onShowZun: (node: TreeNode) => void
   provenance?: ProvenanceInfo
   flags?: TreeFlag[]
-  heat?: { score: number; matches: string[] }
-  heatLevel?: number
   readOnly?: boolean
 }
 
@@ -267,8 +265,6 @@ const Row = memo(function Row({
   onShowZun,
   provenance,
   flags,
-  heat,
-  heatLevel = 0,
   readOnly = false,
 }: RowProps) {
   const evidenceCount = (node.evidence ?? []).length
@@ -287,14 +283,6 @@ const Row = memo(function Row({
       aria-expanded={hasChildren ? isOpen : undefined}
       className={`tree-node-enter group relative flex h-11 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-muted/50 ${
         selected ? "bg-muted/70 ring-1 ring-border" : ""
-      } ${
-        heatLevel === 3
-          ? "bg-warning/15"
-          : heatLevel === 2
-            ? "bg-warning/10"
-            : heatLevel === 1
-              ? "bg-warning/5"
-              : ""
       }`}
       style={{ paddingLeft: Math.min(depth * 24, 96), animationDelay: `${Math.min(depth, 6) * 45}ms` }}
     >
@@ -356,14 +344,6 @@ const Row = memo(function Row({
           >
             <AlertTriangleIcon className="size-3.5" />
             {flags.length}
-          </span>
-        )}
-        {heat && heat.score > 0 && (
-          <span
-            className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
-            title={`Рынок: ${heat.matches.join(", ")} (${heat.score})`}
-          >
-            рынок ×{heat.score}
           </span>
         )}
         {evidenceCount > 0 && (
@@ -431,7 +411,7 @@ export interface ActivityTreeProps {
   sourcesById?: Map<string, Source>
   /** Перейти к цитате в интервью (вкладка чата и подсветка сообщения). */
   onShowTranscript?: (item: Evidence, source?: Source) => void
-  /** Серверные инсайты: здоровье дерева, провенанс, флаги, рынок и объяснения узлов. */
+  /** Серверные инсайты: здоровье дерева, происхождение данных, флаги и объяснения узлов. */
   insights?: Insights | null
   /** Просмотр без изменений (режим ?view=readonly). */
   readOnly?: boolean
@@ -489,8 +469,6 @@ export function ActivityTree({
     }
     return map
   }, [insights, nodes, sourcesById])
-  const heatByNode = insights?.market_heat?.nodes ?? {}
-  const maxHeat = Object.values(heatByNode).reduce((max, item) => Math.max(max, item.score), 0)
   const [healthOpen, setHealthOpen] = useState(false)
   const provenanceForNode = (node: TreeNode): ProvenanceInfo => {
     const server = insights?.provenance?.nodes?.[node.id]
@@ -761,15 +739,17 @@ export function ActivityTree({
         >
           С обоснованиями
         </Button>
-        <Button
-          variant={onlyWithZun ? "secondary" : "outline"}
-          size="sm"
-          aria-pressed={onlyWithZun}
-          onClick={() => setOnlyWithZun((value) => !value)}
-          className="h-7 px-2.5 text-xs"
-        >
-          С ЗУН
-        </Button>
+        {nodes.some((node) => node.zun) && (
+          <Button
+            variant={onlyWithZun ? "secondary" : "outline"}
+            size="sm"
+            aria-pressed={onlyWithZun}
+            onClick={() => setOnlyWithZun((value) => !value)}
+            className="h-7 px-2.5 text-xs"
+          >
+            С ЗУН
+          </Button>
+        )}
         {!readOnly && (
           <Button
             variant={onlyProblem ? "secondary" : "outline"}
@@ -802,28 +782,6 @@ export function ActivityTree({
             : `Узлов: ${nodes.length}`}
         </span>
       </div>
-      {!readOnly && insights && (insights.market_heat?.top?.length ?? 0) > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>Тепло рынка:</span>
-          {insights.market_heat.top.slice(0, 10).map((item) => (
-            <span
-              key={item.skill}
-              className="rounded-full bg-warning/10 px-2 py-0.5 text-warning"
-              title={`${item.skill}: ${item.frequency}`}
-            >
-              {item.skill} · {item.frequency}
-            </span>
-          ))}
-          <span className="inline-flex items-center gap-1">
-            реже
-            <span className="h-1.5 w-12 rounded-full bg-gradient-to-r from-warning/10 to-warning" />
-            чаще
-          </span>
-          {insights.market_heat.source === "vacancy_sources" && insights.market_heat.sample_size ? (
-            <span>· по {insights.market_heat.sample_size} источникам</span>
-          ) : null}
-        </div>
-      )}
     </div>
   )
 
@@ -860,9 +818,6 @@ export function ActivityTree({
       >
         {start > 0 && <div style={{ height: start * ROW_HEIGHT }} aria-hidden />}
         {rows.slice(start, end).map((row, index) => {
-          const heat = heatByNode[row.node.id]
-          const heatLevel =
-            heat && maxHeat > 0 ? Math.max(1, Math.ceil((heat.score / maxHeat) * 3)) : 0
           return (
             <Row
               key={row.node.id}
@@ -881,8 +836,6 @@ export function ActivityTree({
               onShowZun={setZunNode}
               provenance={provenanceForNode(row.node)}
               flags={readOnly ? undefined : flagsByNode.get(row.node.id)}
-              heat={readOnly ? undefined : heat}
-              heatLevel={readOnly ? undefined : heatLevel}
               readOnly={readOnly}
             />
           )
@@ -937,30 +890,21 @@ export function ActivityTree({
               )}
             </div>
           )}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                if (!selected) return
-                const url = `${window.location.origin}${window.location.pathname}?node=${selected.id}`
-                void navigator.clipboard?.writeText(url)
-                toast.success("Ссылка на узел скопирована")
-              }}
-            >
-              Скопировать ссылку
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const node = selected
-                setSelected(null)
-                if (node) onAttach(node)
-              }}
-            >
-              <PlusIcon className="size-4" />
-              Добавить обоснование
-            </Button>
-          </div>
+          {!readOnly && (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const node = selected
+                  setSelected(null)
+                  if (node) onAttach(node)
+                }}
+              >
+                <PlusIcon className="size-4" />
+                Добавить обоснование
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

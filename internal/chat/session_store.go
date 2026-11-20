@@ -39,6 +39,7 @@ type SessionSnapshot struct {
 	Profession    string               `json:"profession"`
 	PromptVersion string               `json:"prompt_version,omitempty"`
 	Status        SessionStatus        `json:"status"`
+	Learning      bool                 `json:"learning,omitempty"`
 	FinalStatus   domain.RunStatus     `json:"final_status,omitempty"`
 	Interviewer   interviewer.Snapshot `json:"interviewer"`
 
