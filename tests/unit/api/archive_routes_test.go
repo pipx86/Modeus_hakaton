@@ -48,7 +48,6 @@ func TestDeferredRoutesAreDisabledByDefault(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/forecast/top",
 		"/api/v1/vacancies/stats/analytics",
-		"/api/v1/runs/run-1/compare?against=run-2",
 		"/api/v1/runs/run-1/zun/suggestions",
 	} {
 		if response := callAPI(handler, http.MethodGet, path, admin, nil); response.Code != http.StatusNotFound {

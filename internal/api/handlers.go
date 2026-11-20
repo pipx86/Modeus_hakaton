@@ -213,7 +213,6 @@ func (s *Server) Routes() http.Handler {
 		mux.HandleFunc("GET /api/v1/forecast/engine", s.handleSkillForecastStatus)
 		mux.HandleFunc("GET /api/v1/forecast/{skill}", s.handleSkillForecast)
 		mux.HandleFunc("GET /api/v1/vacancies/stats/analytics", s.handleVacancyAnalytics)
-		mux.HandleFunc("GET /api/v1/runs/{id}/compare", s.handleCompareRuns)
 		mux.HandleFunc("GET /api/v1/runs/{id}/zun/suggestions", s.handleZunSuggestions)
 		mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/apply", s.handleApplyZunSuggestion)
 		mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/reject", s.handleRejectZunSuggestion)
