@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label"
 import {
   ApiRequestError,
   apiClient,
+  importHHProfile,
+  importResume,
   type RunEstimate,
 } from "@/lib/api/client"
 import { stripControlChars } from "@/lib/security"
@@ -72,6 +74,11 @@ export function NewResearch() {
   const navigate = useNavigate()
   const [profession, setProfession] = useState("")
   const [githubUsername, setGithubUsername] = useState("")
+  const [githubConsent, setGithubConsent] = useState(true)
+  const [profileContext, setProfileContext] = useState("")
+  const [profileLabel, setProfileLabel] = useState("")
+  const [hhURL, setHhURL] = useState("")
+  const [profileLoading, setProfileLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [estimate, setEstimate] = useState<RunEstimate | null>(null)
@@ -98,6 +105,40 @@ export function NewResearch() {
   })
 
   const canSubmit = !professionError && !submitting
+
+  const uploadResume = async (file: File | undefined) => {
+    if (!file) return
+    setProfileLoading(true)
+    try {
+      const imported = await importResume(file)
+      setProfileContext(imported.text)
+      setProfileLabel(imported.filename ? `Резюме: ${imported.filename}` : "Резюме загружено")
+      toast.success("Резюме загружено")
+    } catch (cause) {
+      toast.error("Не удалось прочитать резюме", {
+        description: cause instanceof Error ? cause.message : "Проверьте формат PDF/DOCX.",
+      })
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
+  const loadHHProfile = async () => {
+    if (!hhURL.trim()) return
+    setProfileLoading(true)
+    try {
+      const imported = await importHHProfile(hhURL.trim())
+      setProfileContext(imported.text)
+      setProfileLabel(imported.title ? `HH: ${imported.title}` : "Профиль HH загружен")
+      toast.success("Профиль HH загружен")
+    } catch (cause) {
+      toast.error("Не удалось загрузить профиль HH", {
+        description: cause instanceof Error ? cause.message : "Проверьте ссылку на резюме.",
+      })
+    } finally {
+      setProfileLoading(false)
+    }
+  }
 
   useEffect(() => {
     const value = profession.trim()
@@ -143,6 +184,8 @@ export function NewResearch() {
             profession: stripControlChars(profession).trim(),
             type: "learning",
             github_username: stripControlChars(githubUsername).trim() || undefined,
+            github_consent: githubConsent,
+            profile_context: profileContext || undefined,
           },
         })
         if (runError) {
@@ -159,6 +202,8 @@ export function NewResearch() {
           profession: stripControlChars(profession).trim(),
           type: "chat",
           github_username: stripControlChars(githubUsername).trim() || undefined,
+          github_consent: githubConsent,
+          profile_context: profileContext || undefined,
         },
       })
       if (runError) {
@@ -302,6 +347,44 @@ export function NewResearch() {
                 <p className="text-xs text-muted-foreground">
                   Публичные проекты помогут агенту точнее спросить о ваших навыках. Данные используются только для интервью.
                 </p>
+                {githubUsername.trim() && (
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-3.5 accent-primary"
+                      checked={githubConsent}
+                      onChange={(event) => setGithubConsent(event.target.checked)}
+                      disabled={submitting}
+                    />
+                    <span>Разрешаю использовать публичный GitHub-профиль для этого интервью.</span>
+                  </label>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="resume-file">Резюме PDF/DOCX или профиль HH (необязательно)</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    id="resume-file"
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md"
+                    className="max-w-xs"
+                    onChange={(event) => void uploadResume(event.target.files?.[0])}
+                    disabled={submitting || profileLoading}
+                  />
+                  <span className="text-xs text-muted-foreground">или</span>
+                  <Input
+                    value={hhURL}
+                    onChange={(event) => setHhURL(event.target.value)}
+                    placeholder="https://hh.ru/resume/..."
+                    className="max-w-xs"
+                    disabled={submitting || profileLoading}
+                  />
+                  <Button type="button" variant="outline" onClick={() => void loadHHProfile()} disabled={!hhURL.trim() || profileLoading}>
+                    {profileLoading ? "Загружаем..." : "Загрузить HH"}
+                  </Button>
+                </div>
+                {profileLabel && <p className="text-xs text-muted-foreground">{profileLabel}</p>}
               </div>
 
               <div className="space-y-2">

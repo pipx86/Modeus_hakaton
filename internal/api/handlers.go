@@ -36,6 +36,10 @@ type profileContextChat interface {
 	SetProfileContext(runID, context string)
 }
 
+type profileSkillsChat interface {
+	SetProfileSkills(runID string, skills []string)
+}
+
 type Server struct {
 	importFiles  ingestion.ImportFiles
 	store        Store
@@ -167,6 +171,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/runs/{id}", s.handleDeleteRun)
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
+	mux.HandleFunc("GET /api/v1/runs/{id}/interview-progress", s.handleInterviewProgress)
+	mux.HandleFunc("POST /api/v1/profile/resume", s.handleImportResume)
+	mux.HandleFunc("POST /api/v1/profile/hh", s.handleImportHHProfile)
+	mux.HandleFunc("POST /api/v1/runs/{id}/attachments", s.handleInterviewAttachment)
 	mux.HandleFunc("POST /api/v1/github/evaluate", s.handleEvaluateGitHub)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
@@ -208,6 +216,12 @@ type createRunRequest struct {
 	// GitHubUsername optionally adds public repositories to a chat or learning
 	// interview. The interviewer uses the skills to ask better questions.
 	GitHubUsername string `json:"github_username,omitempty"`
+	// GitHubConsent is an explicit opt-in for using the public GitHub profile.
+	// Nil keeps backward-compatible behaviour (allowed when a username is set).
+	GitHubConsent *bool `json:"github_consent,omitempty"`
+	// ProfileContext is optional resume or HH profile text used to personalise
+	// the interview. It is reference data, not interview evidence.
+	ProfileContext string `json:"profile_context,omitempty"`
 }
 
 type errorBody struct {
@@ -254,6 +268,15 @@ func (s *Server) setProfileContext(runID, context string) {
 	}
 	if setter, ok := s.chat.(profileContextChat); ok {
 		setter.SetProfileContext(runID, context)
+	}
+}
+
+func (s *Server) setProfileSkills(runID string, skills []string) {
+	if len(skills) == 0 || s.chat == nil {
+		return
+	}
+	if setter, ok := s.chat.(profileSkillsChat); ok {
+		setter.SetProfileSkills(runID, skills)
 	}
 }
 
@@ -321,8 +344,10 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	githubContext := ""
+	githubSkills := []string(nil)
 	githubUsername := strings.TrimSpace(req.GitHubUsername)
-	if githubUsername != "" && (runType == domain.RunTypeChat || runType == domain.RunTypeLearning) {
+	githubAllowed := req.GitHubConsent == nil || *req.GitHubConsent
+	if githubUsername != "" && githubAllowed && (runType == domain.RunTypeChat || runType == domain.RunTypeLearning) {
 		if s.github == nil {
 			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "оценка GitHub не настроена")
 			return
@@ -342,6 +367,15 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		githubContext = githubprofile.Context(assessment)
+		githubSkills = assessment.Skills
+	}
+	if profile := strings.TrimSpace(req.ProfileContext); profile != "" {
+		profile = truncateProfileText(profile, 12000)
+		if githubContext != "" {
+			githubContext = githubContext + "\n\n" + profile
+		} else {
+			githubContext = profile
+		}
 	}
 
 	var run *domain.Run
@@ -386,6 +420,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		}
 		run.Stage = domain.StageInterview
 		s.setProfileContext(run.ID, githubContext)
+		s.setProfileSkills(run.ID, githubSkills)
 		if err := s.chat.Start(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("chat_start_failed", "run_id", run.ID, "error", err)
@@ -427,6 +462,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		}
 		run.Stage = domain.StageInterview
 		s.setProfileContext(run.ID, githubContext)
+		s.setProfileSkills(run.ID, githubSkills)
 		if err := starter.StartLearning(run.ID, run.Profession); err != nil {
 			_ = s.store.SetStage(run.ID, domain.StageFailed)
 			logging.Logger.Error("learning_chat_start_failed", "run_id", run.ID, "error", err)

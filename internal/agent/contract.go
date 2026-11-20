@@ -110,7 +110,12 @@ type InterviewerInput struct {
 	MaxQuestions      int                  `json:"max_questions,omitempty"`
 	// ProfileContext is public GitHub project data supplied by the respondent.
 	// It is reference data, not an interview answer.
-	ProfileContext string `json:"profile_context,omitempty"`
+	ProfileContext  string   `json:"profile_context,omitempty"`
+	ProfileSkills   []string `json:"profile_skills,omitempty"`
+	LastQuality     int      `json:"last_quality,omitempty"`
+	UncoveredTopics []string `json:"uncovered_topics,omitempty"`
+	Contradictions  []string `json:"contradictions,omitempty"`
+	TopicTemplate   []string `json:"topic_template,omitempty"`
 	// Learning switches the interviewer from an expert activity interview to
 	// a beginner learning interview: first find out what the person can do.
 	Learning bool `json:"learning,omitempty"`

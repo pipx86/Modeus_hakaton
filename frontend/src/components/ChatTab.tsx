@@ -4,17 +4,21 @@
  */
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
+import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { type Run, type RunStatus } from "@/lib/api/client"
+import { getInterviewProgress, type InterviewProgress, attachInterviewEvidence } from "@/lib/api/client"
 import { downloadText } from "@/lib/export-tree"
 import { chatTranscriptToMarkdown } from "@/lib/export-chat"
 import { useChatStream } from "@/hooks/use-chat-stream"
+import { toast } from "sonner"
 import {
   DownloadIcon,
   InfoIcon,
   Loader2Icon,
+  PaperclipIcon,
   RefreshCwIcon,
   SendIcon,
   WifiOffIcon,
@@ -81,7 +85,25 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
   } = useChatStream({ runId, active, runStatus, stage })
   const bottomRef = useRef<HTMLDivElement>(null)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const [progress, setProgress] = useState<InterviewProgress | null>(null)
+  const [attaching, setAttaching] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
   const appliedFocus = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    void getInterviewProgress(runId)
+      .then((value) => {
+        if (!cancelled) setProgress(value)
+      })
+      .catch(() => {
+        if (!cancelled) setProgress(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [active, runId, messages.length])
 
   const renderContent = (message: (typeof messages)[number]) => {
     if (highlightedId !== message.id || !focus?.quote) return linkify(message.content)
@@ -132,6 +154,23 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
     }
   }
 
+  const attachFile = async (file: File | undefined) => {
+    if (!file) return
+    setAttaching(true)
+    try {
+      await attachInterviewEvidence(runId, file)
+      await retry()
+      toast.success("Доказательство добавлено в интервью")
+    } catch (cause) {
+      toast.error("Не удалось прикрепить файл", {
+        description: cause instanceof Error ? cause.message : "Поддерживаются PDF, DOCX, TXT и MD.",
+      })
+    } finally {
+      setAttaching(false)
+      if (fileInput.current) fileInput.current.value = ""
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -156,6 +195,42 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
 
   return (
     <div className="space-y-3">
+      {progress && (
+        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-medium">
+              Вопросы: {progress.asked} из {progress.total}
+            </span>
+            <span className="text-muted-foreground">Осталось: {progress.remaining}</span>
+            {progress.average_quality > 0 && (
+              <span className="text-muted-foreground">Качество ответов: {progress.average_quality}/100</span>
+            )}
+          </div>
+          {progress.uncovered_topics?.length > 0 && (
+            <p className="mt-1 text-muted-foreground">
+              Не затронуты: <span className="text-foreground">{progress.uncovered_topics.join(", ")}</span>
+            </p>
+          )}
+          {progress.contradictions && progress.contradictions.length > 0 && (
+            <p className="mt-1 text-warning">
+              Расхождение с GitHub: {progress.contradictions.join(", ")}. Агент уточнит это в следующем вопросе.
+            </p>
+          )}
+        </div>
+      )}
+      {loadError && messages.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
+          <InfoIcon className="size-3.5 shrink-0" />
+          <span>Интервью было прервано. История сохранена, можно продолжить с последнего вопроса.</span>
+          <Button variant="outline" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={() => void retry()}>
+            <RefreshCwIcon className="size-3" />
+            Продолжить
+          </Button>
+          <Link className="text-xs underline underline-offset-2" to="/research/new">
+            Новое интервью
+          </Link>
+        </div>
+      )}
       {runStatus === "failed" || runStatus === "degraded" ? (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive">
           <WifiOffIcon className="size-3.5 shrink-0" />
@@ -271,6 +346,25 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
         </p>
       ) : (
       <div className="flex items-end gap-2">
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".pdf,.docx,.txt,.md"
+          className="hidden"
+          onChange={(event) => void attachFile(event.target.files?.[0])}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          onClick={() => fileInput.current?.click()}
+          disabled={attaching || chatClosed}
+          aria-label="Прикрепить доказательство"
+          title="Прикрепить доказательство: PDF, DOCX, TXT или MD"
+        >
+          {attaching ? <Loader2Icon className="size-4 animate-spin" /> : <PaperclipIcon className="size-4" />}
+        </Button>
         <Textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

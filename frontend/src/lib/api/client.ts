@@ -331,6 +331,53 @@ export async function evaluateGitHub(username: string, profession: string): Prom
   })
 }
 
+export interface InterviewProgress {
+  asked: number
+  total: number
+  remaining: number
+  average_quality: number
+  last_quality: number
+  covered_topics: string[]
+  uncovered_topics: string[]
+  contradictions?: string[]
+}
+
+/** Возвращает живой прогресс активного интервью. */
+export async function getInterviewProgress(runId: string): Promise<InterviewProgress> {
+  return requestApi<InterviewProgress>(`/runs/${encodeURIComponent(runId)}/interview-progress`)
+}
+
+export interface ProfileImport {
+  source: string
+  filename?: string
+  url?: string
+  title?: string
+  text: string
+}
+
+/** Извлекает текст резюме PDF/DOCX для персонализации интервью. */
+export async function importResume(file: File): Promise<ProfileImport> {
+  const body = new FormData()
+  body.append("file", file)
+  return requestApi<ProfileImport>("/profile/resume", { method: "POST", body })
+}
+
+/** Загружает публичный профиль HH по ссылке на резюме. */
+export async function importHHProfile(url: string): Promise<ProfileImport> {
+  return requestApi<ProfileImport>("/profile/hh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  })
+}
+
+/** Прикрепляет файл-доказательство к текущему ответу интервью. */
+export async function attachInterviewEvidence(runId: string, file: File): Promise<void> {
+  const body = new FormData()
+  body.append("file", file)
+  await requestApi(`/runs/${encodeURIComponent(runId)}/attachments`, { method: "POST", body })
+}
+
 /**
  * Сравнивает `head` (новый снимок, id в пути) с `base` (параметр `against`).
  * Порядок аргументов совпадает с контрактом бэкенда: head, затем base.

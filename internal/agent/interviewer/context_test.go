@@ -16,11 +16,11 @@ func TestBuildMessagesAddsSourceContextInstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 4 {
-		t.Fatalf("messages = %d, want 4", len(messages))
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3", len(messages))
 	}
-	if !strings.Contains(messages[3].Content, "справочные данные") {
-		t.Fatalf("source context instruction missing: %q", messages[3].Content)
+	if !strings.Contains(messages[2].Content, "справочные данные") {
+		t.Fatalf("source context instruction missing: %q", messages[2].Content)
 	}
 }
 
@@ -31,12 +31,12 @@ func TestBuildMessagesAddsProfileContextInstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 4 {
-		t.Fatalf("messages = %d, want 4", len(messages))
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3", len(messages))
 	}
-	if !strings.Contains(messages[3].Content, "profile_context") ||
-		!strings.Contains(messages[3].Content, "не ответ интервью") {
-		t.Fatalf("profile context instruction missing: %q", messages[3].Content)
+	if !strings.Contains(messages[2].Content, "profile_context") ||
+		!strings.Contains(messages[2].Content, "не ответ интервью") {
+		t.Fatalf("profile context instruction missing: %q", messages[2].Content)
 	}
 }
 

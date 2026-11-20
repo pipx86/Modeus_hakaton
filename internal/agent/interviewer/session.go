@@ -68,6 +68,15 @@ func (s *Session) SetProfileContext(context string) {
 	s.state.ProfileContext = strings.TrimSpace(context)
 }
 
+// SetProfileSkills stores the skills confirmed by the public GitHub profile so
+// the interviewer can notice contradictions and ask about them.
+func (s *Session) SetProfileSkills(skills []string) {
+	if s == nil {
+		return
+	}
+	s.state.ProfileSkills = append([]string(nil), skills...)
+}
+
 // NewSession starts an interview session for respondent. id must be unique.
 func NewSession(agentInstance *Agent, id string, respondent domain.Respondent) (*Session, error) {
 	if agentInstance == nil {
@@ -123,6 +132,7 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 
 	level := s.plan[len(s.state.Questions)]
 	clarify := s.needsClarification()
+	progress := s.Progress()
 	in := agent.InterviewerInput{
 		SessionID:         s.state.ID,
 		Respondent:        s.state.Respondent,
@@ -134,6 +144,11 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 		NeedClarification: clarify,
 		MaxQuestions:      len(s.plan),
 		ProfileContext:    s.state.ProfileContext,
+		ProfileSkills:     append([]string(nil), s.state.ProfileSkills...),
+		LastQuality:       progress.LastQuality,
+		UncoveredTopics:   progress.UncoveredTopics,
+		Contradictions:    progress.Contradictions,
+		TopicTemplate:     TemplateFor(s.state.Profession).Topics,
 		Learning:          s.learning,
 	}
 
@@ -161,10 +176,26 @@ func (s *Session) Answer(text string) error {
 		return ErrNoOpenQuestion
 	}
 	lastQuestion := s.state.Questions[len(s.state.Questions)-1]
+	quality, notes := ScoreAnswer(text)
+	contradictions := Contradictions(s.state.ProfileSkills, text)
+	for _, skill := range contradictions {
+		found := false
+		for _, existing := range s.state.Contradictions {
+			if existing == skill {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.state.Contradictions = append(s.state.Contradictions, skill)
+		}
+	}
 	s.state.Answers = append(s.state.Answers, domain.Answer{
-		QuestionID: lastQuestion.ID,
-		Text:       text,
-		Vague:      IsVague(text),
+		QuestionID:   lastQuestion.ID,
+		Text:         text,
+		Vague:        IsVague(text),
+		Quality:      quality.Total,
+		QualityNotes: notes,
 	})
 	if s.state.Status == domain.SessionPending {
 		s.state.Status = domain.SessionInProgress

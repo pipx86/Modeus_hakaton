@@ -223,6 +223,7 @@ func run(ctx context.Context, c config) error {
 		}
 	})
 	chatService.SetPromptVersion(interviewerVersion)
+	chatService.SetPromptVersionB(os.Getenv("INTERVIEWER_PROMPT_VERSION_B"))
 	chatService.SetSourceContextLoader(newInterviewSourceContext(pgStore, vacancyReader))
 	// Persist the dialog and the interviewer session cursor, so chat history
 	// survives restarts and an active interview resumes instead of hanging.
