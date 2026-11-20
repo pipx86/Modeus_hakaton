@@ -41,7 +41,28 @@ func TestArchiveReadinessIsPublicAndChecksSchema(t *testing.T) {
 	}
 }
 
+func TestDeferredRoutesAreDisabledByDefault(t *testing.T) {
+	t.Setenv("MODEUS_ENABLE_DEFERRED_API", "")
+	handler := api.NewServerForDemo().Routes()
+	admin := testToken(t, auth.RoleAdmin)
+	for _, path := range []string{
+		"/api/v1/forecast/top",
+		"/api/v1/vacancies/stats/analytics",
+		"/api/v1/runs/run-1/compare?against=run-2",
+		"/api/v1/runs/run-1/zun/suggestions",
+	} {
+		if response := callAPI(handler, http.MethodGet, path, admin, nil); response.Code != http.StatusNotFound {
+			t.Errorf("%s returned %d, want 404", path, response.Code)
+		}
+	}
+	response := callAPI(handler, http.MethodPost, "/api/v1/runs", admin, []byte(`{"profession":"Аналитик","type":"learning"}`))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "RUN_TYPE_DISABLED") {
+		t.Errorf("learning request returned %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestArchiveEndpointsValidateParametersBeforeSQL(t *testing.T) {
+	t.Setenv("MODEUS_ENABLE_DEFERRED_API", "true")
 	_, state := testPostgresAPI(t)
 	handler := api.NewServer(state).Routes()
 	admin := testToken(t, auth.RoleAdmin)

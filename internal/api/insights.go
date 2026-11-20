@@ -124,21 +124,29 @@ func (s *Server) loadRunInsights(ctx context.Context, reader insightsReader, run
 	if err != nil {
 		return analysis.Insights{}, err
 	}
+	market := analysis.MarketInput{}
+	if s.deferredAPI {
+		market = marketInputForRun(ctx, reader, run)
+	}
+	insights := analysis.BuildInsightsWithMarket(nodes, sources, market)
+	insights.RunID = run.ID
+	return insights, nil
+}
+
+func marketInputForRun(ctx context.Context, reader insightsReader, run *domain.Run) analysis.MarketInput {
 	market := analysis.MarketInput{SkillFreq: run.SkillFreq}
 	if !insightHasUsableSkillFreq(run.SkillFreq) {
 		if contentReader, ok := reader.(runSourceContentReader); ok {
-			contents, contentErr := contentReader.ListRunSourceContents(ctx, runID)
+			contents, contentErr := contentReader.ListRunSourceContents(ctx, run.ID)
 			if contentErr != nil {
-				logging.L().Warn("run_insights_source_contents_failed", "run_id", runID, "error", contentErr)
+				logging.L().Warn("run_insights_source_contents_failed", "run_id", run.ID, "error", contentErr)
 			} else if fallbackFreq, sampleSize := analysis.MarketSkillFrequencyFromSources(contents); sampleSize > 0 && len(fallbackFreq) > 0 {
 				market.FallbackFreq = fallbackFreq
 				market.FallbackSampleSize = sampleSize
 			}
 		}
 	}
-	insights := analysis.BuildInsightsWithMarket(nodes, sources, market)
-	insights.RunID = run.ID
-	return insights, nil
+	return market
 }
 
 // insightHasUsableSkillFreq reports whether the run skill-frequency map contains

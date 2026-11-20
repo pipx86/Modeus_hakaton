@@ -173,12 +173,7 @@ function finalizeRun(runId) {
   }
   const role = { id: nextId("node"), type: "role", title: run.profession, evidence: [] }
   const f1 = { id: nextId("node"), type: "function", title: "Основная деятельность", parent_id: role.id, evidence: [makeEvidence(0)] }
-  const f2 = { id: nextId("node"), type: "function", title: "Коммуникация и согласования", parent_id: role.id, evidence: [makeEvidence(1)],
-      zun: {
-        knowledge: ["Регламент операции"],
-        skills: ["Работа по инструкции"],
-        abilities: ["Аккуратность"],
-      } }
+  const f2 = { id: nextId("node"), type: "function", title: "Коммуникация и согласования", parent_id: role.id, evidence: [makeEvidence(1)] }
   const t1 = { id: nextId("node"), type: "task", title: "Ежедневные операции", parent_id: f1.id, evidence: [makeEvidence(0)] }
   const a1 = { id: nextId("node"), type: "action", title: "Выполняет типовую операцию", parent_id: t1.id, evidence: [makeEvidence(1)] }
   db.trees.set(runId, [role, f1, f2, t1, a1])
@@ -259,11 +254,13 @@ const server = createServer(async (req, res) => {
     }
     if (method === "POST" && route === "/runs") {
       const body = await readJson(req)
+      if (body.type === "learning") return validation(res, "Создание новых планов обучения отключено")
       if (typeof body.profession !== "string" || body.profession.trim().length === 0) {
         return validation(res, "profession: обязательное поле")
       }
       const run = {
         id: nextId("run"),
+        type: body.type ?? "chat",
         status: "pending",
         profession: body.profession.trim(),
         started_at: now(),

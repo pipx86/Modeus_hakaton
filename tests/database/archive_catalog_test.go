@@ -63,6 +63,7 @@ func archiveGet(t *testing.T, h http.Handler, path string, destination any) {
 }
 
 func TestArchiveVacancyCatalogImportsAndFindsMarketFields(t *testing.T) {
+	t.Setenv("MODEUS_ENABLE_DEFERRED_API", "true")
 	pool := archivePool(t)
 	ctx := context.Background()
 	suffix := fmt.Sprint(time.Now().UnixNano())
@@ -309,6 +310,7 @@ func TestArchiveKeyedImportSurvivesServerRecreationAndRollsBack(t *testing.T) {
 }
 
 func TestArchiveSkillHistoryImportAndForecastRoutes(t *testing.T) {
+	t.Setenv("MODEUS_ENABLE_DEFERRED_API", "true")
 	pool := archivePool(t)
 	ctx := context.Background()
 	profession := fmt.Sprintf("Профессия %d", time.Now().UnixNano())

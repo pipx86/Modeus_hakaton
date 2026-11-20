@@ -318,18 +318,11 @@ describe("ActivityTree", () => {
     expect(passport).toContain("Знания:")
   })
 
-  it("копирует ссылку на узел дерева", () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+  it("открывает обоснования без кнопки отправки ссылки", () => {
     renderTree()
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }),
-    )
-    fireEvent.click(screen.getByRole("button", { name: "Скопировать ссылку" }))
-
-    expect(writeText).toHaveBeenCalledTimes(1)
-    expect(String(writeText.mock.calls[0][0])).toContain("?node=f1")
+    fireEvent.click(screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Скопировать ссылку" })).not.toBeInTheDocument()
   })
 
   it("показывает тип, приоритет и объяснение узла", () => {
@@ -374,7 +367,7 @@ describe("ActivityTree", () => {
     expect(screen.queryByText("Проверять отчёты")).not.toBeInTheDocument()
   })
 
-  it("использует серверные insights: здоровье, флаги и рынок", () => {
+  it("использует серверные insights: здоровье и флаги", () => {
     const insights = {
       run_id: "7",
       provenance: {
@@ -411,8 +404,8 @@ describe("ActivityTree", () => {
 
     expect(screen.getByText("Здоровье: 82")).toBeInTheDocument()
     expect(screen.getByText("Проблемные")).toBeInTheDocument()
-    expect(screen.getByText("рынок ×2")).toBeInTheDocument()
-    expect(screen.getByText("sql · 2")).toBeInTheDocument()
+    expect(screen.queryByText("рынок ×2")).not.toBeInTheDocument()
+    expect(screen.queryByText("sql · 2")).not.toBeInTheDocument()
     expect(screen.getByText("2 типа")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Здоровье дерева: 82 из 100" }))

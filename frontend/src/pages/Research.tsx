@@ -33,13 +33,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { ActivityTree } from "@/components/activity-tree"
-import { CorrelationMap } from "@/components/correlation-map"
 import { SnapshotReviewTab } from "@/components/snapshot-review"
 import { ConflictsTab } from "@/components/conflicts-tab"
 import { CoverageTab } from "@/components/coverage-tab"
-import { ZunSuggestionsDialog } from "@/components/zun-suggestions-dialog"
 import { LearningPlanView } from "@/components/learning-plan-view"
-import { agentLabel } from "@/lib/agent-labels"
 import { RunStageStepper } from "@/components/run-stage"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -49,14 +46,13 @@ import {
   type Evidence,
   type Insights,
   type NodeType,
-  type RunCost,
   type Source,
   type SourceType,
 } from "@/lib/api/client"
 import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
-import { buildTreeCorrelation } from "@/lib/tree-correlation"
+import { downloadText, treeToJson, treeToMarkdown } from "@/lib/export-tree"
 import {
   CheckIcon,
   EyeIcon,
@@ -65,8 +61,6 @@ import {
   NetworkIcon,
   PrinterIcon,
   SearchIcon,
-  Share2Icon,
-  SparklesIcon,
   PencilIcon,
   Trash2Icon,
   XIcon,
@@ -1061,43 +1055,12 @@ function TreeTab({
   )
   const [sourcesById, setSourcesById] = useState<Map<string, Source>>(() => new Map())
   const [insights, setInsights] = useState<Insights | null>(null)
-  const [cost, setCost] = useState<RunCost | null>(null)
-  const [zunOpen, setZunOpen] = useState(false)
-  const [zunCount, setZunCount] = useState<number | null>(null)
-  const [view, setView] = useState<"list" | "correlation">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHits, setSearchHits] = useState<
     { ref_id?: string; source_id?: string; quote: string; score: number; node_id?: string }[]
   >([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  const treeCorrelation = useMemo(() => buildTreeCorrelation(nodes), [nodes])
-
-  useEffect(() => {
-    if (!id || readOnly || nodes.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setZunCount(null)
-      return
-    }
-    let cancelled = false
-    void (async () => {
-      try {
-        const { data } = await apiClient.GET("/runs/{id}/zun/suggestions", {
-          params: { path: { id } },
-        })
-        if (!cancelled) {
-          setZunCount(
-            Array.isArray(data) ? data.filter((item) => item.can_apply).length : null,
-          )
-        }
-      } catch {
-        if (!cancelled) setZunCount(null)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [id, nodes, readOnly])
   const loadInsights = useCallback(async () => {
     try {
       const { data } = await apiClient.GET("/runs/{id}/insights", {
@@ -1143,29 +1106,6 @@ function TreeTab({
       setSearching(false)
     }
   }
-
-  useEffect(() => {
-    let cancelled = false
-    const loadCost = async () => {
-      try {
-        const { data } = await apiClient.GET("/runs/{id}/cost", { params: { path: { id } } })
-        if (!cancelled && data) setCost(data)
-      } catch {
-        // Стоимость необязательна для работы дерева.
-      }
-    }
-    void loadCost()
-    if (!active) {
-      return () => {
-        cancelled = true
-      }
-    }
-    const timer = window.setInterval(() => void loadCost(), 5000)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [id, active])
 
   useEffect(() => {
     let cancelled = false
@@ -1297,99 +1237,13 @@ function TreeTab({
 
   return (
     <>
-      {cost && cost.request_count > 0 && (
-        <div className="mb-3 space-y-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span>Запросов: {cost.request_count}</span>
-            <span>Токенов: {cost.total_tokens.toLocaleString("ru-RU")}</span>
-            {cost.duration_seconds !== null && (
-              <span>
-                Длительность: {Math.max(1, Math.round(cost.duration_seconds / 60))} мин
-              </span>
-            )}
-            <span>
-              Стоимость:{" "}
-              {cost.cost_usd === null
-                ? "неизвестна"
-                : `$${cost.cost_usd.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}`}
-            </span>
-            {cost.estimate && (
-              <span>
-                Оценка: {cost.estimate.estimated_tokens.toLocaleString("ru-RU")} токенов
-                {cost.estimate.estimated_tokens > 0 && (
-                  <>
-                    {" "}
-                    · отклонение{" "}
-                    {Math.round(
-                      ((cost.total_tokens - cost.estimate.estimated_tokens) /
-                        cost.estimate.estimated_tokens) *
-                        100,
-                    )}
-                    %
-                  </>
-                )}
-                {cost.duration_seconds !== null &&
-                  cost.estimate.estimated_duration_seconds > 0 && (
-                    <>
-                      {" "}
-                      · время{" "}
-                      {Math.round(
-                        ((cost.duration_seconds - cost.estimate.estimated_duration_seconds) /
-                          cost.estimate.estimated_duration_seconds) *
-                          100,
-                      )}
-                      %
-                    </>
-                  )}
-              </span>
-            )}
-          </div>
-          {cost.by_agent.length > 0 && (
-            <details className="border-t pt-2" open>
-              <summary className="cursor-pointer select-none text-foreground/80">
-                Детализация токенов по агентам
-              </summary>
-              <div className="mt-2 space-y-2">
-                {cost.by_agent.map((item) => (
-                  <div key={item.agent} className="space-y-0.5">
-                    <div className="flex justify-between gap-2">
-                      <span className="truncate" title={agentLabel(item.agent)}>
-                        {agentLabel(item.agent)}
-                      </span>
-                      <span>{item.total_tokens.toLocaleString("ru-RU")}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{
-                          width: `${cost.total_tokens > 0 ? (item.total_tokens / cost.total_tokens) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {cost.attribution_ambiguous && (
-                <p className="mt-2 text-warning">
-                  Атрибуция по времени может включать запросы параллельного исследования.
-                </p>
-              )}
-            </details>
-          )}
-        </div>
-      )}
       <div className="mb-3 flex justify-end gap-2" data-print-hide>
-        {!readOnly && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1 px-2.5 text-xs"
-          onClick={() => setZunOpen(true)}
-        >
-          <SparklesIcon className="size-3.5" />
-          ЗУН по исследованию{zunCount !== null ? `: ${zunCount}` : ""}
+        <Button variant="outline" size="sm" onClick={() => downloadText(`tree-${id}.json`, treeToJson(nodes), "application/json;charset=utf-8")}>
+          Скачать JSON
         </Button>
-        )}
+        <Button variant="outline" size="sm" onClick={() => downloadText(`tree-${id}.md`, treeToMarkdown(nodes), "text/markdown;charset=utf-8")}>
+          Скачать Markdown
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -1464,44 +1318,23 @@ function TreeTab({
           </ul>
         )}
       </div>
-      <div className="mb-3 inline-flex rounded-lg border p-1" data-print-hide>
-        <Button
-          type="button"
-          size="sm"
-          variant={view === "list" ? "secondary" : "ghost"}
-          className="h-7 px-2.5 text-xs"
-          onClick={() => setView("list")}
-        >
-          Список
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={view === "correlation" ? "secondary" : "ghost"}
-          className="h-7 px-2.5 text-xs"
-          onClick={() => setView("correlation")}
-        >
-          Корреляция
-        </Button>
-      </div>
-      {view === "correlation" ? (
-        <CorrelationMap data={treeCorrelation} sampleLabel="узлов" />
-      ) : (
+      <pre className="hidden whitespace-pre-wrap break-words font-sans print:block">{treeToMarkdown(nodes)}</pre>
+      <div className="print:hidden">
         <ActivityTree
-        nodes={nodes}
-        approvedIds={approvedIds}
-        statuses={statuses}
-        onApprove={approve}
-        onReject={reject}
-        onEdit={setEditing}
-        onAttach={setAttaching}
-        focusNodeId={focusNodeId}
-        sourcesById={sourcesById}
-        onShowTranscript={onShowTranscript}
-        insights={insights}
-        readOnly={readOnly}
-      />
-      )}
+          nodes={nodes}
+          approvedIds={approvedIds}
+          statuses={statuses}
+          onApprove={approve}
+          onReject={reject}
+          onEdit={setEditing}
+          onAttach={setAttaching}
+          focusNodeId={focusNodeId}
+          sourcesById={sourcesById}
+          onShowTranscript={onShowTranscript}
+          insights={insights}
+          readOnly={readOnly}
+        />
+      </div>
       <NodeEditDialog
         key={editing?.id ?? "closed"}
         node={editing}
@@ -1521,15 +1354,6 @@ function TreeTab({
           if (!open) setAttaching(null)
         }}
         onAttached={() => {
-          void load()
-        }}
-      />
-      <ZunSuggestionsDialog
-        runId={id}
-        open={zunOpen}
-        onOpenChange={setZunOpen}
-        onApplied={() => {
-          setZunCount(null)
           void load()
         }}
       />
@@ -1557,17 +1381,6 @@ export function Research() {
   const treeReadOnly = guestView || role === "user"
   const chatReadOnly = guestView
   const [chatFocus, setChatFocus] = useState<{ refId?: string; quote: string } | null>(null)
-  const copyShareLink = async () => {
-    const link = `${window.location.origin}/research/${id}?view=readonly`
-    try {
-      await navigator.clipboard.writeText(link)
-      toast.success("Ссылка для просмотра скопирована", {
-        description: "Гость увидит дерево и цитаты без права изменений.",
-      })
-    } catch {
-      toast.error("Не удалось скопировать ссылку")
-    }
-  }
   const [tab, setTab] = useState(focusNodeId ? "tree" : "sources")
   const autoChatRef = useRef(false)
   const showTranscript = useCallback(
@@ -1595,7 +1408,7 @@ export function Research() {
    * Переход из вкладки «Снимки и проверка» к узлу дерева: переключаем вкладку и
    * дублируем id узла в search-параметре `?node=`, который уже умеет читать
    * {@link ActivityTree} (раскрывает ветку и подсвечивает строку). Это же делает
-   * ссылку на узел копируемой и переживающей перезагрузку страницы.
+   * сохраняет выбранный узел при перезагрузке страницы.
    */
   const focusNode = useCallback(
     (nodeId: string) => {
@@ -1654,15 +1467,6 @@ export function Research() {
             <StatusBadge status={run?.status} />
           </span>
           <div className="ml-auto flex items-center gap-2" data-print-hide>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Поделиться ссылкой"
-              onClick={() => void copyShareLink()}
-            >
-              <Share2Icon className="size-3.5" />
-              <span className="hidden sm:inline">Поделиться</span>
-            </Button>
             <Button variant="outline" size="sm" aria-label="Печать" onClick={() => window.print()}>
               <PrinterIcon className="size-3.5" />
               <span className="hidden sm:inline">Печать</span>
@@ -1686,7 +1490,7 @@ export function Research() {
         )}
         {run?.status === "failed" && (
           <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            Исследование завершилось ошибкой. Подробности - в журнале LLM-запросов админки.
+            Исследование завершилось ошибкой.
           </p>
         )}
       </div>

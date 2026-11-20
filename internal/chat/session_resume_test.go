@@ -333,7 +333,7 @@ func TestServiceRestoresInterviewAfterRestart(t *testing.T) {
 	final := waitForStoredMessages(t, restarted, "run-restart", 14)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !contains(last.Content, "Интервью завершено") {
-		t.Fatalf("final courses message was not persisted: %+v", last)
+		t.Fatalf("final research message was not persisted: %+v", last)
 	}
 	select {
 	case status := <-finished:
@@ -450,7 +450,7 @@ func TestRecoverSessionsCompletesFinalizingSession(t *testing.T) {
 	}
 	final := waitForStoredMessages(t, service, "run-finalizing", 14)
 	last := final[len(final)-1]
-	if last.Role != "agent" || !contains(last.Content, "https://stepik.org/course/300883/promo") {
+	if last.Role != "agent" || !contains(last.Content, "«Дерево»") {
 		t.Fatalf("final message missing after resumed finalization: %+v", last)
 	}
 	select {

@@ -97,7 +97,7 @@ export function Dashboard() {
         })
         return
       }
-      setRuns(data ?? [])
+      setRuns((data ?? []).filter((run) => run.type !== "learning"))
     } catch {
       setError("Сервер недоступен")
       setRuns([])
@@ -233,7 +233,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      {!loading && !error && runs.length > 0 && (
+      {getCurrentRole() === "admin" && !loading && !error && runs.length > 0 && (
         <>
           <Card className="p-0">
             <CardContent className="grid grid-cols-2 divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0">

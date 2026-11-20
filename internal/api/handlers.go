@@ -39,6 +39,7 @@ type Server struct {
 	ssePoll      time.Duration
 	sseHeartbeat time.Duration
 	batchPlan    steps.BatchPlan
+	deferredAPI  bool
 	learningPlan LearningPlanner
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
@@ -59,6 +60,7 @@ func NewServerWithChat(store Store, chatService chatStarter) *Server {
 	}
 	server := &Server{
 		store:        store,
+		deferredAPI:  strings.EqualFold(os.Getenv("MODEUS_ENABLE_DEFERRED_API"), "true"),
 		autoStart:    true,
 		chat:         chatService,
 		idemStore:    idempotency.NewMemStore(time.Hour),
@@ -110,28 +112,17 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/academic/analyze-gap-local", s.handleLocalAcademicGap)
 	mux.HandleFunc("GET /api/v1/taxonomies", s.handleLocalTaxonomies)
 	mux.HandleFunc("GET /api/v1/taxonomies/{id}", s.handleLocalTaxonomy)
-	mux.HandleFunc("GET /api/v1/forecast/observed", s.handleObservedSkills)
-	mux.HandleFunc("GET /api/v1/forecast/all", s.handleAllSkillForecasts)
-	mux.HandleFunc("GET /api/v1/forecast/top", s.handleTopSkillForecasts)
-	mux.HandleFunc("GET /api/v1/forecast/popular", s.handlePopularSkillForecasts)
-	mux.HandleFunc("GET /api/v1/forecast/engine", s.handleSkillForecastStatus)
-	mux.HandleFunc("GET /api/v1/forecast/{skill}", s.handleSkillForecast)
 	mux.HandleFunc("GET /api/v1/vacancies", s.handleVacancyCatalog)
 	mux.HandleFunc("GET /api/v1/vacancies/{id}", s.handleVacancyDetail)
 	mux.HandleFunc("GET /api/v1/vacancies/info", s.handleVacancyInfo)
 	mux.HandleFunc("GET /api/v1/vacancies/stats/summary", s.handleVacancyStats)
-	mux.HandleFunc("GET /api/v1/vacancies/stats/analytics", s.handleVacancyAnalytics)
 	mux.HandleFunc("POST /api/v1/runs", s.handleCreateRun)
 	mux.HandleFunc("POST /api/v1/runs/{id}/sources", s.handleAttachRunSource)
 	mux.HandleFunc("GET /api/v1/runs/estimate", s.handleRunEstimate)
 	mux.HandleFunc("GET /api/v1/runs/{id}/cost", s.handleRunCost)
 	mux.HandleFunc("GET /api/v1/runs/{id}/insights", s.handleRunInsights)
 	mux.HandleFunc("GET /api/v1/runs/{id}/coverage", s.handleRunCoverage)
-	mux.HandleFunc("GET /api/v1/runs/{id}/compare", s.handleCompareRuns)
-	mux.HandleFunc("GET /api/v1/runs/{id}/zun/suggestions", s.handleZunSuggestions)
 	mux.HandleFunc("GET /api/v1/runs/{id}/learning-plan", s.handleGetLearningPlan)
-	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/apply", s.handleApplyZunSuggestion)
-	mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/reject", s.handleRejectZunSuggestion)
 	mux.HandleFunc("GET /api/v1/runs/{id}/evidence/{evidence_id}/context", s.handleEvidenceContext)
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.handleGetRun)
 	mux.HandleFunc("PUT /api/v1/runs/{id}/tree", s.handlePutTree)
@@ -160,8 +151,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/users", s.handleListUsers)
 	mux.HandleFunc("PATCH /api/v1/users/{id}/role", s.handleUpdateUserRole)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
-	mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
-	mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
 	mux.HandleFunc("GET /api/v1/admin/sources/quality", s.handleSourceQuality)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 	mux.HandleFunc("POST /api/v1/sources/upload", s.handleUploadSource)
@@ -171,6 +160,22 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/evidences/{id}", s.handleGetEvidence)
 	mux.HandleFunc("PATCH /api/v1/evidences/{id}", s.handleUpdateEvidence)
 	mux.HandleFunc("POST /api/v1/evidences", s.handleCreateEvidence)
+
+	if s.deferredAPI {
+		mux.HandleFunc("GET /api/v1/forecast/observed", s.handleObservedSkills)
+		mux.HandleFunc("GET /api/v1/forecast/all", s.handleAllSkillForecasts)
+		mux.HandleFunc("GET /api/v1/forecast/top", s.handleTopSkillForecasts)
+		mux.HandleFunc("GET /api/v1/forecast/popular", s.handlePopularSkillForecasts)
+		mux.HandleFunc("GET /api/v1/forecast/engine", s.handleSkillForecastStatus)
+		mux.HandleFunc("GET /api/v1/forecast/{skill}", s.handleSkillForecast)
+		mux.HandleFunc("GET /api/v1/vacancies/stats/analytics", s.handleVacancyAnalytics)
+		mux.HandleFunc("GET /api/v1/runs/{id}/compare", s.handleCompareRuns)
+		mux.HandleFunc("GET /api/v1/runs/{id}/zun/suggestions", s.handleZunSuggestions)
+		mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/apply", s.handleApplyZunSuggestion)
+		mux.HandleFunc("POST /api/v1/runs/{id}/zun/suggestions/reject", s.handleRejectZunSuggestion)
+		mux.HandleFunc("GET /api/v1/dashboard/correlation", s.handleDashboardCorrelation)
+		mux.HandleFunc("GET /api/v1/dashboard/skills", s.handleDashboardSkills)
+	}
 
 	root := http.NewServeMux()
 	root.Handle("POST /api/v1/ingest", auth.Middleware(http.HandlerFunc(s.handleFileImport)))
@@ -279,6 +284,10 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	case string(domain.RunTypeBatch):
 		runType = domain.RunTypeBatch
 	case string(domain.RunTypeLearning):
+		if !s.deferredAPI {
+			writeErr(w, http.StatusBadRequest, "RUN_TYPE_DISABLED", "создание новых планов обучения отключено")
+			return
+		}
 		if s.learningPlan == nil {
 			writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "генератор плана обучения не настроен")
 			return
@@ -585,8 +594,10 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 	}
 	if insights.RunID == "" {
 		var skillFreq map[string]int
-		if run, runErr := s.store.GetRun(id); runErr == nil && run != nil {
-			skillFreq = run.SkillFreq
+		if s.deferredAPI {
+			if run, runErr := s.store.GetRun(id); runErr == nil && run != nil {
+				skillFreq = run.SkillFreq
+			}
 		}
 		insights = analysis.BuildInsights(nodes, nil, skillFreq)
 		insights.RunID = id

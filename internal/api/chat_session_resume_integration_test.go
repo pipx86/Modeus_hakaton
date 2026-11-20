@@ -147,7 +147,7 @@ func TestChatSessionResumesAfterBackendRestart(t *testing.T) {
 	}
 	final := waitForChatMessages(t, restartedHandler, runID, 14)
 	last := final[len(final)-1]
-	if last.Role != "agent" || !strings.Contains(last.Content, "Интервью завершено") || !strings.Contains(last.Content, "https://stepik.org/course/300883/promo") {
+	if last.Role != "agent" || !strings.Contains(last.Content, "Интервью завершено") || !strings.Contains(last.Content, "«Дерево»") {
 		t.Fatalf("final Stepik message was not persisted: %+v", last)
 	}
 
@@ -427,7 +427,7 @@ func TestChatSessionResumesInterruptedFinalization(t *testing.T) {
 	restartedHandler := NewServerWithChat(pg, restarted).Routes()
 	final := waitForChatMessages(t, restartedHandler, runID, 14)
 	last := final[len(final)-1]
-	if last.Role != "agent" || !strings.Contains(last.Content, "https://stepik.org/course/300883/promo") {
+	if last.Role != "agent" || !strings.Contains(last.Content, "«Дерево»") {
 		t.Fatalf("final Stepik message was not persisted after resumed finalization: %+v", last)
 	}
 	waitForRunStatus(t, pool, runID, domain.RunDone)

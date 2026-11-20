@@ -212,7 +212,7 @@ func TestServiceDoesNotAcknowledgeUnpersistedAnswer(t *testing.T) {
 	}
 }
 
-func TestServicePersistsFinalCoursesMessage(t *testing.T) {
+func TestServicePersistsResearchResultMessage(t *testing.T) {
 	store := newFakeMessageStore()
 	service := startPersistentService(t, store, "run-final", "Аналитик данных")
 	for i := 0; i < 6; i++ {
@@ -230,7 +230,7 @@ func TestServicePersistsFinalCoursesMessage(t *testing.T) {
 			return false
 		}
 		last := stored[len(stored)-1]
-		return last.Role == "agent" && strings.Contains(last.Content, "Интервью завершено") && strings.Contains(last.Content, "https://stepik.org/course/300883/promo")
+		return last.Role == "agent" && strings.Contains(last.Content, "Интервью завершено") && strings.Contains(last.Content, "«Дерево»")
 	})
 
 	restarted := NewService(fakeInterviewer{}, nil)
@@ -240,8 +240,8 @@ func TestServicePersistsFinalCoursesMessage(t *testing.T) {
 		t.Fatalf("Messages after restart: %v", err)
 	}
 	last := messages[len(messages)-1]
-	if last.Role != "agent" || !strings.Contains(last.Content, "https://stepik.org/course/300883/promo") {
-		t.Fatalf("final courses message was not persisted: %+v", last)
+	if last.Role != "agent" || !strings.Contains(last.Content, "«Дерево»") {
+		t.Fatalf("final research message was not persisted: %+v", last)
 	}
 }
 

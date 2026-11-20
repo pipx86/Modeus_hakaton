@@ -122,7 +122,6 @@ describe("NewResearch", () => {
     fireEvent.change(screen.getByLabelText("Профессия / роль"), {
       target: { value: "Data Scientist" },
     })
-    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     const probe = await screen.findByTestId("location")
@@ -141,7 +140,6 @@ describe("NewResearch", () => {
     await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
-    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     expect(await screen.findByText("profession: слишком длинное название")).toBeInTheDocument()
@@ -155,12 +153,11 @@ describe("NewResearch", () => {
     await act(async () => {})
 
     fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
-    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     expect(
       await screen.findByText(
-        "Сервер недоступен. Проверьте, что бэкенд или мок запущен (npm run mock).",
+        "Сервер недоступен. Попробуйте ещё раз.",
       ),
     ).toBeInTheDocument()
   })
@@ -178,54 +175,15 @@ describe("NewResearch", () => {
     expect(input).toHaveValue("Аналитик данных")
   })
 
-  it("запускает подбор плана и переходит в исследование", async () => {
+  it("создаёт исследование профессии без запроса оценки стоимости", async () => {
     happyHandler()
     renderPage()
-
-    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
-      target: { value: "Data Analyst" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "План обучения" }))
-    fireEvent.click(screen.getByRole("button", { name: "Составить план обучения" }))
-
+    expect(screen.queryByRole("button", { name: "План обучения" })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Аналитик" } })
+    fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
     expect(await screen.findByTestId("location")).toHaveTextContent("/research/run-42")
-    const call = fetchCalls().find(
-      (item) => item.url.endsWith("/api/v1/runs") && item.init.method === "POST",
-    )
-    const body = JSON.parse(String(call?.init.body)) as { profession?: string; type?: string }
-    expect(body.profession).toBe("Data Analyst")
-    expect(body.type).toBe("learning")
-  })
-
-  it("показывает оценку токенов и времени до запуска", async () => {
-    setFetchHandler(async (url) => {
-      if (url.includes("/api/v1/runs/estimate")) {
-        return {
-          status: 200,
-          body: {
-            profession: "Data Analyst",
-            type: "chat",
-            sample_size: 3,
-            estimated_tokens: 4200,
-            estimated_duration_seconds: 180,
-            estimated_cost_usd: null,
-            confidence: "medium",
-            method: "profession_history",
-          },
-        }
-      }
-      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
-    })
-    renderPage()
-
-    fireEvent.change(screen.getByLabelText("Профессия / роль"), {
-      target: { value: "Data Analyst" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Интервью с агентом" }))
-
-    expect(await screen.findByText("Оценка до запуска")).toBeInTheDocument()
-    expect(screen.getByText(/4 200 токенов/)).toBeInTheDocument()
-    expect(screen.getByText(/3 мин/)).toBeInTheDocument()
-    expect(screen.getByText(/средняя/)).toBeInTheDocument()
+    const request = fetchCalls().find((call) => call.init.method === "POST")
+    expect(JSON.parse(String(request?.init.body))).toEqual({ profession: "Аналитик", type: "chat" })
+    expect(fetchCalls().some((call) => call.url.includes("/runs/estimate"))).toBe(false)
   })
 })

@@ -11,6 +11,7 @@ info:
     serves Markdown by default (`?format=md`) and JSON on request (`?format=json`);
     run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error
     responses carry a stable machine-readable `code` and a human-readable `message`.
+    Forecasts, vacancy analytics, market dashboards, cross-run comparison, ZUN suggestions and new learning runs require MODEUS_ENABLE_DEFERRED_API=true. Existing learning plans and snapshot diffs remain readable with the default settings.
 servers:
 - url: /api/v1
   description: API prefix used by cmd/api and cmd/server.

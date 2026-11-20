@@ -93,7 +93,7 @@ var ErrAnalysisUnavailable = errors.New("chat: AI analysis unavailable")
 // leaves the interviewer without extra context.
 type SourceContextLoader func(runID, profession string) string
 
-const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, а затем подготовлю рекомендации и план развития."
+const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, чтобы описать ваши функции, задачи и действия."
 const learningWelcomeMessage = "Здравствуйте! Я помогу составить план обучения. Сначала задам несколько вопросов о вашем текущем опыте и знаниях, чтобы не повторять то, что вы уже умеете."
 
 // resumeMode records what the dialog still owes when a session was restored
@@ -576,7 +576,11 @@ func (s *Service) restore(runID string, store SessionStore) (*session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("chat: load messages: %w", err)
 	}
+	// Older snapshots only identify learning interviews by their persisted greeting.
+	learning := snapshot.Learning || (len(messages) > 0 && messages[0].Role == "agent" && messages[0].Content == learningWelcomeMessage)
+	interview.SetLearning(learning)
 	sess := &session{
+		learning:      learning,
 		runID:         runID,
 		profession:    snapshot.Profession,
 		promptVersion: snapshot.PromptVersion,
@@ -802,13 +806,13 @@ const finalizerTimeout = 60 * time.Minute
 
 func (s *Service) complete(sess *session) {
 	status := domain.RunDone
-	fallbackRecommendations := false
+	analysisUnavailable := false
 	sess.mu.Lock()
 	state := sess.session.State()
 	sess.mu.Unlock()
 	if finalizer := s.finalizerFn(); finalizer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), finalizerTimeout)
-		// The finalizer makes the analyst (and optional ZUN) LLM calls; the run
+		// The finalizer makes the analyst and synthesizer LLM calls; the run
 		// id in the context attributes them to this run.
 		ctx = llmobs.WithRunID(ctx, sess.runID)
 		finalStatus, err := finalizer(ctx, sess.runID, sess.profession, state)
@@ -816,7 +820,7 @@ func (s *Service) complete(sess *session) {
 		if err != nil {
 			log.Printf("chat: finalizer failed for run %s: %v", sess.runID, err)
 			status = domain.RunFailed
-			fallbackRecommendations = errors.Is(err, ErrAnalysisUnavailable)
+			analysisUnavailable = errors.Is(err, ErrAnalysisUnavailable)
 			// A restart may interrupt the pipeline after the tree transaction was
 			// committed but before this snapshot was written. Re-running the
 			// finalizer then fails with TREE_ALREADY_EXISTS; the saved tree is the
@@ -832,9 +836,17 @@ func (s *Service) complete(sess *session) {
 
 	finalText := ""
 	if status == domain.RunDone || status == domain.RunDegraded {
-		finalText = interviewer.FinalCoursesMessage(sess.profession)
-	} else if status == domain.RunFailed && fallbackRecommendations {
-		finalText = interviewer.FallbackRecommendationsMessage(state)
+		if sess.learning {
+			finalText = interviewer.FinalCoursesMessage(sess.profession)
+		} else {
+			finalText = "Интервью завершено. Результат исследования доступен во вкладке «Дерево»."
+		}
+	} else if status == domain.RunFailed && analysisUnavailable {
+		if sess.learning {
+			finalText = interviewer.FallbackRecommendationsMessage(state)
+		} else {
+			finalText = "Интервью завершено. Ответы сохранены. Анализ сейчас недоступен."
+		}
 	}
 
 	sess.mu.Lock()
@@ -910,6 +922,7 @@ func (s *Service) snapshotLocked(sess *session, status SessionStatus, finalStatu
 		PromptVersion: sess.promptVersion,
 		Status:        status,
 		FinalStatus:   finalStatus,
+		Learning:      sess.learning,
 		Interviewer:   sess.session.Snapshot(),
 		Version:       sess.version,
 	}

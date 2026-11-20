@@ -90,6 +90,7 @@ func (f *insightsFakeStore) ListRunSourceContents(_ context.Context, runID strin
 // Server.Routes (owned by the lead); this mirrors it for handler-level tests.
 func insightsTestHandler(store Store) http.Handler {
 	server := NewServer(store)
+	server.deferredAPI = true // Exercise the full legacy market payload in this fixture.
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/runs/{id}/insights", server.handleRunInsights)
 	mux.HandleFunc("GET /api/v1/runs/{id}/coverage", server.handleRunCoverage)
