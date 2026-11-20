@@ -1,0 +1,158 @@
+{
+  "profession": "Аналитик данных",
+  "version": "1",
+  "reviewed_by": "demo-reviewer",
+  "reviewed_at": "2026-11-20",
+  "note": "Пример формата, не пилотный эталон: содержимое демонстрационное. Для пилота замените узлы, источники и цитаты согласованным ручным эталоном.",
+  "nodes": [
+    {
+      "id": "role-data-analyst",
+      "type": "role",
+      "title": "Аналитик данных",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Я аналитик данных: отвечаю за отчётность и качество данных в продуктовой команде.",
+          "reason": "Респондент формулирует роль и зону ответственности."
+        },
+        {
+          "source_id": "src-standard-da",
+          "source_type": "standard",
+          "quote": "Аналитик данных обеспечивает подготовку отчётности и аналитическую поддержку решений.",
+          "reason": "Формулировка профессионального стандарта."
+        }
+      ]
+    },
+    {
+      "id": "fn-reporting",
+      "type": "function",
+      "parent_id": "role-data-analyst",
+      "title": "Отчётность и визуализация",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Моя функция — отчётность и визуализация: готовлю регулярные отчёты и дашборды.",
+          "reason": "Прямое описание функции."
+        }
+      ]
+    },
+    {
+      "id": "fn-storage",
+      "type": "function",
+      "parent_id": "role-data-analyst",
+      "title": "Работа с хранилищем данных",
+      "sources": [
+        {
+          "source_id": "src-vacancy-da",
+          "source_type": "vacancy",
+          "quote": "Требуется уверенное владение SQL и работа с корпоративным хранилищем данных.",
+          "reason": "Требование вакансии."
+        }
+      ]
+    },
+    {
+      "id": "fn-decision-support",
+      "type": "function",
+      "parent_id": "role-data-analyst",
+      "title": "Аналитическая поддержка решений",
+      "sources": [
+        {
+          "source_id": "src-standard-da",
+          "source_type": "standard",
+          "quote": "Готовит аналитические материалы для принятия управленческих решений.",
+          "reason": "Функция из профессионального стандарта."
+        }
+      ]
+    },
+    {
+      "id": "task-regular-reports",
+      "type": "task",
+      "parent_id": "fn-reporting",
+      "title": "Готовить регулярные отчёты",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Каждую неделю собираю регулярный отчёт по продуктовым метрикам.",
+          "reason": "Респондент описывает регулярную задачу."
+        }
+      ]
+    },
+    {
+      "id": "task-dashboards",
+      "type": "task",
+      "parent_id": "fn-reporting",
+      "title": "Строить дашборды",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Строю дашборды, чтобы команда сама смотрела продуктовые метрики.",
+          "reason": "Пример задачи из интервью."
+        }
+      ]
+    },
+    {
+      "id": "task-sql-queries",
+      "type": "task",
+      "parent_id": "fn-storage",
+      "title": "Писать SQL-запросы",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Пишу SQL-запросы к хранилищу и проверяю выгрузки перед публикацией.",
+          "reason": "Респондент называет задачу и действие."
+        }
+      ]
+    },
+    {
+      "id": "task-adhoc-analysis",
+      "type": "task",
+      "parent_id": "fn-decision-support",
+      "title": "Проводить ad-hoc анализ",
+      "ambiguous": true,
+      "note": "Не все респонденты выделяют ad-hoc анализ в отдельную задачу: в части команд он входит в отчётность. На пилоте уточнить границу.",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Иногда меня просят посчитать что-то срочно, вне регулярной отчётности.",
+          "reason": "Косвенное подтверждение задачи; формулировка требует согласования."
+        }
+      ]
+    },
+    {
+      "id": "act-optimize-sql",
+      "type": "action",
+      "parent_id": "task-sql-queries",
+      "title": "Оптимизировать SQL-запросы",
+      "sources": [
+        {
+          "source_id": "src-interview-da",
+          "source_type": "interview",
+          "quote": "Оптимизирую SQL-запросы, если отчёт долго строится.",
+          "reason": "Дословное описание действия."
+        }
+      ]
+    },
+    {
+      "id": "act-bi-visuals",
+      "type": "action",
+      "parent_id": "task-dashboards",
+      "title": "Настраивать визуализации в BI",
+      "ambiguous": true,
+      "note": "Инструмент зависит от команды (Power BI, Superset, Tableau); действие оставлено обобщённым.",
+      "sources": [
+        {
+          "source_id": "src-document-da",
+          "source_type": "document",
+          "quote": "Дашборды публикуются в корпоративном BI-инструменте после проверки методики расчёта.",
+          "reason": "Регламент подтверждает действие, но не конкретный инструмент."
+        }
+      ]
+    }
+  ]
+}
