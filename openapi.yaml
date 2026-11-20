@@ -3488,6 +3488,181 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /nodes/{id}/review:
+    post:
+      tags: [review]
+      summary: Review one activity tree node
+      description: >-
+        Stores the methodologist decision on a node: approved or rejected, with an
+        optional comment. The evidence of the node is kept as is, so approving or
+        rejecting a node never removes its quotes.
+      operationId: reviewNode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Node id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [approved, rejected]
+                comment:
+                  type: string
+                  maxLength: 2000
+      responses:
+        "200":
+          description: The saved decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeReviewResult"
+        "400":
+          description: Malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown decision or too long comment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /runs/{id}/program-links:
+    get:
+      tags: [review]
+      summary: List activity-to-program links of a run
+      description: >-
+        Returns the proposals and decisions that connect activity tree nodes with
+        educational program competencies. Until the methodologist approves a link
+        it stays `proposed` and is not a fact. Candidates are produced by the core
+        (card 22); this endpoint only reads and reviews them.
+      operationId: listProgramLinks
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: status
+          in: query
+          required: false
+          description: Filter by link status.
+          schema:
+            type: string
+            enum: [proposed, approved, rejected]
+      responses:
+        "200":
+          description: Array of links with node, program and competency titles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramLink"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /runs/{id}/program-links/{link_id}/review:
+    post:
+      tags: [review]
+      summary: Review one activity-to-program link
+      description: >-
+        Approves or rejects a proposed link. The methodologist comment is appended
+        to the system explanation instead of replacing it, so the reason a link was
+        proposed stays visible.
+      operationId: reviewProgramLink
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: link_id
+          in: path
+          required: true
+          description: Link id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [approved, rejected]
+                reason:
+                  type: string
+                  maxLength: 2000
+      responses:
+        "200":
+          description: The updated link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramLink"
+        "400":
+          description: Malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Unknown decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /runs/{id}/review/summary:
+    get:
+      tags: [review]
+      summary: Review progress of a research run
+      description: >-
+        Counts how many nodes, evidence items and program links are already
+        reviewed, so the methodologist sees from one place what is checked and
+        what still needs attention.
+      operationId: getReviewSummary
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Review progress counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /runs/{id}/conflicts:
     get:
       tags: [runs]
@@ -4512,6 +4687,16 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/Evidence"
+        review_status:
+          type: string
+          enum: [pending, approved, rejected]
+          description: Methodologist decision on the node itself (not on its evidence).
+        review_comment:
+          type: string
+          description: Optional methodologist comment stored with the decision.
+        reviewed_at:
+          type: string
+          format: date-time
     Source:
       type: object
       required: [id, type, title]
@@ -4686,6 +4871,16 @@ components:
         created_by:
           type: string
           description: Account id that created the run; empty for legacy runs.
+        result_kind:
+          type: string
+          enum: [activity, program]
+          description: >-
+            Expected result of the research. `activity` is the description of the
+            activity only (default); `program` also compares it with an
+            educational program.
+        program_id:
+          type: string
+          description: Educational program used for the comparison; required when result_kind is program.
     Snapshot:
       type: object
       required: [id, run_id, version, tree, created_at]
@@ -4960,6 +5155,97 @@ components:
         respondent_ref:
           type: string
           maxLength: 120
+    NodeReviewResult:
+      type: object
+      required: [id, node_id, review_status]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        node_id:
+          type: string
+        review_status:
+          type: string
+          enum: [pending, approved, rejected]
+        review_comment:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+    ProgramLink:
+      type: object
+      required: [id, run_id, node_id, program_id, competency_id, status]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        node_id:
+          type: string
+        node_title:
+          type: string
+        node_type:
+          type: string
+          enum: [role, function, task, action]
+        program_id:
+          type: string
+        program_title:
+          type: string
+        competency_id:
+          type: string
+        competency_title:
+          type: string
+        ksa_id:
+          type: string
+        ksa_title:
+          type: string
+        status:
+          type: string
+          enum: [proposed, approved, rejected]
+        reason:
+          type: string
+          description: Why the system proposed the link, plus the methodologist note.
+        source:
+          type: string
+          enum: [system, methodist]
+        reviewed_at:
+          type: string
+          format: date-time
+    ReviewCounts:
+      type: object
+      additionalProperties: false
+      properties:
+        pending:
+          type: integer
+        approved:
+          type: integer
+        rejected:
+          type: integer
+        total:
+          type: integer
+    LinkCounts:
+      type: object
+      additionalProperties: false
+      properties:
+        proposed:
+          type: integer
+        approved:
+          type: integer
+        rejected:
+          type: integer
+        total:
+          type: integer
+    ReviewSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        nodes:
+          $ref: "#/components/schemas/ReviewCounts"
+        evidence:
+          $ref: "#/components/schemas/ReviewCounts"
+        links:
+          $ref: "#/components/schemas/LinkCounts"
     ChatMessage:
       type: object
       required: [id, role, content, created_at]

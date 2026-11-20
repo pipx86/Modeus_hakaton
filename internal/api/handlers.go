@@ -152,6 +152,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
 	mux.HandleFunc("POST /api/v1/runs/{id}/messages", s.handlePostMessage)
+	// Проверка результата методистом: узлы, связи с программой и сводка
+	// (карточки 18, 23 и 26 плана MVP).
+	mux.HandleFunc("POST /api/v1/nodes/{id}/review", s.handleReviewNode)
+	mux.HandleFunc("GET /api/v1/runs/{id}/program-links", s.handleListProgramLinks)
+	mux.HandleFunc("POST /api/v1/runs/{id}/program-links/{link_id}/review", s.handleReviewProgramLink)
+	mux.HandleFunc("GET /api/v1/runs/{id}/review/summary", s.handleReviewSummary)
 	// Интервью одного исследования: несколько респондентов, у каждого своя
 	// история ответов (карточка 12 плана MVP).
 	mux.HandleFunc("GET /api/v1/runs/{id}/interviews", s.handleListRunInterviews)
@@ -237,6 +243,12 @@ type createRunRequest struct {
 	ProfileContext string `json:"profile_context,omitempty"`
 	// GitHubExclude lists public repository names that must not be used.
 	GitHubExclude []string `json:"github_exclude,omitempty"`
+	// ResultKind selects the expected result of the research (карточка 25):
+	// "activity" (default) or "program".
+	ResultKind string `json:"result_kind,omitempty"`
+	// ProgramID is the educational program to compare against. Required when
+	// ResultKind is "program" and ignored otherwise.
+	ProgramID string `json:"program_id,omitempty"`
 }
 
 type errorBody struct {
@@ -416,6 +428,35 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		}
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать исследование")
 		return
+	}
+
+	// Ожидаемый результат исследования фиксируется до запуска пайплайна: от
+	// него зависит, нужна ли вообще программа и её сопоставление (карточка 25).
+	resultKind, programID, resultErr := normalizeRunResult(req.ResultKind, req.ProgramID)
+	if resultErr != nil {
+		_ = s.store.DeleteRun(run.ID)
+		if errors.Is(resultErr, ErrInvalidProgram) {
+			writeErr(w, http.StatusUnprocessableEntity, "INVALID_PROGRAM", "выберите образовательную программу для этого режима")
+			return
+		}
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "result_kind должен быть activity или program")
+		return
+	}
+	if pg, ok := s.store.(*PGStore); ok && pg.Pool != nil {
+		if err = pg.SetRunResult(run.ID, resultKind, programID); err != nil {
+			logging.Logger.Error("create_run_result_store_failed", "run_id", run.ID, "error", err)
+			_ = s.store.DeleteRun(run.ID)
+			if errors.Is(err, ErrInvalidProgram) {
+				writeErr(w, http.StatusUnprocessableEntity, "INVALID_PROGRAM", "образовательная программа не найдена")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить ожидаемый результат исследования")
+			return
+		}
+	}
+	run.ResultKind = resultKind
+	if programID != "" {
+		run.ProgramID = &programID
 	}
 
 	initialEvent := sse.NewEvent(run.ID, sse.EventStageChange, map[string]any{

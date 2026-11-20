@@ -139,6 +139,12 @@ type Node struct {
 	ParentID    *string    `json:"parent_id,omitempty"`
 	Evidence    []Evidence `json:"evidence"`
 	Zun         *Zun       `json:"zun,omitempty"`
+	// Проверка элемента дерева методистом (карточка 18). pending — исходное
+	// состояние; omitempty обязателен: узел сериализуется и в ответах агента,
+	// где схема не допускает лишних полей.
+	ReviewStatus  NodeReviewStatus `json:"review_status,omitempty"`
+	ReviewComment string           `json:"review_comment,omitempty"`
+	ReviewedAt    *time.Time       `json:"reviewed_at,omitempty"`
 }
 
 // Zun — знания, умения и навыки, необходимые для выполнения узла дерева.
@@ -201,6 +207,10 @@ type Run struct {
 	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
 	Stage            Stage              `json:"stage,omitempty"`
 	CreatedBy        string             `json:"created_by,omitempty"`
+	// Ожидаемый результат исследования (карточка 25): только описание
+	// деятельности или ещё и сопоставление с образовательной программой.
+	ResultKind string  `json:"result_kind,omitempty"`
+	ProgramID  *string `json:"program_id,omitempty"`
 	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
 	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
 	PerVacancySkills [][]string         `json:"-"`

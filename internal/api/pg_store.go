@@ -76,7 +76,11 @@ func (p *PGStore) GetRun(id string) (*domain.Run, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	r := &domain.Run{}
+	var programID string
 	err := p.Pool.QueryRow(ctx, "SELECT id::text,profession,status,stage,type,COALESCE(created_by::text,''),root_node_id::text,started_at,finished_at FROM runs WHERE id=$1", id).Scan(&r.ID, &r.Profession, &r.Status, &r.Stage, &r.Type, &r.CreatedBy, &r.RootNodeID, &r.StartedAt, &r.FinishedAt)
+	if err == nil && programID != "" {
+		r.ProgramID = &programID
+	}
 	return r, translate(err)
 }
 func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
@@ -87,7 +91,8 @@ func (p *PGStore) GetTree(id string) ([]domain.Node, error) {
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT n.id::text,n.type,n.title,COALESCE(n.description,''),n.parent_id::text,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'node_id',e.node_id,'source_id',e.source_id,'ref_id',COALESCE(e.ref_id,''),'quote',e.quote,'status',COALESCE(e.status,'pending')) ORDER BY e.id) FROM evidence e WHERE e.node_id=n.id),'[]'::jsonb),
- COALESCE(n.zun,'null'::jsonb)
+ COALESCE(n.zun,'null'::jsonb),
+ COALESCE(n.review_status,'pending'),COALESCE(n.review_comment,''),n.reviewed_at
  FROM nodes n WHERE n.run_id=$1 ORDER BY n.level,n.id`, id)
 	if err != nil {
 		return nil, err
