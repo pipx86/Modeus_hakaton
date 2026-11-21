@@ -30,6 +30,7 @@ import (
 	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/metrics"
 	"activity-descriptor/internal/observability"
+	"activity-descriptor/internal/ocr"
 	"activity-descriptor/internal/search"
 	"activity-descriptor/internal/steps"
 	"activity-descriptor/internal/store" // === NEW: для ResumeProcessor
@@ -246,12 +247,36 @@ func run(ctx context.Context, c config) error {
 	app.SetProgramMatcher(analystClient)
 	if analystClient != nil {
 		// PDF/DOCX ФГОС разбирает тот же analyst-клиент: у него самый большой
-		// token budget и temperature 0.2. Импорт синхронный, таймаут 5 минут.
-		app.SetProgramTextExtractor(fgos.NewExtractor(analystClient))
+		// token budget и temperature 0.2. Импорт синхронный; бюджет задаётся
+		// PROGRAM_IMPORT_TIMEOUT_S (по умолчанию 15 минут) и общий для OCR и LLM.
+		importBudget := api.ProgramImportTimeoutFromEnv()
+		extractor := fgos.NewExtractor(analystClient)
+		extractor.Timeout = importBudget
+		var documentExtractor fgos.DocumentExtractor = extractor
+		ocrConfig := ocr.ConfigFromEnv()
+		if ocrConfig.Enabled {
+			document := ocr.NewDocument(ocrConfig)
+			if availableErr := document.Available(); availableErr != nil {
+				// Не выключаем OCR: инструменты могут появиться позже, а
+				// запрос скана получит 503 с инструкцией по установке.
+				logging.Logger.Warn("program_import_ocr_unavailable", "error", availableErr)
+			}
+			documentExtractor = ocr.NewFGOSExtractor(extractor, document)
+			app.SetProgramOCREnabled(true)
+			logging.Logger.Info("program_import_ocr_enabled",
+				"tesseract", ocrConfig.TesseractPath,
+				"pdftoppm", ocrConfig.PDFToPPMPath,
+				"lang", ocrConfig.Lang,
+				"dpi", ocrConfig.DPI,
+				"max_pages", ocrConfig.MaxPages,
+				"timeout", ocrConfig.Timeout.String())
+		}
+		app.SetProgramTextExtractor(documentExtractor)
 		logging.Logger.Info("program_import_llm_adapter_enabled",
 			"prompt", "fgos/"+fgos.PromptVersion,
-			"timeout", fgos.DefaultTimeout.String(),
-			"max_pages", fgos.DefaultMaxPages)
+			"timeout", importBudget.String(),
+			"max_pages", fgos.DefaultMaxPages,
+			"ocr", ocrConfig.Enabled)
 	} else {
 		logging.Logger.Info("program_import_pdf_docx_disabled",
 			"reason", "LLM analyst client is not configured; PDF/DOCX imports return 422")

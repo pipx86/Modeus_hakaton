@@ -16,6 +16,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/ingestion"
+	"activity-descriptor/internal/ocr"
 )
 
 const (
@@ -696,5 +697,153 @@ func TestProgramImportPDFExtractionErrors(t *testing.T) {
 	recorder = doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "fgos.pdf", "%PDF-1.4 fake")
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("недоступная модель: ожидали 503, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestProgramImportScanWithoutOCRAddsHint(t *testing.T) {
+	extractor := &fakeProgramExtractor{pagesErr: fgos.ErrNoTextLayer}
+	_, handler := testProgramImportLLMServer(t, extractor)
+	recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "scan.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("ожидали 422, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var body programImportErrorBody
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	joined := strings.Join(body.Details, " ")
+	if !strings.Contains(joined, "OCR_ENABLED=true") || !strings.Contains(joined, ocr.DocsPath) {
+		t.Fatalf("нет подсказки про OCR: %+v", body.Details)
+	}
+}
+
+func TestProgramImportImageWithoutOCRReturns422(t *testing.T) {
+	extractor := &fakeProgramExtractor{}
+	_, handler := testProgramImportLLMServer(t, extractor)
+	recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "scan.png", "fake png")
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("без OCR: ожидали 422, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var body programImportErrorBody
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if body.Code != "PROGRAM_IMPORT_OCR_DISABLED" {
+		t.Fatalf("code = %q", body.Code)
+	}
+	if joined := strings.Join(body.Details, " "); !strings.Contains(joined, ocr.DocsPath) {
+		t.Fatalf("нет инструкции: %+v", body.Details)
+	}
+}
+
+func TestProgramImportImageWithOCRReturnsCreated(t *testing.T) {
+	extractor := &fakeProgramExtractor{
+		pages:    []fgos.Page{{Number: 1, Text: "УК-1. Способен осуществлять поиск.", OCR: true}},
+		program:  fgosTestProgram(),
+		warnings: []string{fgos.OCRPageWarning(1)},
+	}
+	fake := newFakeProgramDraftStore()
+	server := NewServer(fake)
+	server.SetProgramTextExtractor(extractor)
+	server.SetProgramOCREnabled(true)
+	recorder := doProgramImport(t, server.Routes(), "admin", "mirea/09.03.01/2024/full-time", "scan.png", "fake png")
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("с OCR: ожидали 201, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	draft := fake.onlyDraft(t)
+	if draft.SourceFormat != "png" {
+		t.Fatalf("source_format = %q", draft.SourceFormat)
+	}
+	if !hasWarning(draft.Warnings, fgos.OCRPageWarning(1)) {
+		t.Fatalf("предупреждение OCR потерялось: %v", draft.Warnings)
+	}
+}
+
+func TestProgramImportOCRErrors(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantBody string
+	}{
+		{"disabled", ocr.ErrDisabled, http.StatusUnprocessableEntity, "PROGRAM_IMPORT_OCR_DISABLED"},
+		{"unavailable", ocr.ErrUnavailable, http.StatusServiceUnavailable, "PROGRAM_IMPORT_OCR_UNAVAILABLE"},
+		{"page_limit", ocr.ErrPageLimit, http.StatusUnprocessableEntity, "PROGRAM_IMPORT_OCR_PAGE_LIMIT"},
+		{"timeout", ocr.ErrTimeout, http.StatusServiceUnavailable, "PROGRAM_IMPORT_OCR_TIMEOUT"},
+		{"no_text", ocr.ErrNoText, http.StatusUnprocessableEntity, "PROGRAM_IMPORT_INVALID"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			extractor := &fakeProgramExtractor{pagesErr: testCase.err}
+			_, handler := testProgramImportLLMServer(t, extractor)
+			recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "scan.pdf", "%PDF-1.4 fake")
+			if recorder.Code != testCase.wantCode {
+				t.Fatalf("ожидали %d, получили %d (%s)", testCase.wantCode, recorder.Code, recorder.Body.String())
+			}
+			var body programImportErrorBody
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+				t.Fatalf("ответ не JSON: %v", err)
+			}
+			if body.Code != testCase.wantBody {
+				t.Fatalf("code = %q, ожидали %q", body.Code, testCase.wantBody)
+			}
+		})
+	}
+}
+
+// fakeContextExtractor запоминает deadline контекста, который API передал в
+// OCR-адаптер.
+type fakeContextExtractor struct {
+	*fakeProgramExtractor
+	deadline time.Time
+	hasLimit bool
+}
+
+func (f *fakeContextExtractor) ExtractPagesContext(ctx context.Context, name string, data []byte) ([]fgos.Page, error) {
+	f.deadline, f.hasLimit = ctx.Deadline()
+	return f.fakeProgramExtractor.ExtractPages(name, data)
+}
+
+func TestProgramImportPassesConfiguredBudgetToContext(t *testing.T) {
+	t.Setenv(envProgramImportTimeout, "120")
+	extractor := &fakeContextExtractor{fakeProgramExtractor: &fakeProgramExtractor{
+		pages:   []fgos.Page{{Number: 1, Text: "УК-1. Способен осуществлять поиск.", OCR: true}},
+		program: fgosTestProgram(),
+	}}
+	fake := newFakeProgramDraftStore()
+	server := NewServer(fake)
+	server.SetProgramTextExtractor(extractor)
+	server.SetProgramOCREnabled(true)
+	recorder := doProgramImport(t, server.Routes(), "admin", "mirea/09.03.01/2024/full-time", "scan.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("ожидали 201, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	if !extractor.hasLimit {
+		t.Fatal("контекст без deadline")
+	}
+	if remaining := time.Until(extractor.deadline); remaining < 110*time.Second || remaining > 130*time.Second {
+		t.Fatalf("бюджет импорта должен быть 120с, получили %s", remaining)
+	}
+}
+
+func TestProgramImportTimeoutFromEnv(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  time.Duration
+	}{
+		{"unset", "", defaultProgramImportTimeout},
+		{"seconds", "120", 2 * time.Minute},
+		{"duration", "15m", 15 * time.Minute},
+		{"invalid", "soon", defaultProgramImportTimeout},
+		{"negative", "-5", defaultProgramImportTimeout},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv(envProgramImportTimeout, testCase.value)
+			if got := programImportTimeoutFromEnv(); got != testCase.want {
+				t.Fatalf("PROGRAM_IMPORT_TIMEOUT_S=%q: получили %s, ожидали %s", testCase.value, got, testCase.want)
+			}
+		})
 	}
 }

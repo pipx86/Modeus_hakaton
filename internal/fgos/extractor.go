@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"activity-descriptor/internal/ingestion"
@@ -19,15 +20,128 @@ import (
 // заглавные русские буквы, дефис, номер (УК-1, ОПК-2, ПК-3).
 var competencyCodePattern = regexp.MustCompile(`^[А-ЯЁ]{2,4}-\d+$`)
 
-// maxWarnings ограничивает список предупреждений, чтобы черновик не разросся
-// на документе, где модель вернула сотни невалидных пунктов.
-const maxWarnings = 200
+const (
+	// maxSplitDepth — не более четырёх уровней деления чанка: 1 запрос может
+	// превратиться в 1+2+4+8+16 = 31 при полном отказе модели.
+	maxSplitDepth = 4
+	// minSplitChars — меньше этого чанк не делим: ответ на такой запрос уже
+	// небольшой, а стоимость растёт.
+	minSplitChars = 1500
+	// maxWarnings ограничивает список предупреждений, чтобы черновик не разросся
+	// на документе, где модель вернула сотни невалидных пунктов.
+	maxWarnings = 200
+	// responseCharsPerToken — грубая оценка: сколько символов ответа приходится
+	// на один токен при локальной проверке размера ответа.
+	responseCharsPerToken = 4
+)
 
-// chunk — часть документа, отправляемая модели одним запросом. Страница никогда
-// не разрывается между чанками: цитата всегда проверяется по целой странице.
+// promptSegment — часть страницы, которую реально видит модель. При аварийном
+// делении страница может попасть в два сегмента с одним номером; для проверки
+// цитат используется полный текст страницы из chunk.pages.
+type promptSegment struct {
+	number int
+	text   string
+}
+
+// chunk — часть документа, отправляемая модели одним запросом. Страница
+// никогда не разрывается на этапе базового чанкинга; при аварийном делении
+// текст режется по символам, но полные страницы сохраняются в pages.
 type chunk struct {
-	pages []Page
-	chars int
+	pages    []Page
+	segments []promptSegment
+	chars    int
+}
+
+// extractionState — общий результат разбора документа: программа, карта
+// дедупликации, предупреждения и причина последней неудачи. Обновляется только
+// из главного потока, поэтому гонок нет даже при параллельном разборе чанков.
+type extractionState struct {
+	program     *ingestion.EducationProgram
+	indexByCode map[string]int
+	warnings    []string
+	warningSet  map[string]bool
+	lastReason  string
+}
+
+func newExtractionState(program *ingestion.EducationProgram) *extractionState {
+	return &extractionState{
+		program:     program,
+		indexByCode: make(map[string]int),
+		warnings:    []string{},
+		warningSet:  make(map[string]bool),
+	}
+}
+
+func (s *extractionState) addWarning(warning string) {
+	if warning == "" || s.warningSet[warning] {
+		return
+	}
+	if len(s.warnings) >= maxWarnings {
+		return
+	}
+	s.warningSet[warning] = true
+	s.warnings = append(s.warnings, warning)
+}
+
+// apply переносит результат одного чанка в общий state в порядке фрагментов:
+// так предупреждения, дедуп и причина последней неудачи остаются
+// детерминированными при любом порядке завершения параллельных воркеров.
+func (s *extractionState) apply(outcome *chunkOutcome) {
+	if s == nil || outcome == nil {
+		return
+	}
+	for _, warning := range outcome.warnings {
+		s.addWarning(warning)
+	}
+	for _, competency := range outcome.competencies {
+		for _, conflict := range mergeCompetency(s.program, s.indexByCode, competency) {
+			s.addWarning(fmt.Sprintf("фрагмент %d: %s", outcome.fragment+1, conflict))
+		}
+	}
+	if outcome.lastReason != "" {
+		s.lastReason = outcome.lastReason
+	}
+}
+
+// chunkOutcome — локальный результат одного чанка. Его пишет ровно один
+// воркер, поэтому поля не нуждаются в блокировке; слияние выполняет
+// extractionState.apply после завершения пула.
+type chunkOutcome struct {
+	fragment     int
+	competencies []ingestion.ProgramCompetency
+	warnings     []string
+	warningSet   map[string]bool
+	lastReason   string
+}
+
+func (o *chunkOutcome) addWarning(warning string) {
+	if warning == "" {
+		return
+	}
+	if o.warningSet == nil {
+		o.warningSet = make(map[string]bool)
+	}
+	if o.warningSet[warning] {
+		return
+	}
+	o.warningSet[warning] = true
+	o.warnings = append(o.warnings, warning)
+}
+
+func (o *chunkOutcome) fail(reason string) {
+	if reason != "" {
+		o.lastReason = reason
+	}
+}
+
+// failureError возвращает ошибку «ничего не извлеклось» с причиной последней
+// неудачи: администратор должен видеть 413 или невалидный JSON, а не общий
+// текст.
+func (s *extractionState) failureError() error {
+	if s == nil || s.lastReason == "" {
+		return ErrNoCompetencies
+	}
+	return fmt.Errorf("%w: последняя ошибка — %s", ErrNoCompetencies, s.lastReason)
 }
 
 // rawResponse — ответ модели до валидации.
@@ -57,13 +171,16 @@ type rawCitation struct {
 //
 // Возвращаются программа (без title — его заполняет вызывающий), предупреждения
 // о каждом отброшенном пункте и ошибка. Если ни одного валидного пункта не
-// осталось, возвращается ErrNoCompetencies. Превышение MaxPages и Timeout —
-// ошибки с понятным текстом.
+// осталось, ошибка оборачивает ErrNoCompetencies и содержит причину последней
+// неудачи. Превышение MaxPages и Timeout — отдельные ошибки с понятным текстом.
+//
+// При отказе модели (413/context length/таймаут) или невалидном/пустом JSON
+// чанк автоматически делится пополам (не более четырёх уровней и не меньше
+// 1500 символов), результаты подзапросов объединяются.
 func (e *Extractor) Extract(ctx context.Context, pages []Page) (ingestion.EducationProgram, []string, error) {
 	program := ingestion.EducationProgram{}
-	warnings := []string{}
 	if e == nil || e.Client == nil {
-		return program, warnings, ErrNoClient
+		return program, []string{}, ErrNoClient
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -77,57 +194,197 @@ func (e *Extractor) Extract(ctx context.Context, pages []Page) (ingestion.Educat
 		filled = append(filled, page)
 	}
 	if len(filled) == 0 {
-		return program, warnings, fmt.Errorf("%w: страницы не содержат текста", ErrNoTextLayer)
+		return program, []string{}, fmt.Errorf("%w: страницы не содержат текста", ErrNoTextLayer)
+	}
+	// Предупреждения об OCR добавляются до разбора: они относятся к документу,
+	// а не к конкретному чанку, и должны попасть в черновик даже при ошибке
+	// лимита страниц.
+	state := newExtractionState(&program)
+	for _, page := range filled {
+		if page.OCR {
+			state.addWarning(OCRPageWarning(page.Number))
+		}
 	}
 	if limit := e.maxPages(); len(filled) > limit {
-		return program, warnings, fmt.Errorf(
+		return program, state.warnings, fmt.Errorf(
 			"fgos: документ содержит %d страниц, лимит %d: разделите документ или увеличьте MaxPages",
 			len(filled), limit)
 	}
 	system, err := SystemPrompt()
 	if err != nil {
-		return program, warnings, err
+		return program, state.warnings, err
 	}
 
 	timeout := e.timeout()
 	extractCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	indexByCode := make(map[string]int)
-	for index, part := range chunkPages(filled, e.maxCharsPerChunk()) {
-		if ctxErr := extractCtx.Err(); ctxErr != nil {
-			return program, warnings, contextError(ctxErr, timeout)
-		}
-		answer, callErr := e.Client.Chat(extractCtx, []llm.Message{
-			{Role: llm.RoleSystem, Content: system},
-			{Role: llm.RoleUser, Content: userPrompt(part)},
-		})
-		if callErr != nil {
+	e.applyResponseTokenLimit()
+
+	chunks := chunkPages(filled, e.maxCharsPerChunk())
+	concurrency := e.concurrency()
+	if concurrency > len(chunks) {
+		concurrency = len(chunks)
+	}
+	e.logger().Info("fgos_extract_cycle",
+		"pages", len(filled),
+		"chunks", len(chunks),
+		"concurrency", concurrency,
+		"max_chars_per_chunk", e.maxCharsPerChunk())
+
+	if concurrency <= 1 {
+		// Последовательный режим сохранён для concurrency=1 и для документов из
+		// одного чанка: поведение и порядок предупреждений прежние.
+		for index, part := range chunks {
 			if ctxErr := extractCtx.Err(); ctxErr != nil {
-				return program, warnings, contextError(ctxErr, timeout)
+				return program, state.warnings, timeoutError(ctxErr, timeout, state.lastReason)
 			}
-			return program, warnings, fmt.Errorf("fgos: LLM не вернул ответ для фрагмента %d: %w", index+1, callErr)
+			outcome := chunkOutcome{fragment: index}
+			e.extractChunk(extractCtx, system, part, 0, index, &outcome)
+			state.apply(&outcome)
 		}
-		response, parseErr := parseResponse(answer)
-		if parseErr != nil {
-			warnings = appendWarning(warnings, fmt.Sprintf("фрагмент %d: %v", index+1, parseErr))
-			continue
-		}
-		for _, raw := range response.Competencies {
-			competency, itemWarnings, ok := validateCompetency(raw, part.pages)
-			for _, warning := range itemWarnings {
-				warnings = appendWarning(warnings, fmt.Sprintf("фрагмент %d: %s", index+1, warning))
-			}
-			if !ok {
-				continue
-			}
-			mergeCompetency(&program, indexByCode, competency, &warnings)
-		}
+	} else {
+		e.extractChunksParallel(extractCtx, system, chunks, concurrency, state)
+	}
+
+	if ctxErr := extractCtx.Err(); ctxErr != nil {
+		return program, state.warnings, timeoutError(ctxErr, timeout, state.lastReason)
 	}
 	if len(program.Competencies) == 0 {
-		return program, warnings, ErrNoCompetencies
+		return program, state.warnings, state.failureError()
 	}
-	return program, warnings, nil
+	return program, state.warnings, nil
+}
+
+// extractChunksParallel разбирает чанки пулом воркеров. Каждый чанк пишет
+// результат в свою ячейку outcomes, поэтому порядок страниц, дедуп и
+// предупреждения детерминированы независимо от порядка завершения запросов.
+// Аварийное деление чанка остаётся последовательным внутри его воркера и не
+// блокирует остальные чанки.
+func (e *Extractor) extractChunksParallel(ctx context.Context, system string, chunks []chunk, concurrency int, state *extractionState) {
+	outcomes := make([]chunkOutcome, len(chunks))
+	sem := make(chan struct{}, concurrency)
+	var wait sync.WaitGroup
+launch:
+	for index := range chunks {
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break launch
+		}
+		outcomes[index].fragment = index
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			defer func() { <-sem }()
+			e.extractChunk(ctx, system, chunks[index], 0, index, &outcomes[index])
+		}(index)
+	}
+	wait.Wait()
+	for index := range outcomes {
+		state.apply(&outcomes[index])
+	}
+}
+
+// extractChunk пытается разобрать один чанк. При ошибке модели или невалидном
+// ответе чанк делится пополам и разбор повторяется рекурсивно; результаты
+// складываются в локальный outcome, который затем применяется к общему state в
+// порядке фрагментов.
+func (e *Extractor) extractChunk(ctx context.Context, system string, part chunk, depth, fragment int, outcome *chunkOutcome) {
+	if ctx.Err() != nil {
+		return
+	}
+	e.logger().Debug("fgos_chunk_request",
+		"fragment", fragment+1,
+		"depth", depth,
+		"chunk_chars", part.chars,
+		"concurrency", e.concurrency())
+
+	answer, callErr := e.Client.Chat(ctx, []llm.Message{
+		{Role: llm.RoleSystem, Content: system},
+		{Role: llm.RoleUser, Content: userPrompt(part)},
+	})
+	if callErr != nil {
+		if ctx.Err() != nil {
+			// Истёк общий бюджет разбора: деление уже не поможет, причину
+			// вернёт вызывающий код через timeoutError.
+			return
+		}
+		e.splitOrFail(ctx, system, part, depth, fragment, outcome, "LLM: "+callErr.Error())
+		return
+	}
+	if limit := e.maxResponseChars(); limit > 0 && len([]rune(answer)) > limit {
+		e.splitOrFail(ctx, system, part, depth, fragment, outcome,
+			fmt.Sprintf("ответ модели больше %d символов при лимите %d токенов", limit, e.maxResponseTokens()))
+		return
+	}
+
+	response, parseErr := parseResponse(answer)
+	if parseErr != nil {
+		e.splitOrFail(ctx, system, part, depth, fragment, outcome, "невалидный JSON: "+parseErr.Error())
+		return
+	}
+	valid := 0
+	for _, raw := range response.Competencies {
+		competency, itemWarnings, ok := validateCompetency(raw, part.pages)
+		for _, warning := range itemWarnings {
+			outcome.addWarning(fmt.Sprintf("фрагмент %d: %s", fragment+1, warning))
+		}
+		if !ok {
+			continue
+		}
+		outcome.competencies = append(outcome.competencies, competency)
+		valid++
+	}
+	if valid == 0 {
+		reason := "модель вернула пустой список компетенций"
+		if len(response.Competencies) > 0 {
+			reason = "все пункты ответа отбракованы при валидации"
+		}
+		e.splitOrFail(ctx, system, part, depth, fragment, outcome, reason)
+		return
+	}
+}
+
+// splitOrFail делит чанк пополам и повторяет разбор или фиксирует причину
+// неудачи, если деление невозможно (достигнут лимит глубины/размера).
+func (e *Extractor) splitOrFail(ctx context.Context, system string, part chunk, depth, fragment int, outcome *chunkOutcome, reason string) {
+	outcome.fail(reason)
+	if depth >= maxSplitDepth || part.chars <= minSplitChars {
+		outcome.addWarning(fmt.Sprintf("фрагмент %d: не удалось разобрать чанк (%d символов): %s", fragment+1, part.chars, reason))
+		e.logger().Warn("fgos_chunk_failed",
+			"fragment", fragment+1,
+			"depth", depth,
+			"chunk_chars", part.chars,
+			"reason", reason)
+		return
+	}
+	left, right, ok := splitChunk(part)
+	if !ok {
+		outcome.addWarning(fmt.Sprintf("фрагмент %d: не удалось разделить чанк (%d символов): %s", fragment+1, part.chars, reason))
+		e.logger().Warn("fgos_chunk_failed",
+			"fragment", fragment+1,
+			"depth", depth,
+			"chunk_chars", part.chars,
+			"reason", reason)
+		return
+	}
+	outcome.addWarning(SplitChunkWarning)
+	e.logger().Warn("fgos_chunk_split",
+		"fragment", fragment+1,
+		"depth", depth+1,
+		"chunk_chars", part.chars,
+		"left_chars", left.chars,
+		"right_chars", right.chars,
+		"reason", reason)
+	e.extractChunk(ctx, system, left, depth+1, fragment, outcome)
+	if ctx.Err() != nil {
+		return
+	}
+	e.extractChunk(ctx, system, right, depth+1, fragment, outcome)
 }
 
 // chunkPages режет страницы на чанки по limit символов, не разрывая страницу.
@@ -140,57 +397,131 @@ func chunkPages(pages []Page, limit int) []chunk {
 	current := chunk{}
 	for _, page := range pages {
 		pageChars := len([]rune(page.Text))
-		if len(current.pages) > 0 && current.chars+pageChars > limit {
+		if len(current.segments) > 0 && current.chars+pageChars > limit {
 			result = append(result, current)
 			current = chunk{}
 		}
 		current.pages = append(current.pages, page)
+		current.segments = append(current.segments, promptSegment{number: page.Number, text: page.Text})
 		current.chars += pageChars
 	}
-	if len(current.pages) > 0 {
+	if len(current.segments) > 0 {
 		result = append(result, current)
 	}
 	return result
 }
 
+// splitChunk делит чанк примерно пополам по символам. Если граница попадает
+// внутрь страницы, страница режется на два сегмента с одним номером: модель
+// видит половину текста, но цитата всё равно проверяется по полному тексту
+// страницы, сохранённому в pages.
+func splitChunk(part chunk) (chunk, chunk, bool) {
+	if part.chars < 2 || len(part.segments) == 0 {
+		return chunk{}, chunk{}, false
+	}
+	target := part.chars / 2
+	left := chunk{}
+	right := chunk{}
+	remaining := target
+	for _, segment := range part.segments {
+		runes := []rune(segment.text)
+		chars := len(runes)
+		if remaining > 0 {
+			if chars <= remaining {
+				left.segments = append(left.segments, segment)
+				left.chars += chars
+				remaining -= chars
+				continue
+			}
+			left.segments = append(left.segments, promptSegment{number: segment.number, text: string(runes[:remaining])})
+			right.segments = append(right.segments, promptSegment{number: segment.number, text: string(runes[remaining:])})
+			left.chars += remaining
+			right.chars += chars - remaining
+			remaining = 0
+			continue
+		}
+		right.segments = append(right.segments, segment)
+		right.chars += chars
+	}
+	if left.chars == 0 || right.chars == 0 {
+		return chunk{}, chunk{}, false
+	}
+	left.pages = pagesForSegments(part.pages, left.segments)
+	right.pages = pagesForSegments(part.pages, right.segments)
+	return left, right, true
+}
+
+// pagesForSegments возвращает полные страницы, которых касаются сегменты.
+func pagesForSegments(pages []Page, segments []promptSegment) []Page {
+	byNumber := make(map[int]Page, len(pages))
+	for _, page := range pages {
+		byNumber[page.Number] = page
+	}
+	seen := make(map[int]bool, len(segments))
+	result := make([]Page, 0, len(segments))
+	for _, segment := range segments {
+		if seen[segment.number] {
+			continue
+		}
+		seen[segment.number] = true
+		if page, ok := byNumber[segment.number]; ok {
+			result = append(result, page)
+		}
+	}
+	return result
+}
+
 // userPrompt собирает запрос по одному чанку: страницы с номерами и схема
-// ответа. Текст страницы идёт целиком, без пересказа.
+// ответа. В модель уходит только видимая часть страницы (сегменты).
 func userPrompt(part chunk) string {
 	var builder strings.Builder
 	builder.WriteString("Фрагмент ФГОС. Страницы: ")
-	builder.WriteString(pageRange(part.pages))
+	builder.WriteString(pageRange(segmentPageNumbers(part.segments)))
 	builder.WriteString(".\n")
 	builder.WriteString("Извлекай компетенции только из текста ниже. page в citations обязан быть одной из этих страниц.\n\n")
-	for _, page := range part.pages {
-		fmt.Fprintf(&builder, "=== Страница %d ===\n%s\n\n", page.Number, page.Text)
+	for _, segment := range part.segments {
+		fmt.Fprintf(&builder, "=== Страница %d ===\n%s\n\n", segment.number, segment.text)
 	}
 	builder.WriteString(`Верни JSON ровно по схеме: {"competencies":[{"code":"УК-1","title":"...","type":"universal",` +
 		`"ksa":[{"kind":"knowledge","title":"..."}],"citations":[{"page":3,"quote":"дословный фрагмент"}]}]}`)
 	return builder.String()
 }
 
-func pageRange(pages []Page) string {
-	if len(pages) == 0 {
+func segmentPageNumbers(segments []promptSegment) []int {
+	numbers := make([]int, 0, len(segments))
+	seen := make(map[int]bool, len(segments))
+	for _, segment := range segments {
+		if seen[segment.number] {
+			continue
+		}
+		seen[segment.number] = true
+		numbers = append(numbers, segment.number)
+	}
+	return numbers
+}
+
+func pageRange(numbers []int) string {
+	if len(numbers) == 0 {
 		return "—"
 	}
-	if len(pages) == 1 {
-		return strconv.Itoa(pages[0].Number)
+	if len(numbers) == 1 {
+		return strconv.Itoa(numbers[0])
 	}
 	contiguous := true
-	for index := 1; index < len(pages); index++ {
-		if pages[index].Number != pages[index-1].Number+1 {
+	for index := 1; index < len(numbers); index++ {
+		if numbers[index] != numbers[index-1]+1 {
 			contiguous = false
 			break
 		}
 	}
 	if contiguous {
-		return fmt.Sprintf("%d–%d", pages[0].Number, pages[len(pages)-1].Number)
+		return fmt.Sprintf("%d–%d", numbers[0], numbers[len(numbers)-1])
 	}
-	numbers := make([]string, len(pages))
-	for index, page := range pages {
-		numbers[index] = strconv.Itoa(page.Number)
+	values := make([]string, len(numbers))
+	for index, number := range numbers {
+		values[index] = strconv.Itoa(number)
 	}
-	return strings.Join(numbers, ", ")
+	return strings.Join(values, ", ")
 }
 
 // parseResponse извлекает JSON-объект из ответа модели, даже если тот обёрнут в
@@ -311,22 +642,23 @@ func findPage(pages []Page, number int) (Page, bool) {
 }
 
 // mergeCompetency дедуплицирует компетенции по коду: KSA объединяются, при
-// конфликте формулировок остаётся первая и добавляется предупреждение.
-func mergeCompetency(program *ingestion.EducationProgram, indexByCode map[string]int, incoming ingestion.ProgramCompetency, warnings *[]string) {
+// конфликте формулировок остаётся первая и возвращается предупреждение.
+func mergeCompetency(program *ingestion.EducationProgram, indexByCode map[string]int, incoming ingestion.ProgramCompetency) []string {
 	index, exists := indexByCode[incoming.Code]
 	if !exists {
 		indexByCode[incoming.Code] = len(program.Competencies)
 		program.Competencies = append(program.Competencies, incoming)
-		return
+		return nil
 	}
 	existing := &program.Competencies[index]
+	warnings := []string{}
 	if existing.Title != incoming.Title {
-		*warnings = appendWarning(*warnings, fmt.Sprintf(
+		warnings = append(warnings, fmt.Sprintf(
 			"компетенция %s: формулировка %q отличается от %q; оставлена первая",
 			incoming.Code, incoming.Title, existing.Title))
 	}
 	if existing.Type != incoming.Type {
-		*warnings = appendWarning(*warnings, fmt.Sprintf(
+		warnings = append(warnings, fmt.Sprintf(
 			"компетенция %s: тип %q отличается от %q; оставлен первый",
 			incoming.Code, incoming.Type, existing.Type))
 	}
@@ -342,13 +674,17 @@ func mergeCompetency(program *ingestion.EducationProgram, indexByCode map[string
 		seen[key] = true
 		existing.KSA = append(existing.KSA, item)
 	}
+	return warnings
 }
 
-func appendWarning(warnings []string, warning string) []string {
-	if len(warnings) >= maxWarnings {
-		return warnings
+// timeoutError превращает истёкший общий бюджет в ошибку адаптера и добавляет
+// причину последней неудачи, если она была.
+func timeoutError(ctxErr error, timeout time.Duration, lastReason string) error {
+	base := contextError(ctxErr, timeout)
+	if lastReason == "" {
+		return base
 	}
-	return append(warnings, warning)
+	return fmt.Errorf("%w: последняя ошибка — %s", base, lastReason)
 }
 
 // contextError превращает отмену контекста в понятную ошибку адаптера.

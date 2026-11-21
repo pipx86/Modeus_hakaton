@@ -5,15 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/ingestion"
+	"activity-descriptor/internal/ocr"
 )
 
 const (
@@ -23,9 +27,13 @@ const (
 
 	programImportRequestLimit = ingestion.MaxDocumentSize + (1 << 20)
 	programDecisionBodyLimit  = 1 << 20
-	// programImportLLMTimeout — бюджет синхронного разбора PDF/DOCX через LLM:
-	// импорт не должен держать HTTP-запрос дольше пяти минут.
-	programImportLLMTimeout = 5 * time.Minute
+	// defaultProgramImportTimeout — бюджет синхронного разбора PDF/DOCX/сканов,
+	// если PROGRAM_IMPORT_TIMEOUT_S не задан. OCR и LLM работают в одном
+	// бюджете: живой ФГОС на 10–15 страниц не укладывается в прежние 5 минут.
+	defaultProgramImportTimeout = 15 * time.Minute
+	// envProgramImportTimeout — переменная окружения с бюджетом импорта в
+	// секундах (допускается и duration: 15m).
+	envProgramImportTimeout = "PROGRAM_IMPORT_TIMEOUT_S"
 )
 
 // errProgramDraftDecided означает гонку: черновик уже опубликован или отклонён
@@ -135,11 +143,11 @@ func (s *Server) programPublisherForStore() programPublisher {
 
 // handleProgramImport godoc
 // @Summary      Импортировать образовательную программу в черновик
-// @Description  Принимает multipart-файл CSV/XLSX/JSON/TXT/MD, а также PDF/DOCX при настроенном LLM-адаптере ФГОС, и постоянный key программы. Файл разбирается и валидируется, но не публикуется: создаётся черновик для проверки человеком. PDF/DOCX разбираются синхронно через LLM (таймаут 5 минут); если адаптер не настроен, возвращается 422, если модель недоступна — 503. Ошибки строк возвращаются списком details.
+// @Description  Принимает multipart-файл CSV/XLSX/JSON/TXT/MD, а также PDF/DOCX при настроенном LLM-адаптере ФГОС и PNG/JPEG при включённом OCR, и постоянный key программы. Файл разбирается и валидируется, но не публикуется: создаётся черновик для проверки человеком. PDF/DOCX и сканы разбираются синхронно через LLM и OCR (таймаут PROGRAM_IMPORT_TIMEOUT_S, по умолчанию 15 минут); страницы без текстового слоя распознаются tesseract, в предупреждениях появляется «страница N распознана OCR». Если адаптер не настроен, возвращается 422, если модель или OCR недоступны — 503. Ошибки строк возвращаются списком details.
 // @Tags         academic
 // @Accept       multipart/form-data
 // @Produce      json
-// @Param        file  formData  file    true   "Файл программы (CSV, XLSX, JSON, TXT, MD, PDF, DOCX)"
+// @Param        file  formData  file    true   "Файл программы (CSV, XLSX, JSON, TXT, MD, PDF, DOCX, PNG или JPEG при OCR)"
 // @Param        key   formData  string  true   "Постоянный код программы"
 // @Success      201   {object}  programImportResult
 // @Failure      400   {object}  errorBody
@@ -210,7 +218,13 @@ func (s *Server) handleProgramImport(w http.ResponseWriter, r *http.Request) {
 	var program ingestion.EducationProgram
 	var warnings []string
 	format := documentFormat(sourceName)
-	if format == "pdf" || format == "docx" {
+	if isProgramDocumentFormat(format) {
+		// PNG/JPEG имеют смысл только при OCR: без него это не программа, а
+		// картинка. PDF/DOCX без OCR всё равно пробуются как текстовые.
+		if isOCRImageFormat(format) && !s.programOCR {
+			writeProgramOCRDisabled(w)
+			return
+		}
 		var extracted bool
 		program, warnings, extracted = s.importProgramDocument(w, r, sourceName, format, data)
 		if !extracted {
@@ -273,31 +287,33 @@ func documentFormat(name string) string {
 	return strings.TrimPrefix(strings.ToLower(filepath.Ext(strings.TrimSpace(name))), ".")
 }
 
-// importProgramDocument разбирает PDF/DOCX через LLM-адаптер ФГОС. В отличие от
-// CSV/XLSX здесь нет детерминированного парсера: программу и цитаты возвращает
-// модель, поэтому статус ошибки зависит от причины. При ошибке хендлер уже
-// записал ответ, и extracted=false.
+// importProgramDocument разбирает PDF/DOCX/PNG/JPEG через LLM-адаптер ФГОС. В
+// отличие от CSV/XLSX здесь нет детерминированного парсера: программу и цитаты
+// возвращает модель, а страницы без текстового слоя — OCR, поэтому статус
+// ошибки зависит от причины. При ошибке хендлер уже записал ответ, и
+// extracted=false.
 func (s *Server) importProgramDocument(w http.ResponseWriter, r *http.Request, sourceName, format string, data []byte) (ingestion.EducationProgram, []string, bool) {
 	if s == nil || s.programTextExtractor == nil {
 		// 422, а не 501: запрос осмысленный, но сервер не умеет разбирать
-		// PDF/DOCX без LLM. Администратор может загрузить CSV/XLSX.
+		// документы без LLM. Администратор может загрузить CSV/XLSX.
 		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
 			Code:    "PROGRAM_IMPORT_LLM_NOT_CONFIGURED",
-			Message: "PDF и DOCX требуют LLM-адаптера ФГОС: задайте LLM_API_KEY на сервере или загрузите программу в CSV/XLSX/JSON",
-			Details: []string{"без LLM нельзя извлечь компетенции и цитаты из PDF/DOCX"},
+			Message: "PDF, DOCX и сканы требуют LLM-адаптера ФГОС: задайте LLM_API_KEY на сервере или загрузите программу в CSV/XLSX/JSON",
+			Details: []string{"без LLM нельзя извлечь компетенции и цитаты из PDF/DOCX/сканов"},
 		})
 		return ingestion.EducationProgram{}, nil, false
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), programImportLLMTimeout)
+	timeout := s.programImportTimeout()
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	pages, err := s.programTextExtractor.ExtractPages(sourceName, data)
+	pages, err := s.extractProgramPages(ctx, sourceName, data)
 	if err != nil {
-		s.writeProgramDocumentError(w, err)
+		s.writeProgramDocumentError(w, err, timeout)
 		return ingestion.EducationProgram{}, nil, false
 	}
 	program, warnings, err := s.programTextExtractor.Extract(ctx, pages)
 	if err != nil {
-		s.writeProgramDocumentError(w, err)
+		s.writeProgramDocumentError(w, err, timeout)
 		return ingestion.EducationProgram{}, nil, false
 	}
 	if strings.TrimSpace(program.Title) == "" {
@@ -311,6 +327,126 @@ func (s *Server) importProgramDocument(w http.ResponseWriter, r *http.Request, s
 	return program, warnings, true
 }
 
+// extractProgramPages передаёт контекст HTTP-запроса, если адаптер его умеет:
+// так общий таймаут импорта ограничивает и OCR, и извлечение компетенций.
+// Старые реализации DocumentExtractor работают без контекста.
+func (s *Server) extractProgramPages(ctx context.Context, sourceName string, data []byte) ([]fgos.Page, error) {
+	if contextual, ok := s.programTextExtractor.(fgos.ContextDocumentExtractor); ok {
+		return contextual.ExtractPagesContext(ctx, sourceName, data)
+	}
+	return s.programTextExtractor.ExtractPages(sourceName, data)
+}
+
+// programImportTimeout — бюджет синхронного импорта PDF/DOCX/сканов. OCR и
+// LLM работают в одном бюджете; значение задаётся PROGRAM_IMPORT_TIMEOUT_S.
+func (s *Server) programImportTimeout() time.Duration {
+	if s != nil && s.programImportBudget > 0 {
+		return s.programImportBudget
+	}
+	return defaultProgramImportTimeout
+}
+
+// ProgramImportTimeoutFromEnv — экспортированный доступ к бюджету импорта для
+// cmd/server: тем же значением ограничивается fgos.Extractor.Timeout, иначе
+// внутренний лимит адаптера сработает раньше HTTP-контекста.
+func ProgramImportTimeoutFromEnv() time.Duration {
+	return programImportTimeoutFromEnv()
+}
+
+// programImportTimeoutFromEnv читает PROGRAM_IMPORT_TIMEOUT_S в секундах (900)
+// или duration (15m). Некорректное значение заменяется умолчанием, чтобы
+// сервер не падал из-за опечатки в env.
+func programImportTimeoutFromEnv() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(envProgramImportTimeout))
+	if raw == "" {
+		return defaultProgramImportTimeout
+	}
+	if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if duration, err := time.ParseDuration(raw); err == nil && duration > 0 {
+		return duration
+	}
+	return defaultProgramImportTimeout
+}
+
+// programImportTimeoutLabel переводит таймаут в текст ошибки («15 минут»).
+func programImportTimeoutLabel(timeout time.Duration) string {
+	minutes := int(timeout / time.Minute)
+	if minutes <= 0 {
+		return timeout.String()
+	}
+	return fmt.Sprintf("%d минут", minutes)
+}
+
+// writeProgramOCRDisabled объясняет, что изображение нельзя разобрать без OCR.
+func writeProgramOCRDisabled(w http.ResponseWriter) {
+	writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+		Code:    "PROGRAM_IMPORT_OCR_DISABLED",
+		Message: "изображение программы требует OCR: задайте OCR_ENABLED=true на сервере и установите tesseract/poppler или загрузите PDF с текстовым слоем",
+		Details: []string{"включение OCR и установка инструментов: " + ocr.DocsPath},
+	})
+}
+
+// writeProgramDocumentError переводит ошибку адаптера в HTTP-ответ: 422 — файл
+// или содержимое не подходят, 503 — модель или OCR недоступны/не успели.
+func (s *Server) writeProgramDocumentError(w http.ResponseWriter, err error, timeout time.Duration) {
+	switch {
+	case errors.Is(err, ocr.ErrDisabled):
+		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_OCR_DISABLED",
+			Message: "документ является сканом: OCR на сервере выключен",
+			Details: programImportProblems(err),
+		})
+	case errors.Is(err, ocr.ErrUnavailable), errors.Is(err, ocr.ErrToolNotFound):
+		writeJSON(w, http.StatusServiceUnavailable, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_OCR_UNAVAILABLE",
+			Message: "OCR недоступен: установите tesseract и poppler на сервере или повторите позже",
+			Details: programImportProblems(err),
+		})
+	case errors.Is(err, ocr.ErrPageLimit):
+		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_OCR_PAGE_LIMIT",
+			Message: "скан слишком большой для OCR: разделите документ или увеличьте OCR_MAX_PAGES",
+			Details: programImportProblems(err),
+		})
+	case errors.Is(err, ocr.ErrTimeout):
+		writeJSON(w, http.StatusServiceUnavailable, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_OCR_TIMEOUT",
+			Message: fmt.Sprintf("OCR не успел распознать документ за %s", programImportTimeoutLabel(timeout)),
+			Details: programImportProblems(err),
+		})
+	case errors.Is(err, ocr.ErrNoText), errors.Is(err, ocr.ErrUnsupportedImage):
+		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_INVALID",
+			Message: "документ программы не прошёл извлечение",
+			Details: programImportProblems(err),
+		})
+	case errors.Is(err, fgos.ErrTimeout), errors.Is(err, context.DeadlineExceeded):
+		writeErr(w, http.StatusServiceUnavailable, "PROGRAM_IMPORT_LLM_TIMEOUT",
+			fmt.Sprintf("LLM-адаптер не успел разобрать документ за %s", programImportTimeoutLabel(timeout)))
+	case errors.Is(err, fgos.ErrNoTextLayer),
+		errors.Is(err, fgos.ErrNoCompetencies),
+		errors.Is(err, fgos.ErrUnsupportedFormat),
+		errors.Is(err, fgos.ErrInvalidDocument):
+		details := programImportProblems(err)
+		if !s.programOCR {
+			details = append(details, "документ похож на скан: включите OCR_ENABLED=true, установите tesseract и poppler и повторите импорт; инструкция: "+ocr.DocsPath)
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_INVALID",
+			Message: "документ программы не прошёл извлечение",
+			Details: details,
+		})
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_LLM_UNAVAILABLE",
+			Message: "LLM-адаптер недоступен: проверьте настройки модели и повторите позже",
+			Details: programImportProblems(err),
+		})
+	}
+}
+
 // programTitleFromFileName — запасное название черновика, если LLM не вернул
 // title программы.
 func programTitleFromFileName(name string) string {
@@ -322,25 +458,24 @@ func programTitleFromFileName(name string) string {
 	return base
 }
 
-// writeProgramDocumentError переводит ошибку адаптера в HTTP-ответ: 422 — файл
-// или содержимое не подходят, 503 — модель недоступна или не успела ответить.
-func (s *Server) writeProgramDocumentError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, fgos.ErrTimeout), errors.Is(err, context.DeadlineExceeded):
-		writeErr(w, http.StatusServiceUnavailable, "PROGRAM_IMPORT_LLM_TIMEOUT",
-			"LLM-адаптер не успел разобрать документ за 5 минут")
-	case errors.Is(err, fgos.ErrNoTextLayer),
-		errors.Is(err, fgos.ErrNoCompetencies),
-		errors.Is(err, fgos.ErrUnsupportedFormat),
-		errors.Is(err, fgos.ErrInvalidDocument):
-		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
-			Code:    "PROGRAM_IMPORT_INVALID",
-			Message: "документ программы не прошёл извлечение",
-			Details: programImportProblems(err),
-		})
+// isProgramDocumentFormat сообщает, разбирается ли файл LLM-адаптером ФГОС
+// (PDF/DOCX и изображения при включённом OCR).
+func isProgramDocumentFormat(format string) bool {
+	switch format {
+	case "pdf", "docx":
+		return true
 	default:
-		writeErr(w, http.StatusServiceUnavailable, "PROGRAM_IMPORT_LLM_UNAVAILABLE",
-			"LLM-адаптер недоступен: проверьте настройки модели и повторите позже")
+		return isOCRImageFormat(format)
+	}
+}
+
+// isOCRImageFormat — форматы изображений, которые распознаёт OCR.
+func isOCRImageFormat(format string) bool {
+	switch format {
+	case "png", "jpg", "jpeg":
+		return true
+	default:
+		return false
 	}
 }
 

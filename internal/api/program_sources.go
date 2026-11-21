@@ -266,12 +266,12 @@ func (s *Server) handleCheckProgramSource(w http.ResponseWriter, r *http.Request
 		return
 	}
 	owner := programwatch.NewOwner("api")
-	// С LLM-адаптером ручная проверка PDF/DOCX может занять до пяти минут:
-	// lease должен перекрывать этот срок, иначе воркер перехватит источник и
-	// запустит второй разбор.
+	// С LLM-адаптером ручная проверка PDF/DOCX может занять до пяти минут
+	// (со сканами и OCR — до десяти): lease должен перекрывать этот срок,
+	// иначе воркер перехватит источник и запустит второй разбор.
 	lease := programSourceCheckLease
 	if s.programTextExtractor != nil {
-		lease = programImportLLMTimeout + time.Minute
+		lease = s.programImportTimeout() + time.Minute
 	}
 	source, err := store.ClaimWatchSource(r.Context(), id, lease, owner)
 	if err != nil {

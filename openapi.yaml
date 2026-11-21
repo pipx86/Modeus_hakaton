@@ -4471,16 +4471,23 @@ paths:
       tags: [academic]
       summary: Импортировать образовательную программу в черновик
       description: >-
-        Принимает файл CSV, XLSX, JSON, размеченный TXT/MD, а также PDF/DOCX ФГОС
-        и постоянный ключ программы. Файл разбирается и валидируется, но не
-        публикуется: создаётся черновик для проверки человеком. PDF и DOCX
-        разбирает LLM-адаптер ФГОС синхронно (таймаут 5 минут): из документа
+        Принимает файл CSV, XLSX, JSON, размеченный TXT/MD, а также PDF/DOCX
+        ФГОС и PNG/JPEG при включённом OCR, и постоянный ключ программы. Файл
+        разбирается и валидируется, но не публикуется: создаётся черновик для
+        проверки человеком. PDF и DOCX разбирает LLM-адаптер ФГОС синхронно
+        (таймаут PROGRAM_IMPORT_TIMEOUT_S, по умолчанию 15 минут; OCR и LLM
+        работают в одном бюджете): из документа
         извлекаются компетенции, KSA и дословные цитаты с номерами страниц, а
-        невалидные пункты отбрасываются с предупреждениями в отчёте. Если
-        LLM-адаптер не настроен, PDF/DOCX отклоняются с 422
-        PROGRAM_IMPORT_LLM_NOT_CONFIGURED; если модель недоступна или не успела
-        ответить — 503. Ошибки строк возвращаются списком в details (HTTP 422) и
-        не обрывают разбор на первой строке.
+        невалидные пункты отбрасываются с предупреждениями в отчёте. Страницы
+        без текстового слоя распознаются tesseract/poppler; в report.warnings
+        появляется «страница N распознана OCR (точность ниже)». Если
+        LLM-адаптер не настроен, PDF/DOCX/сканы отклоняются с 422
+        PROGRAM_IMPORT_LLM_NOT_CONFIGURED; если OCR выключен, PNG/JPEG получают
+        422 PROGRAM_IMPORT_OCR_DISABLED, а PDF-скан — 422
+        PROGRAM_IMPORT_INVALID с подсказкой включить OCR; если
+        tesseract/poppler не установлены — 503 PROGRAM_IMPORT_OCR_UNAVAILABLE;
+        если модель или OCR не успели ответить — 503. Ошибки строк возвращаются
+        списком в details (HTTP 422) и не обрывают разбор на первой строке.
       operationId: importProgramDraft
       requestBody:
         required: true
@@ -4496,7 +4503,9 @@ paths:
                   format: binary
                   description: >-
                     CSV, XLSX, JSON, TXT/MD или PDF/DOCX; не больше 20 МБ.
-                    PDF/DOCX требуют настроенного LLM-адаптера ФГОС.
+                    PDF/DOCX требуют настроенного LLM-адаптера ФГОС. PNG/JPEG
+                    принимаются только при OCR_ENABLED=true; PDF-сканы без
+                    текстового слоя также требуют OCR.
                 key:
                   type: string
                   minLength: 1
@@ -4528,7 +4537,18 @@ paths:
         "501":
           $ref: "#/components/responses/NotImplemented"
         "503":
-          $ref: "#/components/responses/ServiceUnavailable"
+          description: >-
+            LLM-адаптер или OCR недоступны либо не уложились в таймаут. code =
+            PROGRAM_IMPORT_LLM_TIMEOUT, PROGRAM_IMPORT_LLM_UNAVAILABLE,
+            PROGRAM_IMPORT_OCR_TIMEOUT или PROGRAM_IMPORT_OCR_UNAVAILABLE;
+            details для OCR содержит инструкцию по установке tesseract/poppler
+            (OCR_TESSERACT/OCR_PDFTOPPM) и ссылку на docs/mvp/12-ocr.md.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ProgramImportError"
+                  - $ref: "#/components/schemas/Error"
   /admin/programs/drafts:
     get:
       tags: [academic]
@@ -4887,9 +4907,13 @@ components:
     ProgramImportInvalid:
       description: >-
         Файл программы не прошёл проверку. details содержит все найденные
-        проблемы с номерами строк или листов. Для PDF/DOCX сюда же попадают
-        ошибки извлечения (в документе нет текстового слоя — нужен OCR; модель
-        не вернула ни одной валидной компетенции) и отсутствие LLM-адаптера
+        проблемы с номерами строк или листов. Для PDF/DOCX/сканов сюда же
+        попадают ошибки извлечения (в документе нет текстового слоя — нужен
+        OCR; PDF-скан при выключенном OCR — код PROGRAM_IMPORT_INVALID с
+        подсказкой; PNG/JPEG при выключенном OCR —
+        code=PROGRAM_IMPORT_OCR_DISABLED; превышен лимит страниц OCR —
+        code=PROGRAM_IMPORT_OCR_PAGE_LIMIT; OCR не распознал текст; модель не
+        вернула ни одной валидной компетенции) и отсутствие LLM-адаптера
         (code=PROGRAM_IMPORT_LLM_NOT_CONFIGURED).
       content:
         application/json:
@@ -4935,8 +4959,8 @@ components:
       description: >-
         Источник уже проверяется: воркер или другой администратор держит
         lease-блокировку. Повторите запрос после завершения текущей проверки
-        или истечения lease (5 минут для ручной проверки, 10 минут по умолчанию
-        для воркера).
+        или истечения lease (по умолчанию 16 минут для ручной проверки с
+        LLM/OCR и 10 минут для воркера).
       content:
         application/json:
           schema:

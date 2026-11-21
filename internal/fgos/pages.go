@@ -1,8 +1,10 @@
 package fgos
 
 import (
+	"activity-descriptor/internal/tempdir"
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -22,36 +24,58 @@ const (
 	// памяти: 20 МБ файла достаточно для 100+ страниц, но не для бесконечного
 	// потока.
 	maxPageTextRunes = 2_000_000
-	// minTextRunes — порог «документ действительно содержит текстовый слой».
-	minTextRunes = 20
+	// MinPageTextRunes — порог «документ действительно содержит текстовый
+	// слой» и «страница не пустая». Страницы короче порога может заменить OCR:
+	// в сканах заголовки и колонтитулы дают 1–2 символа текстового слоя.
+	MinPageTextRunes = 20
 	// maxDOCXDecompressed защищает от zip-бомб в DOCX.
 	maxDOCXDecompressed = 64 << 20
 )
 
 // ExtractPages возвращает страницы PDF или DOCX по байтам файла. Формат
-// определяется по расширению name: .pdf или .docx.
+// определяется по расширению name: .pdf, .docx, .png, .jpg или .jpeg.
 //
 // Для PDF страницы берутся из дерева страниц библиотеки (номера точные). Для
 // DOCX точных номеров нет: страницы восстанавливаются по разрывам, поэтому
 // вызывающий код добавляет предупреждение ApproximatePageNumbersWarning.
+//
+// Функция не использует OCR: PDF без текстового слоя и изображения возвращают
+// понятную ошибку. Для сканов используйте ExtractPagesWithOCR.
 func ExtractPages(name string, data []byte) ([]Page, error) {
+	return ExtractPagesWithOCR(context.Background(), name, data, nil)
+}
+
+// ExtractPagesWithOCR — ExtractPages с OCR для страниц без текстового слоя.
+// ocr == nil сохраняет прежнее поведение (ErrNoTextLayer на скане).
+//
+// Если установлен OCR, страницы PDF короче MinPageTextRunes распознаются через
+// OCRExtractor.PagesFromPDF; изображения PNG/JPEG распознаются целиком через
+// OCRExtractor.RecognizeImage.
+func ExtractPagesWithOCR(ctx context.Context, name string, data []byte, ocr OCRExtractor) ([]Page, error) {
 	if len(data) == 0 {
 		return nil, errors.New("fgos: файл пустой")
 	}
 	if len(data) > ingestion.MaxDocumentSize {
 		return nil, fmt.Errorf("fgos: файл больше %d МБ", ingestion.MaxDocumentSize>>20)
 	}
-	switch strings.ToLower(filepath.Ext(strings.TrimSpace(name))) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	extension := strings.ToLower(filepath.Ext(strings.TrimSpace(name)))
+	switch extension {
 	case ".pdf":
-		return extractPDFPages(data)
+		return extractPDFPages(ctx, data, ocr)
 	case ".docx":
 		return extractDOCXPages(data)
+	case ".png", ".jpg", ".jpeg":
+		return extractImagePages(ctx, data, extension, ocr)
 	default:
-		return nil, fmt.Errorf("%w: %q", ErrUnsupportedFormat, strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), "."))
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedFormat, strings.TrimPrefix(extension, "."))
 	}
 }
 
-// ExtractPagesFile читает файл с диска и возвращает страницы документа.
+// ExtractPagesFile читает файл с диска и возвращает страницы документа без
+// OCR; для сканов используйте ExtractPagesWithOCR.
 func ExtractPagesFile(path string) ([]Page, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -60,9 +84,29 @@ func ExtractPagesFile(path string) ([]Page, error) {
 	return ExtractPages(path, data)
 }
 
-// extractPDFPages читает текст постранично. Библиотека паникует на
-// повреждённых файлах, поэтому паника превращается в понятную ошибку.
-func extractPDFPages(data []byte) (pages []Page, err error) {
+// extractPDFPages читает текст постранично. Если хотя бы одна страница почти
+// пустая и передан OCR, документ распознаётся через OCRExtractor (он сам
+// сохраняет страницы с текстовым слоем). Библиотека паникует на повреждённых
+// файлах, поэтому паника превращается в понятную ошибку.
+func extractPDFPages(ctx context.Context, data []byte, ocr OCRExtractor) ([]Page, error) {
+	pages, err := ExtractPDFPageTexts(data)
+	if err != nil {
+		return nil, err
+	}
+	if ocr != nil && pagesNeedOCR(pages) {
+		recognized, ocrErr := pagesWithOCR(ctx, ".pdf", data, ocr)
+		if ocrErr != nil {
+			return nil, fmt.Errorf("fgos: PDF: %w", ocrErr)
+		}
+		pages = recognized
+	}
+	return finalizePages(pages, "PDF", MinPageTextRunes)
+}
+
+// ExtractPDFPageTexts возвращает по одной странице на каждую страницу PDF,
+// включая страницы без текстового слоя (Text пустой). Ошибка ErrNoTextLayer
+// здесь не возвращается: решение об OCR принимает вызывающий код.
+func ExtractPDFPageTexts(data []byte) (pages []Page, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			pages = nil
@@ -78,29 +122,93 @@ func extractPDFPages(data []byte) (pages []Page, err error) {
 		return nil, fmt.Errorf("%w: в PDF нет страниц", ErrNoTextLayer)
 	}
 	pages = make([]Page, 0, total)
-	textRunes := 0
 	for number := 1; number <= total; number++ {
 		page := reader.Page(number)
 		text, pageErr := page.GetPlainText(nil)
 		if pageErr != nil {
-			// Одна повреждённая страница не должна ронять весь документ.
-			// Если текста нет нигде, ниже вернётся ErrNoTextLayer.
+			// Одна повреждённая страница не должна ронять весь документ:
+			// страница останется пустой и попадёт в OCR.
+			pages = append(pages, Page{Number: number})
 			continue
 		}
-		cleaned := cleanPageText(text)
-		if cleaned == "" {
-			continue
-		}
-		textRunes += len([]rune(cleaned))
-		if textRunes > maxPageTextRunes {
-			return nil, fmt.Errorf("fgos: текст PDF больше %d символов", maxPageTextRunes)
-		}
-		pages = append(pages, Page{Number: number, Text: cleaned})
-	}
-	if textRunes < minTextRunes {
-		return nil, fmt.Errorf("%w: в PDF не найден текст", ErrNoTextLayer)
+		pages = append(pages, Page{Number: number, Text: cleanPageText(text)})
 	}
 	return pages, nil
+}
+
+// pagesNeedOCR сообщает, есть ли в документе страницы короче MinPageTextRunes.
+// Пустой результат (нет страниц) тоже требует OCR — но PDF без страниц
+// отсекается раньше.
+func pagesNeedOCR(pages []Page) bool {
+	if len(pages) == 0 {
+		return true
+	}
+	for _, page := range pages {
+		if len([]rune(page.Text)) < MinPageTextRunes {
+			return true
+		}
+	}
+	return false
+}
+
+// pagesWithOCR сохраняет данные во временный файл (OCR-инструменты работают с
+// путями) и передаёт его OCRExtractor. Каталог удаляется после возврата.
+func pagesWithOCR(ctx context.Context, extension string, data []byte, ocr OCRExtractor) ([]Page, error) {
+	directory, err := tempdir.Create("fgos-ocr-*")
+	if err != nil {
+		return nil, fmt.Errorf("не удалось создать временный файл для OCR: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(directory) }()
+	path := filepath.Join(directory, "document"+extension)
+	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
+		return nil, fmt.Errorf("не удалось записать временный файл для OCR: %w", writeErr)
+	}
+	return ocr.PagesFromPDF(ctx, path)
+}
+
+// extractImagePages распознаёт изображение через OCR. Без OCR изображения
+// отклоняются как неподдерживаемый формат: детерминированного парсера у них нет.
+func extractImagePages(ctx context.Context, data []byte, extension string, ocr OCRExtractor) ([]Page, error) {
+	if ocr == nil {
+		return nil, fmt.Errorf("%w: изображение (%s) требует OCR: включите OCR и установите tesseract",
+			ErrUnsupportedFormat, strings.TrimPrefix(extension, "."))
+	}
+	directory, err := tempdir.Create("fgos-ocr-image-*")
+	if err != nil {
+		return nil, fmt.Errorf("fgos: не удалось создать временный файл для OCR: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(directory) }()
+	path := filepath.Join(directory, "image"+extension)
+	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
+		return nil, fmt.Errorf("fgos: не удалось записать временный файл для OCR: %w", writeErr)
+	}
+	pages, ocrErr := ocr.RecognizeImage(ctx, path)
+	if ocrErr != nil {
+		return nil, fmt.Errorf("fgos: изображение: %w", ocrErr)
+	}
+	return finalizePages(pages, "изображении", 1)
+}
+
+// finalizePages убирает пустые страницы, проверяет суммарный объём текста и
+// минимальный порог. Для PDF порог MinPageTextRunes отделяет скан от документа
+// с текстовым слоем; для изображения достаточно непустого текста.
+func finalizePages(pages []Page, format string, minRunes int) ([]Page, error) {
+	filtered := make([]Page, 0, len(pages))
+	textRunes := 0
+	for _, page := range pages {
+		if strings.TrimSpace(page.Text) == "" {
+			continue
+		}
+		textRunes += len([]rune(page.Text))
+		if textRunes > maxPageTextRunes {
+			return nil, fmt.Errorf("fgos: текст %s больше %d символов", format, maxPageTextRunes)
+		}
+		filtered = append(filtered, page)
+	}
+	if textRunes < minRunes {
+		return nil, fmt.Errorf("%w: в %s не найден текст", ErrNoTextLayer, format)
+	}
+	return filtered, nil
 }
 
 // extractDOCXPages читает word/document.xml и делит текст по разрывам страниц:
@@ -187,7 +295,7 @@ func extractDOCXPages(data []byte) ([]Page, error) {
 	for _, page := range pages {
 		textRunes += len([]rune(page.Text))
 	}
-	if textRunes < minTextRunes {
+	if textRunes < MinPageTextRunes {
 		return nil, fmt.Errorf("%w: в DOCX не найден текст", ErrNoTextLayer)
 	}
 	if textRunes > maxPageTextRunes {

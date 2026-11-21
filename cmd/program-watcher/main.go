@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/llm/agents"
 	"activity-descriptor/internal/logging"
+	"activity-descriptor/internal/ocr"
 	"activity-descriptor/internal/programwatch"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,6 +41,9 @@ func run() error {
 	owner := flag.String("owner", programwatch.DefaultOwner(), "lock owner id (default: hostname-pid)")
 	once := flag.Bool("once", false, "process one cycle, then exit")
 	pdfLLM := flag.Bool("pdf-llm", false, "parse PDF/DOCX with the LLM FGOS adapter (requires LLM_* environment variables)")
+	ocrEnabled := flag.Bool("ocr", false, "recognize scanned PDF/images with tesseract and poppler (implies -pdf-llm; tools are configured by OCR_* variables)")
+	ocrLang := flag.String("ocr-lang", "", "tesseract languages for OCR (default: OCR_LANG or rus+eng)")
+	ocrDPI := flag.Int("ocr-dpi", 0, "PDF render DPI for OCR (default: OCR_DPI or 200)")
 	flag.Parse()
 
 	if *dsn == "" {
@@ -52,6 +57,19 @@ func run() error {
 	}
 	if strings.TrimSpace(*owner) == "" {
 		return errors.New("-owner не должен быть пустым")
+	}
+	if *ocrDPI < 0 {
+		return errors.New("-ocr-dpi должен быть положительным")
+	}
+	ocrConfig := ocr.ConfigFromEnv()
+	if lang := strings.TrimSpace(*ocrLang); lang != "" {
+		ocrConfig.Lang = lang
+	}
+	if *ocrDPI > 0 {
+		ocrConfig.DPI = *ocrDPI
+	}
+	if *ocrEnabled {
+		ocrConfig.Enabled = true
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -75,12 +93,12 @@ func run() error {
 	// видят занятые источники и не проверяют их повторно.
 	checker.Owner = *owner
 	checker.Lease = *lease
-	if *pdfLLM {
-		checker.PDFExtractor = newFGOSExtractor()
+	if *pdfLLM || ocrConfig.Enabled {
+		checker.PDFExtractor = newFGOSExtractor(ocrConfig)
 	}
 	logging.L().Info("program_watcher_started",
 		"owner", *owner, "lease", lease.String(), "interval", pollInterval.String(),
-		"pdf_llm", checker.PDFExtractor != nil)
+		"pdf_llm", checker.PDFExtractor != nil, "ocr", ocrConfig.Enabled)
 
 	if *once {
 		if _, err = checker.RunOnceAndLog(ctx, sourcesPerCycle); err != nil && ctx.Err() == nil {
@@ -108,7 +126,11 @@ func run() error {
 // что и cmd/server (LLM_API_KEY / LLM_BASE_URL / LLM_<AGENT>_*). Если LLM не
 // настроен, воркер продолжает работать без адаптера: PDF и DOCX остаются в
 // статусе needs_parser, а не роняют цикл.
-func newFGOSExtractor() programwatch.PDFExtractor {
+//
+// При включённом OCR адаптер оборачивается ocr.FGOSExtractor: страницы без
+// текстового слоя распознаются tesseract/poppler. Отсутствие инструментов не
+// роняет воркер: документ получит статус error с инструкцией, цикл продолжится.
+func newFGOSExtractor(ocrConfig ocr.Config) programwatch.PDFExtractor {
 	cfg, err := agents.FromEnv()
 	if err != nil {
 		logging.L().Warn("fgos_llm_not_configured", "error", err)
@@ -125,10 +147,46 @@ func newFGOSExtractor() programwatch.PDFExtractor {
 		return nil
 	}
 	extractor := fgos.NewExtractor(client)
-	logging.L().Info("fgos_llm_adapter_enabled",
-		"model", cfg.Agents[agents.Analyst].Model,
-		"timeout", extractor.Timeout.String(),
-		"max_pages", extractor.MaxPages,
-		"max_chars_per_chunk", extractor.MaxCharsPerChunk)
-	return extractor
+	// Воркер разбирает те же PDF/сканы, что и импорт, поэтому берёт тот же
+	// бюджет времени. По умолчанию 15 минут: живой ФГОС на 10 страниц
+	// занимает около 6 минут.
+	extractor.Timeout = programImportBudget()
+	if !ocrConfig.Enabled {
+		logging.L().Info("fgos_llm_adapter_enabled",
+			"model", cfg.Agents[agents.Analyst].Model,
+			"timeout", extractor.Timeout.String(),
+			"max_pages", extractor.MaxPages,
+			"max_chars_per_chunk", extractor.MaxCharsPerChunk)
+		return extractor
+	}
+	document := ocr.NewDocument(ocrConfig)
+	if availableErr := document.Available(); availableErr != nil {
+		// Не отключаем OCR: инструменты могут появиться позже, а документ
+		// должен получить понятную ошибку с инструкцией.
+		logging.L().Warn("fgos_ocr_unavailable", "error", availableErr)
+	}
+	logging.L().Info("fgos_ocr_enabled",
+		"tesseract", ocrConfig.TesseractPath,
+		"pdftoppm", ocrConfig.PDFToPPMPath,
+		"lang", ocrConfig.Lang,
+		"dpi", ocrConfig.DPI,
+		"max_pages", ocrConfig.MaxPages,
+		"timeout", ocrConfig.Timeout.String())
+	return ocr.NewFGOSExtractor(extractor, document)
+}
+
+// programImportBudget читает PROGRAM_IMPORT_TIMEOUT_S (секунды или duration)
+// с дефолтом 15 минут; тем же значением ограничен импорт через API.
+func programImportBudget() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("PROGRAM_IMPORT_TIMEOUT_S"))
+	if raw == "" {
+		return 15 * time.Minute
+	}
+	if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+		return parsed
+	}
+	return 15 * time.Minute
 }

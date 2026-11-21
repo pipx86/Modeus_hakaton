@@ -69,6 +69,12 @@ type Server struct {
 	// programTextExtractor разбирает PDF/DOCX ФГОС через LLM. nil означает, что
 	// адаптер не настроен: импорт таких файлов отвечает 422.
 	programTextExtractor fgos.DocumentExtractor
+	// programOCR включает приём PDF-сканов и изображений: адаптер ФГОС умеет
+	// распознавать страницы без текстового слоя (OCR_ENABLED=true).
+	programOCR bool
+	// programImportBudget — общий таймаут синхронного импорта PDF/DOCX/сканов
+	// (env PROGRAM_IMPORT_TIMEOUT_S, по умолчанию 15 минут).
+	programImportBudget time.Duration
 }
 
 func NewServer(store Store) *Server {
@@ -91,6 +97,8 @@ func NewServerWithChat(store Store, chatService chatStarter) *Server {
 		eventStore:   sse.NewMemEventStore(1000),
 		ssePoll:      200 * time.Millisecond,
 		sseHeartbeat: hb,
+
+		programImportBudget: programImportTimeoutFromEnv(),
 	}
 	if pg, ok := store.(*PGStore); ok {
 		server.eventStore = sse.NewPGEventStore(pg.Pool)
@@ -116,6 +124,20 @@ func (s *Server) SetProgramMatcher(client llm.ChatClient) { s.programMatcher = c
 // rejects such files with 422 instead of silently returning an empty draft.
 func (s *Server) SetProgramTextExtractor(extractor fgos.DocumentExtractor) {
 	s.programTextExtractor = extractor
+}
+
+// SetProgramOCREnabled сообщает API, что адаптер ФГОС умеет OCR сканов
+// (OCR_ENABLED=true). Влияет на приём PNG/JPEG и на текст ошибок для PDF без
+// текстового слоя.
+func (s *Server) SetProgramOCREnabled(enabled bool) {
+	s.programOCR = enabled
+}
+
+// SetProgramImportTimeout переопределяет бюджет синхронного импорта
+// PDF/DOCX/сканов. Нулевое или отрицательное значение возвращает значение по
+// умолчанию (env PROGRAM_IMPORT_TIMEOUT_S или 15 минут).
+func (s *Server) SetProgramImportTimeout(timeout time.Duration) {
+	s.programImportBudget = timeout
 }
 
 // batchPipeline returns the configured batch plan, or the vacancy-only default
