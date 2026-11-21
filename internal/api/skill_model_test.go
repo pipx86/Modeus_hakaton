@@ -29,7 +29,7 @@ func TestSkillExtractionAnswerFormats(t *testing.T) {
 }
 
 func TestSkillExtractionPromptIncludesSourceAndToolBoundaries(t *testing.T) {
-	for _, required := range []string{"source_type", "basis=requirement", "REST, GraphQL, RBAC", "OpenAPI/Swagger, JWT, OAuth2", "Связывай Git только", "Каждый evidence_id"} {
+	for _, required := range []string{"source_type", "basis=requirement", "REST, GraphQL, RBAC", "OpenAPI/Swagger, JWT, OAuth2", "Связывай Git только", "Каждый evidence_id", "pandas не заменяет Python"} {
 		if !strings.Contains(skillExtractionPrompt, required) {
 			t.Fatalf("skill extraction prompt does not include %q", required)
 		}

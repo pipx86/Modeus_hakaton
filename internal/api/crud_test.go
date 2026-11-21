@@ -127,8 +127,14 @@ func TestBulkApproveIdempotent(t *testing.T) {
 	req1, _ := http.NewRequest("POST", ts.URL+"/api/v1/evidences/bulk-approve", bytes.NewReader(body1))
 	req1.Header.Set("Authorization", "Bearer "+tok)
 	req1.Header.Set("Content-Type", "application/json")
-	resp1, _ := http.DefaultClient.Do(req1)
-	resp1.Body.Close()
+	resp1, err := http.DefaultClient.Do(req1)
+	if err != nil {
+		t.Fatalf("первая отправка HTTP-запроса завершилась ошибкой: %v", err)
+	}
+	defer resp1.Body.Close()
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("первая отправка: ожидали 200, получили %d", resp1.StatusCode)
+	}
 
 	secondReq := bulkApproveRequest{IDs: []string{"ev1"}}
 	body2, _ := json.Marshal(secondReq)

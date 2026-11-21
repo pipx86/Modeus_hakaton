@@ -5,6 +5,7 @@ These checks cover explicit acceptance cases; they do not replace semantic revie
 """
 import json
 from pathlib import Path
+import re
 import sys
 
 
@@ -24,11 +25,17 @@ def evaluate(path):
     for case, kind in [("knowledge", "knowledge"), ("backend", "skill"),
                        ("architect", "skill"), ("proficiency", "proficiency"),
                        ("unknown", "skill"), ("vacancy", "skill"),
-                       ("tool_classification", "skill")]:
+                       ("tool_classification", "skill"), ("data_analyst", "skill"),
+                       ("devops", "skill")]:
         checks[case + "_classification"] = bool(grouped[case]) and all(d["kind"] == kind for d in grouped[case])
     uses = lambda case: {u["tool_id"] for d in grouped[case] for u in d["tools"]}
+    tool_names = {tool["id"]: re.sub(r"[^a-z0-9]+", "", tool["name"].lower()) for tool in model["tools"]}
+    used_names = lambda case: {tool_names.get(tool_id, "") for tool_id in uses(case)}
     checks["backend_python_and_postgresql"] = {"python", "postgresql"} <= uses("backend")
     checks["architect_no_python"] = "postgresql" in uses("architect") and "python" not in uses("architect")
+    checks["architect_sql_and_postgresql"] = {"sql", "postgresql"} <= uses("architect")
+    checks["data_analyst_tool_coverage"] = {"sql", "postgresql", "python", "pandas"} <= used_names("data_analyst")
+    checks["devops_tool_coverage"] = {"docker", "kubernetes", "helm", "kubectl"} <= used_names("devops")
     checks["proficiency_has_supporting_dimensions"] = bool(grouped["proficiency"]) and all(d["scope"] and d["autonomy"] and d["criterion"] for d in grouped["proficiency"])
     checks["unknown_conditions_stay_empty"] = all(not d["conditions"] for d in grouped["unknown"])
     checks["unknown_criterion_stays_empty"] = all(not d["criterion"] for d in grouped["unknown"])
@@ -42,12 +49,10 @@ def evaluate(path):
         "ветк" in usage and not any(term in usage for term in ("pull request", "ревью", "review", "запрос на слияние"))
         for usage in git_usages
     )
-    checks["no_unmentioned_tools"] = all(u["tool_id"] in {"python", "postgresql", "sql", "docker", "git", "postman"} for d in model["definitions"] for u in d["tools"])
-    warnings = []
-    if "sql" not in uses("architect"):
-        warnings.append("SQL omitted as an instrument in architect case despite SQL schema in source")
+    allowed_tool_names = {"python", "postgresql", "sql", "docker", "git", "postman", "pandas", "jupyter", "powerbi", "gitlabci", "gitlab", "kubernetes", "helm", "kubectl"}
+    checks["no_unmentioned_tools"] = all(tool_names.get(u["tool_id"], "") in allowed_tool_names for d in model["definitions"] for u in d["tools"])
     return {"file": Path(path).name, "passed": all(checks.values()), "checks": checks,
-            "failures": [key for key, passed in checks.items() if not passed], "warnings": warnings,
+            "failures": [key for key, passed in checks.items() if not passed], "warnings": [],
             "definitions": len(model["definitions"]), "links": len(links), "elapsed": record["elapsed"]}
 
 
