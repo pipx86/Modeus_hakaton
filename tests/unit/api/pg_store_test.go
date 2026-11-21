@@ -343,7 +343,7 @@ func TestPostgresRunsAndSourcesLists(t *testing.T) {
 		return pgxmock.NewRows([]string{"id", "type", "title", "content", "source_url", "created_at"}).
 			AddRow(dbSource, domain.SourceType("document"), "Руководство", "Описание", "", &when)
 	}
-	pool.ExpectQuery("FROM sources WHERE run_id IS NULL").WithArgs(5).WillReturnRows(sourceRows())
+	pool.ExpectQuery("FROM sources s[\\s\\S]*run_id IS NULL").WithArgs(5).WillReturnRows(sourceRows())
 	got, err := pg.ListGlobalSources(100)
 	if err != nil || len(got) != 1 || got[0].ID != dbSource || !got[0].CreatedAt.Equal(when) {
 		t.Fatalf("источники: %#v, %v", got, err)
