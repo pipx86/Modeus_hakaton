@@ -26,11 +26,13 @@ func (a *VacancyAdapter) ByProfession(ctx context.Context, profession string, li
 	}
 
 	rows, err := a.store.pool.Query(ctx, `
-		SELECT COALESCE(external_id::text,''), id::text, title, COALESCE(content,''), COALESCE(source_url,'')
-		FROM sources
-		WHERE provider IN ('hh', 'trudvsem') AND type = 'vacancy'
-		  AND (title ILIKE $1 OR content ILIKE $1)
-		ORDER BY updated_at DESC NULLS LAST
+		SELECT COALESCE(s.external_id::text,''), s.id::text, s.title, COALESCE(s.content,''), COALESCE(s.source_url,'')
+		FROM sources s
+		LEFT JOIN vacancy_market_details d ON d.source_id = s.id
+		WHERE s.provider IN ('hh', 'trudvsem') AND s.type = 'vacancy'
+		  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+		  AND (s.title ILIKE $1 OR s.content ILIKE $1)
+		ORDER BY s.updated_at DESC NULLS LAST
 		LIMIT $2`, "%"+strings.TrimSpace(profession)+"%", limit)
 	if err != nil {
 		return nil, err
@@ -76,10 +78,12 @@ func (a *VacancyAdapter) byProfessionTokens(ctx context.Context, profession stri
 		return nil, nil
 	}
 	rows, err := a.store.pool.Query(ctx, `
-		SELECT COALESCE(external_id::text,''), id::text, title, COALESCE(content,''), COALESCE(source_url,'')
-		FROM sources
-		WHERE provider IN ('hh', 'trudvsem') AND type = 'vacancy'
-		ORDER BY updated_at DESC NULLS LAST
+		SELECT COALESCE(s.external_id::text,''), s.id::text, s.title, COALESCE(s.content,''), COALESCE(s.source_url,'')
+		FROM sources s
+		LEFT JOIN vacancy_market_details d ON d.source_id = s.id
+		WHERE s.provider IN ('hh', 'trudvsem') AND s.type = 'vacancy'
+		  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+		ORDER BY s.updated_at DESC NULLS LAST
 		LIMIT 300`)
 	if err != nil {
 		return nil, err

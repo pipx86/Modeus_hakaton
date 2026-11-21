@@ -45,25 +45,22 @@ type TrudvsemVacancy struct {
 }
 
 func (v TrudvsemVacancy) validate() error {
-	if strings.TrimSpace(v.ID) == "" || strings.TrimSpace(v.JobName) == "" {
+	if strings.TrimSpace(v.ID) == "" || normalizeVacancyTitle(v.JobName) == "" {
 		return errors.New("у вакансии «Работы России» обязательны id и job-name")
 	}
 	return nil
 }
 
 func (v TrudvsemVacancy) title() string {
-	return "[Работа России] " + strings.TrimSpace(v.JobName)
+	return "[Работа России] " + normalizeVacancyTitle(v.JobName)
 }
 
 func (v TrudvsemVacancy) content() string {
-	parts := make([]string, 0, 2)
-	if value := cleanVacancyText(v.Requirements); value != "" {
-		parts = append(parts, "Требования:\n"+value)
+	parts := []string{
+		formatVacancySection(vacancySectionRequirements, v.Requirements),
+		formatVacancySection(vacancySectionDuties, v.Duty),
 	}
-	if value := cleanVacancyText(v.Duty); value != "" {
-		parts = append(parts, "Обязанности:\n"+value)
-	}
-	return strings.Join(parts, "\n\n")
+	return strings.Join(nonEmptyVacancyParts(parts), "\n\n")
 }
 
 func (v TrudvsemVacancy) publicationTime() (time.Time, bool, error) {
@@ -151,6 +148,7 @@ func FetchTrudvsem(ctx context.Context, client *http.Client, endpoint, query, us
 			if err := vacancy.validate(); err != nil {
 				return nil, err
 			}
+			vacancy.ID = strings.TrimSpace(vacancy.ID)
 			if _, exists := seen[vacancy.ID]; exists {
 				continue
 			}

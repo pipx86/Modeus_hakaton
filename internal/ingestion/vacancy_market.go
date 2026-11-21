@@ -49,8 +49,10 @@ type vacancySalary struct {
 func (v Vacancy) marketDetails() ([]byte, error) {
 	values := map[string]any{}
 	labels := map[string]string{
-		"area": v.Area.Name, "employer_name": v.Employer.Name,
-		"employer_id": v.Employer.ID, "experience": v.Experience.ID,
+		"area":          normalizeVacancyLabel(v.Area.Name),
+		"employer_name": normalizeVacancyLabel(v.Employer.Name),
+		"employer_id":   strings.TrimSpace(v.Employer.ID),
+		"experience":    normalizeVacancyLabel(v.Experience.ID),
 	}
 	for key, value := range labels {
 		if cleaned := strings.TrimSpace(value); cleaned != "" {
@@ -67,39 +69,33 @@ func (v Vacancy) marketDetails() ([]byte, error) {
 	if len(parsed) == 0 {
 		parsed = v.RawData.ExtractedSkills
 	}
-	if len(parsed) > 0 {
-		skills := make([]string, 0, len(parsed))
-		seen := map[string]bool{}
-		for _, raw := range parsed {
-			if skill := strings.ToLower(strings.TrimSpace(raw)); skill != "" && !seen[skill] {
-				skills = append(skills, skill)
-				seen[skill] = true
-			}
+	if skills := normalizeVacancySkillLabels(parsed); len(skills) > 0 {
+		for i := range skills {
+			skills[i] = strings.ToLower(skills[i])
 		}
-		if len(skills) > 0 {
-			values["parsed_skills"] = skills
-		}
+		values["parsed_skills"] = skills
 	}
 	if v.Salary.From != nil || v.Salary.To != nil {
 		salary := v.Salary
 		salary.Currency = strings.ToUpper(strings.TrimSpace(salary.Currency))
 		values["salary"] = salary
 	}
-	seen := map[string]bool{}
-	var skills []string
+	var keySkillNames []string
 	for _, skill := range v.KeySkills {
-		name := strings.TrimSpace(skill.Name)
-		key := strings.ToLower(name)
-		if name != "" && !seen[key] {
-			skills = append(skills, name)
-			seen[key] = true
-		}
+		keySkillNames = append(keySkillNames, skill.Name)
 	}
-	if len(skills) > 0 {
+	if skills := normalizeVacancySkillLabels(keySkillNames); len(skills) > 0 {
 		values["key_skills"] = skills
 	}
-	if v.Snippet.Requirement != "" || v.Snippet.Responsibility != "" {
-		values["snippet"] = v.Snippet
+	snippet := struct {
+		Requirement    string `json:"requirement"`
+		Responsibility string `json:"responsibility"`
+	}{
+		Requirement:    normalizeVacancyLabel(v.Snippet.Requirement),
+		Responsibility: normalizeVacancyLabel(v.Snippet.Responsibility),
+	}
+	if snippet.Requirement != "" || snippet.Responsibility != "" {
+		values["snippet"] = snippet
 	}
 	if len(values) == 0 {
 		return nil, nil

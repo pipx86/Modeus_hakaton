@@ -93,9 +93,6 @@ function describeProgramsError(error: unknown): string {
 export function NewResearch() {
   const navigate = useNavigate()
   const [profession, setProfession] = useState("")
-  const [githubUsername, setGithubUsername] = useState("")
-  const [githubConsent, setGithubConsent] = useState(true)
-  const [githubExclude, setGithubExclude] = useState("")
   const [profileContext, setProfileContext] = useState("")
   const [profileLabel, setProfileLabel] = useState("")
   const [hhURL, setHhURL] = useState("")
@@ -204,9 +201,6 @@ export function NewResearch() {
       const input: CreateRunInput = {
         profession: stripControlChars(profession).trim(),
         type: "chat",
-        github_username: stripControlChars(githubUsername).trim() || undefined,
-        github_consent: githubConsent,
-        github_exclude: githubExclude.split(",").map((item) => item.trim()).filter(Boolean),
         profile_context: profileContext || undefined,
         result_kind: resultKind,
       }
@@ -424,42 +418,6 @@ export function NewResearch() {
                   )}
                 </div>
               )}
-
-              <div className="space-y-2">
-                <Label htmlFor="github-username">GitHub username (необязательно)</Label>
-                <Input
-                  id="github-username"
-                  value={githubUsername}
-                  onChange={(event) => setGithubUsername(event.target.value)}
-                  placeholder="например, octocat"
-                  autoComplete="off"
-                  disabled={submitting}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Публичные проекты помогут агенту точнее спросить о навыках. Данные используются только для интервью.
-                </p>
-                {githubUsername.trim() && (
-                  <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 size-3.5 accent-primary"
-                      checked={githubConsent}
-                      onChange={(event) => setGithubConsent(event.target.checked)}
-                      disabled={submitting}
-                    />
-                    <span>Разрешаю использовать публичный GitHub-профиль для этого интервью.</span>
-                  </label>
-                )}
-                {githubUsername.trim() && (
-                  <Input
-                    value={githubExclude}
-                    onChange={(event) => setGithubExclude(event.target.value)}
-                    placeholder="Исключить репозитории через запятую"
-                    disabled={submitting}
-                    aria-label="Исключить репозитории GitHub"
-                  />
-                )}
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="resume-file">Резюме PDF/DOCX или профиль HH (необязательно)</Label>

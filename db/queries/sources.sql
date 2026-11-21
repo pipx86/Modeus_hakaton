@@ -54,13 +54,15 @@ WHERE id = sqlc.arg(id)::uuid;
 
 -- name: ListVacancyPublicationTrend :many
 SELECT COALESCE(to_char(vacancy_published_at AT TIME ZONE 'UTC', 'YYYY-MM'), '')::text AS month,
-       COALESCE(NULLIF(provider, ''), 'unknown')::text AS provider,
+       COALESCE(NULLIF(s.provider, ''), 'unknown')::text AS provider,
        count(*) AS vacancy_count
-FROM sources
-WHERE type = 'vacancy'
-  AND strpos(lower(title), lower(sqlc.arg(title_query)::text)) > 0
-  AND (vacancy_published_at IS NULL OR
-       (vacancy_published_at >= sqlc.arg(from_date)::timestamptz AND
-        vacancy_published_at < sqlc.arg(until_date)::timestamptz))
+FROM sources s
+LEFT JOIN vacancy_market_details d ON d.source_id = s.id
+WHERE s.type = 'vacancy'
+  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+  AND strpos(lower(s.title), lower(sqlc.arg(title_query)::text)) > 0
+  AND (s.vacancy_published_at IS NULL OR
+       (s.vacancy_published_at >= sqlc.arg(from_date)::timestamptz AND
+        s.vacancy_published_at < sqlc.arg(until_date)::timestamptz))
 GROUP BY 1, 2
 ORDER BY 1, 2;
