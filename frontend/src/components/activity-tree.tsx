@@ -11,7 +11,7 @@
  * иерархии из плоского списка контракта), {@link NODE_TYPE_LABELS} (подписи типов узлов),
  * тип {@link TreeNode}.
  */
-import { memo, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react"
+import { memo, useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,6 +34,7 @@ import {
   PlusIcon,
   SearchIcon,
   SearchXIcon,
+  SlidersHorizontalIcon,
   XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -55,13 +56,8 @@ import { NodeReview } from "./node-review"
 /** Порядок типов для чипов-фильтров: от общего к частному, как в самой методологии дерева. */
 const TYPE_ORDER: NodeType[] = ["role", "function", "task", "action"]
 
-/** Визуальный код типа узла: цветная точка и мягкий бейдж. */
-const TYPE_STYLE: Record<NodeType, { dot: string; badge: string }> = {
-  role: { dot: "bg-primary", badge: "bg-primary/10 text-primary" },
-  function: { dot: "bg-primary/60", badge: "bg-primary/10 text-primary" },
-  task: { dot: "bg-warning", badge: "bg-warning/10 text-warning" },
-  action: { dot: "bg-success", badge: "bg-success/10 text-success" },
-}
+const ROW_HEIGHT = 40
+const INDENT_WIDTH = 18
 
 /**
  * Заголовок узла с подсветкой совпадения поиска. Если запрос пуст или не найден -
@@ -249,17 +245,12 @@ interface RowProps {
   selected: boolean
   onToggle: (id: string) => void
   onSelect: (node: TreeNode) => void
-  onEdit: (node: TreeNode) => void
-  onAttach: (node: TreeNode) => void
-  onShowZun: (node: TreeNode) => void
-  provenance?: ProvenanceInfo
   flags?: TreeFlag[]
-  readOnly?: boolean
 }
 
 /**
  * Одна строка дерева: шеврон раскрытия (или точка-маркер для листа), кликабельный заголовок,
- * счётчик обоснований и кнопки редактирования/прикрепления.
+ * число обоснований и индикатор замечаний.
  *
  * Обёрнут в `memo`: при переключении раскрытия `visibleIds` не меняется (он вне зависимостей
  * фильтрационного `useMemo`), поэтому невинные ветки не перерисовываются по содержимому.
@@ -277,18 +268,9 @@ const Row = memo(function Row({
   selected,
   onToggle,
   onSelect,
-  onEdit,
-  onAttach,
-  onShowZun,
-  provenance,
   flags,
-  readOnly = false,
 }: RowProps) {
-  const evidenceCount = (node.evidence ?? []).length
-  const zun = node.zun
-  const hasZun = !!zun && zun.knowledge.length + zun.skills.length + zun.abilities.length > 0
-
-  const typeStyle = TYPE_STYLE[node.type]
+  const evidenceCount = node.evidence?.length ?? 0
 
   return (
     <div
@@ -298,17 +280,17 @@ const Row = memo(function Row({
       aria-posinset={position}
       aria-setsize={total}
       aria-expanded={hasChildren ? isOpen : undefined}
-      className={`tree-node-enter group relative flex h-11 items-center gap-2 rounded-lg pr-1.5 transition-colors hover:bg-muted/50 ${
-        selected ? "bg-muted/70 ring-1 ring-border" : ""
+      className={`relative flex items-center gap-1 rounded-md pr-2 transition-colors hover:bg-muted/50 ${
+        selected ? "bg-muted ring-1 ring-inset ring-border" : ""
       }`}
-      style={{ paddingLeft: Math.min(depth * 24, 96), animationDelay: `${Math.min(depth, 6) * 45}ms` }}
+      style={{ paddingLeft: depth * INDENT_WIDTH, height: ROW_HEIGHT }}
     >
       {Array.from({ length: depth }).map((_, index) => (
         <span
           key={index}
           aria-hidden
           className="absolute top-0 h-full w-px bg-border/60"
-          style={{ left: index * 24 + 12 }}
+          style={{ left: index * INDENT_WIDTH + 12 }}
         />
       ))}
 
@@ -327,7 +309,7 @@ const Row = memo(function Row({
         </Button>
       ) : (
         <span className="flex size-6 shrink-0 items-center justify-center">
-          <span className={`size-1.5 rounded-full ${typeStyle.dot}`} />
+          <span className="size-1 rounded-full bg-muted-foreground/50" />
         </span>
       )}
 
@@ -335,24 +317,11 @@ const Row = memo(function Row({
         type="button"
         onClick={() => onSelect(node)}
         aria-label={`Узел ${node.title}: показать обоснования`}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 py-1 text-left text-sm transition-colors hover:text-primary"
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
-        <span className={`truncate ${node.type === "role" ? "font-semibold" : "font-medium"}`}>
+        <span className={`min-w-0 flex-1 truncate ${depth === 0 ? "font-semibold" : depth === 1 ? "font-medium" : ""}`} title={node.title}>
           <HighlightedTitle title={node.title} query={query} />
         </span>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${typeStyle.badge}`}
-        >
-          {NODE_TYPE_LABELS[node.type]}
-        </span>
-        {provenance && provenanceLabel(provenance) && (
-          <span
-            className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-            title={provenance.labels.length > 0 ? provenance.labels.join(", ") : "источник без метаданных"}
-          >
-            {provenanceLabel(provenance)}
-          </span>
-        )}
         {flags && flags.length > 0 && (
           <span
             className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-destructive"
@@ -364,44 +333,15 @@ const Row = memo(function Row({
           </span>
         )}
         {evidenceCount > 0 && (
-          <span className="shrink-0 text-[11px] text-muted-foreground">{evidenceCount}</span>
+          <span
+            className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground"
+            title={`Обоснований: ${evidenceCount}`}
+          >
+            <MessageSquareIcon className="size-3.5" aria-hidden />
+            {evidenceCount}
+          </span>
         )}
       </button>
-
-      {hasZun && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 shrink-0 rounded-full bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
-          aria-label={`ЗУН узла ${node.title}`}
-          onClick={() => onShowZun(node)}
-        >
-          ЗУН
-        </Button>
-      )}
-
-      {!readOnly && (
-      <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={() => onAttach(node)}
-          aria-label={`Добавить обоснование к узлу ${node.title}`}
-        >
-          <PlusIcon className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={() => onEdit(node)}
-          aria-label={`Редактировать узел ${node.title}`}
-        >
-          <PencilIcon className="size-3.5" />
-        </Button>
-      </div>
-      )}
     </div>
   )
 })
@@ -432,6 +372,7 @@ export interface ActivityTreeProps {
   onShowProgramLinks?: (nodeId: string) => void
   /** Серверные инсайты: здоровье дерева, происхождение данных, флаги и объяснения узлов. */
   insights?: Insights | null
+  toolbarActions?: ReactNode
   /** Просмотр без изменений (режим ?view=readonly). */
   readOnly?: boolean
 }
@@ -459,9 +400,12 @@ export function ActivityTree({
   onShowTranscript,
   onShowProgramLinks,
   insights,
+  toolbarActions,
   readOnly = false,
 }: ActivityTreeProps) {
   const [query, setQuery] = useState("")
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const filtersId = useId()
   const [activeTypes, setActiveTypes] = useState<Set<NodeType>>(() => new Set(TYPE_ORDER))
   const [onlyWithEvidence, setOnlyWithEvidence] = useState(false)
   const [onlyWithZun, setOnlyWithZun] = useState(false)
@@ -530,21 +474,9 @@ export function ActivityTree({
     return provenanceFor(node.evidence ?? [], sourcesById)
   }
   const flagsTotal = flagsByNode.size
-  const healthScore = insights?.health.score
-  const healthTone =
-    healthScore === undefined
-      ? "text-muted-foreground"
-      : healthScore >= 80
-        ? "text-success"
-        : healthScore >= 60
-          ? "text-warning"
-          : "text-destructive"
-  const filtersActive =
-    query.trim().length > 0 ||
-    onlyWithEvidence ||
-    onlyWithZun ||
-    onlyProblem ||
-    activeTypes.size !== TYPE_ORDER.length
+  const filterCount = Number(onlyWithEvidence) + Number(onlyWithZun) + Number(onlyProblem) +
+    Number(activeTypes.size !== TYPE_ORDER.length)
+  const filtersActive = query.trim().length > 0 || filterCount > 0
 
   /**
    * Единый проход фильтрации с разделением структурного и контентных фильтров.
@@ -675,7 +607,6 @@ export function ActivityTree({
   }, [visibleRoots, visibleIds, expanded])
 
   const VIRTUAL_THRESHOLD = 60
-  const ROW_HEIGHT = 44
   const VIEWPORT = 560
   const virtualized = rows.length > VIRTUAL_THRESHOLD
   const start = virtualized ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 4) : 0
@@ -741,30 +672,49 @@ export function ActivityTree({
     (node: TreeNode) => setSelected({ ...node, ...reviewFieldsFor(node) }),
     [reviewFieldsFor],
   )
+  const selectedSources = selected ? provenanceForNode(selected) : null
+  const selectedProvenance = selectedSources &&
+    (selectedSources.labels.join(", ") || provenanceLabel(selectedSources))
+  const selectedZun = selected?.zun
+  const selectedHasZun = !!selectedZun &&
+    selectedZun.knowledge.length + selectedZun.skills.length + selectedZun.abilities.length > 0
 
   const toolbar = (
-    <div className="space-y-3" data-print-hide>
+    <div className="space-y-2" data-print-hide>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-40 flex-1">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск по узлам дерева…"
-            className="pl-8"
+            placeholder="Найти в дереве"
+            className="h-8 pl-8"
             aria-label="Поиск по узлам дерева"
           />
         </div>
-        <Button variant="outline" size="sm" onClick={expandAll}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+          aria-controls={filtersId}
+        >
+          <SlidersHorizontalIcon className="size-4" />
+          Фильтры{filterCount > 0 && <span className="text-muted-foreground">{filterCount}</span>}
+        </Button>
+        <Button variant="ghost" size="icon-sm" onClick={expandAll} aria-label="Развернуть всё" title="Развернуть всё">
           <ChevronsUpDownIcon className="size-4" />
-          Развернуть всё
         </Button>
-        <Button variant="outline" size="sm" onClick={collapseAll}>
+        <Button variant="ghost" size="icon-sm" onClick={collapseAll} aria-label="Свернуть всё" title="Свернуть всё">
           <ChevronsDownUpIcon className="size-4" />
-          Свернуть всё
         </Button>
+        {toolbarActions}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        id={filtersId}
+        hidden={!filtersOpen}
+        className={filtersOpen ? "flex flex-wrap items-center gap-2 border-b border-border/60 pb-2" : undefined}
+      >
         {TYPE_ORDER.map((type) => {
           const on = activeTypes.has(type)
           return (
@@ -818,7 +768,7 @@ export function ActivityTree({
           <Button
             variant="outline"
             size="sm"
-            className={`h-7 gap-1 px-2.5 text-xs ${healthTone}`}
+            className="h-7 gap-1 px-2.5 text-xs"
             onClick={() => setHealthOpen(true)}
             aria-label={`Здоровье дерева: ${insights.health.score} из 100`}
           >
@@ -857,7 +807,7 @@ export function ActivityTree({
     <div className="space-y-3">
       {toolbar}
       <div
-        className="max-h-[560px] space-y-0.5 overflow-y-auto rounded-xl border p-3"
+        className="max-h-[560px] overflow-y-auto rounded-lg border px-2 py-1"
         role="tree"
         aria-label="Дерево деятельности"
         tabIndex={0}
@@ -881,12 +831,7 @@ export function ActivityTree({
               selected={selected?.id === row.node.id || row.node.id === focusNodeId}
               onToggle={toggle}
               onSelect={select}
-              onEdit={onEdit}
-              onAttach={onAttach}
-              onShowZun={setZunNode}
-              provenance={provenanceForNode(row.node)}
               flags={readOnly ? undefined : flagsByNode.get(row.node.id)}
-              readOnly={readOnly}
             />
           )
         })}
@@ -895,17 +840,19 @@ export function ActivityTree({
         )}
       </div>
       <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-2xl">
+          <DialogHeader className="pr-8">
             <DialogTitle>{selected?.title ?? ""}</DialogTitle>
             <DialogDescription>
               {selected
-                ? `${NODE_TYPE_LABELS[selected.type]}, обоснований: ${selected.evidence.length}`
+                ? [NODE_TYPE_LABELS[selected.type], `Обоснований: ${selected.evidence.length}`, selectedProvenance]
+                  .filter(Boolean).join(" · ")
                 : ""}
             </DialogDescription>
           </DialogHeader>
           {selected && (
-            <div className="space-y-3">
+            <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
+              {selected.description && <p className="text-sm">{selected.description}</p>}
               {!readOnly && (
                 <p className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
                   {insights?.node_explanations?.[selected.id]?.summary ??
@@ -947,8 +894,20 @@ export function ActivityTree({
               )}
             </div>
           )}
-          {(onShowProgramLinks || !readOnly) && (
+          {selected && (onShowProgramLinks || !readOnly || selectedHasZun) && (
             <div className="flex flex-wrap justify-end gap-2">
+              {selectedHasZun && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setZunNode(selected)
+                    setSelected(null)
+                  }}
+                  aria-label={`ЗУН узла ${selected.title}`}
+                >
+                  Знания, умения и навыки
+                </Button>
+              )}
               {onShowProgramLinks && (
                 <Button
                   variant="outline"
@@ -962,19 +921,30 @@ export function ActivityTree({
                   Сопоставления с программой
                 </Button>
               )}
-              {!readOnly && (
+              {!readOnly && <>
                 <Button
                   variant="outline"
                   onClick={() => {
-                    const node = selected
                     setSelected(null)
-                    if (node) onAttach(node)
+                    onEdit(selected)
                   }}
+                  aria-label={`Редактировать узел ${selected.title}`}
+                >
+                  <PencilIcon className="size-4" />
+                  Редактировать
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelected(null)
+                    onAttach(selected)
+                  }}
+                  aria-label={`Добавить обоснование к узлу ${selected.title}`}
                 >
                   <PlusIcon className="size-4" />
                   Добавить обоснование
                 </Button>
-              )}
+              </>}
             </div>
           )}
         </DialogContent>

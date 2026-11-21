@@ -1261,18 +1261,39 @@ function TreeTab({
 
   return (
     <>
-      <div className="mb-3 flex justify-end gap-2" data-print-hide>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => window.print()}
-        >
-          <PrinterIcon className="size-3.5" />
-          Печать / PDF
-        </Button>
+      <pre className="hidden whitespace-pre-wrap break-words font-sans print:block">{treeToMarkdown(nodes)}</pre>
+      <div className="print:hidden">
+        <ActivityTree
+          nodes={nodes}
+          approvedIds={approvedIds}
+          statuses={statuses}
+          onApprove={approve}
+          onReject={reject}
+          onEdit={setEditing}
+          onAttach={setAttaching}
+          focusNodeId={focusNodeId}
+          sourcesById={sourcesById}
+          onShowTranscript={onShowTranscript}
+          onShowProgramLinks={onShowProgramLinks}
+          insights={insights}
+          readOnly={readOnly}
+          toolbarActions={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => window.print()}
+              aria-label="Печать / PDF"
+              title="Печать / PDF"
+            >
+              <PrinterIcon className="size-4" />
+            </Button>
+          }
+        />
       </div>
-      <div className="mb-3 space-y-2" data-print-hide>
+      <details className="mt-3 space-y-2 text-sm print:hidden" data-print-hide>
+        <summary className="w-fit cursor-pointer rounded-md px-1 py-1 text-muted-foreground hover:text-foreground">
+          Поиск по цитатам и источникам
+        </summary>
         <form
           className="flex gap-2"
           onSubmit={(event) => {
@@ -1285,7 +1306,7 @@ function TreeTab({
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Поиск по цитатам и источникам"
+              placeholder="Введите текст для поиска"
               className="h-8 pl-8 text-xs"
               aria-label="Поиск по цитатам и источникам"
             />
@@ -1335,25 +1356,7 @@ function TreeTab({
             })}
           </ul>
         )}
-      </div>
-      <pre className="hidden whitespace-pre-wrap break-words font-sans print:block">{treeToMarkdown(nodes)}</pre>
-      <div className="print:hidden">
-        <ActivityTree
-          nodes={nodes}
-          approvedIds={approvedIds}
-          statuses={statuses}
-          onApprove={approve}
-          onReject={reject}
-          onEdit={setEditing}
-          onAttach={setAttaching}
-          focusNodeId={focusNodeId}
-          sourcesById={sourcesById}
-          onShowTranscript={onShowTranscript}
-          onShowProgramLinks={onShowProgramLinks}
-          insights={insights}
-          readOnly={readOnly}
-        />
-      </div>
+      </details>
       <NodeEditDialog
         key={editing?.id ?? "closed"}
         node={editing}

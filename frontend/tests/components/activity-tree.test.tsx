@@ -105,6 +105,7 @@ describe("ActivityTree", () => {
     renderTree()
     fireEvent.click(screen.getByRole("button", { name: "Развернуть всё" }))
 
+    fireEvent.click(screen.getByRole("button", { name: "Фильтры" }))
     fireEvent.click(screen.getByRole("button", { name: "Задача", pressed: true }))
 
     expect(screen.queryByText("Когортные отчёты")).not.toBeInTheDocument()
@@ -115,6 +116,8 @@ describe("ActivityTree", () => {
   it("фильтр «с обоснованиями» скрывает узлы без цитат", () => {
     renderTree()
 
+    expect(screen.queryByRole("button", { name: "С обоснованиями" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Фильтры" }))
     fireEvent.click(screen.getByRole("button", { name: "С обоснованиями", pressed: false }))
 
     expect(screen.queryByText("Коммуникации")).not.toBeInTheDocument()
@@ -248,6 +251,7 @@ describe("ActivityTree", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Развернуть всё" }))
 
+    fireEvent.click(screen.getByRole("button", { name: "Узел Действие с ЗУН: показать обоснования" }))
     fireEvent.click(screen.getByRole("button", { name: "ЗУН узла Действие с ЗУН" }))
 
     expect(screen.getByText("Знания")).toBeInTheDocument()
@@ -273,6 +277,7 @@ describe("ActivityTree", () => {
       ],
     })
 
+    fireEvent.click(screen.getByRole("button", { name: "Фильтры" }))
     fireEvent.click(screen.getByRole("button", { name: "С ЗУН" }))
 
     expect(screen.getByText("Действие с ЗУН")).toBeInTheDocument()
@@ -309,6 +314,7 @@ describe("ActivityTree", () => {
       ],
     })
     fireEvent.click(screen.getByRole("button", { name: "Развернуть всё" }))
+    fireEvent.click(screen.getByRole("button", { name: "Узел Действие с ЗУН: показать обоснования" }))
     fireEvent.click(screen.getByRole("button", { name: "ЗУН узла Действие с ЗУН" }))
     fireEvent.click(screen.getByRole("button", { name: "Скопировать паспорт" }))
 
@@ -361,6 +367,7 @@ describe("ActivityTree", () => {
       ],
     })
 
+    fireEvent.click(screen.getByRole("button", { name: "Фильтры" }))
     fireEvent.click(screen.getByRole("button", { name: /Проблемные/ }))
 
     expect(screen.getByText("Анализ")).toBeInTheDocument()
@@ -402,12 +409,16 @@ describe("ActivityTree", () => {
     }
     renderTree({ insights: insights as never })
 
-    expect(screen.getByText("Здоровье: 82")).toBeInTheDocument()
-    expect(screen.getByText("Проблемные")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Здоровье дерева: 82 из 100" })).not.toBeInTheDocument()
     expect(screen.queryByText("рынок ×2")).not.toBeInTheDocument()
     expect(screen.queryByText("sql · 2")).not.toBeInTheDocument()
-    expect(screen.getByText("2 типа")).toBeInTheDocument()
+    expect(screen.queryByText(/Интервью, Профстандарт/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }))
+    expect(within(screen.getByRole("dialog")).getByText(/Интервью, Профстандарт/)).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
 
+    fireEvent.click(screen.getByRole("button", { name: "Фильтры" }))
+    expect(screen.getByText("Проблемные")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Здоровье дерева: 82 из 100" }))
     expect(screen.getByText("Полнота")).toBeInTheDocument()
   })

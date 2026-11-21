@@ -480,6 +480,7 @@ describe("Research", () => {
     })
     await screen.findByText("Анализ метрик")
 
+    fireEvent.click(screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }))
     fireEvent.click(screen.getByRole("button", { name: "Редактировать узел Анализ метрик" }))
 
     const dialog = await screen.findByRole("dialog")
@@ -518,6 +519,7 @@ describe("Research", () => {
     })
     await screen.findByText("Анализ метрик")
 
+    fireEvent.click(screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }))
     fireEvent.click(
       screen.getByRole("button", { name: "Добавить обоснование к узлу Анализ метрик" }),
     )
@@ -739,6 +741,7 @@ describe("Research", () => {
     })
     await screen.findByText("Анализ метрик")
 
+    fireEvent.click(screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }))
     fireEvent.click(screen.getByRole("button", { name: "Редактировать узел Анализ метрик" }))
     const dialog = await screen.findByRole("dialog")
     fireEvent.change(within(dialog).getByLabelText("Название"), { target: { value: "Новое имя" } })
@@ -1012,6 +1015,7 @@ describe("Research", () => {
     })
     await screen.findByText("Анализ метрик")
 
+    fireEvent.click(screen.getByRole("button", { name: "Узел Анализ метрик: показать обоснования" }))
     fireEvent.click(screen.getByRole("button", { name: "Добавить обоснование к узлу Анализ метрик" }))
     const dialog = await screen.findByRole("dialog")
     const user = userEvent.setup()
