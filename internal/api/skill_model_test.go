@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"github.com/pashagolub/pgxmock/v4"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,14 @@ func TestSkillExtractionAnswerFormats(t *testing.T) {
 	}
 }
 
+func TestSkillExtractionPromptIncludesSourceAndToolBoundaries(t *testing.T) {
+	for _, required := range []string{"source_type", "basis=requirement", "REST, GraphQL, RBAC", "OpenAPI/Swagger, JWT, OAuth2", "Связывай Git только", "Каждый evidence_id"} {
+		if !strings.Contains(skillExtractionPrompt, required) {
+			t.Fatalf("skill extraction prompt does not include %q", required)
+		}
+	}
+}
+
 func (m skillMockLLM) Chat(context.Context, []llm.Message) (string, error) { return m.answer, nil }
 
 func TestSkillHTTPExtractionPreview(t *testing.T) {
@@ -38,6 +47,7 @@ func TestSkillHTTPExtractionPreview(t *testing.T) {
 			pool.ExpectQuery("FROM runs WHERE id=").WithArgs(runCardsRunID).WillReturnRows(runCardsGetRunRow(runCardsRunID, ""))
 			evidence, _ := json.Marshal([]domain.Evidence{{ID: "e", SourceID: "s", RefID: "fragment", Quote: "Rollback transaction", Status: domain.EvidencePending}})
 			pool.ExpectQuery("FROM nodes n WHERE n.run_id").WithArgs(runCardsRunID).WillReturnRows(pgxmock.NewRows([]string{"id", "type", "title", "description", "parent", "evidence", "zun", "review_status", "comment", "at"}).AddRow("n", domain.NodeTask, "Transaction", "", nil, evidence, []byte("null"), domain.NodeReviewPending, "", nil))
+			pool.ExpectQuery("SELECT DISTINCT s.id::text,s.type::text").WithArgs(runCardsRunID).WillReturnRows(pgxmock.NewRows([]string{"id", "type"}).AddRow("s", domain.SourceInterview))
 			model := domain.EmptySkillModel()
 			model.Tools = []domain.SkillTool{} // Real models may return only additions.
 			model.Definitions = []domain.SkillDefinition{{ID: "d", Version: 1, Title: "Transactions", Kind: "knowledge", Tools: []domain.SkillToolUse{}}}
@@ -45,7 +55,7 @@ func TestSkillHTTPExtractionPreview(t *testing.T) {
 			if foreign {
 				evidenceID = "hallucinated"
 			}
-			model.Links = []domain.SkillNodeLink{{ID: "link", NodeID: "node_1", SkillRef: domain.SkillRef{ID: "d", Version: 1}, EvidenceIDs: []string{evidenceID}, Basis: "requirement", Reason: "Source describes rollback", Status: "approved"}}
+			model.Links = []domain.SkillNodeLink{{ID: "link", NodeID: "node_1", SkillRef: domain.SkillRef{ID: "d", Version: 4}, EvidenceIDs: []string{evidenceID, evidenceID}, Basis: "requirement", Reason: "Source describes rollback", Status: "approved"}}
 			answer, _ := json.Marshal(model)
 			server := NewServer(NewPGStore(pool))
 			server.SetSkillExtractor(skillMockLLM{string(answer)})
@@ -61,7 +71,7 @@ func TestSkillHTTPExtractionPreview(t *testing.T) {
 			}
 			var candidate domain.SkillModel
 			_ = json.Unmarshal(rec.Body.Bytes(), &candidate)
-			if candidate.Revision != 0 || candidate.Links[0].Status != "proposed" || len(candidate.Tools) != len(domain.EmptySkillModel().Tools) || candidate.Links[0].NodeID != "n" || candidate.Links[0].EvidenceIDs[0] != "e" {
+			if candidate.Revision != 0 || candidate.Links[0].Status != "proposed" || candidate.Links[0].Version != 1 || len(candidate.Tools) != len(domain.EmptySkillModel().Tools) || candidate.Links[0].NodeID != "n" || len(candidate.Links[0].EvidenceIDs) != 1 || candidate.Links[0].EvidenceIDs[0] != "e" {
 				t.Fatal(rec.Body.String())
 			}
 			// No INSERT/UPDATE expectations: extraction must remain a preview.

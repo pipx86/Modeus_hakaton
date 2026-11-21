@@ -23,7 +23,8 @@ def evaluate(path):
         checks[case + "_abstention"] = not grouped[case]
     for case, kind in [("knowledge", "knowledge"), ("backend", "skill"),
                        ("architect", "skill"), ("proficiency", "proficiency"),
-                       ("unknown", "skill"), ("vacancy", "skill")]:
+                       ("unknown", "skill"), ("vacancy", "skill"),
+                       ("tool_classification", "skill")]:
         checks[case + "_classification"] = bool(grouped[case]) and all(d["kind"] == kind for d in grouped[case])
     uses = lambda case: {u["tool_id"] for d in grouped[case] for u in d["tools"]}
     checks["backend_python_and_postgresql"] = {"python", "postgresql"} <= uses("backend")
@@ -35,7 +36,13 @@ def evaluate(path):
     checks["no_automatic_approval"] = all(link["status"] == "proposed" for link in links)
     vacancy_links = [link for link in links if link["node_id"] == record["nodes"]["vacancy"]]
     checks["vacancy_is_requirement"] = bool(vacancy_links) and all(link["basis"] == "requirement" for link in vacancy_links)
-    checks["no_unmentioned_tools"] = all(u["tool_id"] in {"python", "postgresql", "sql", "docker"} for d in model["definitions"] for u in d["tools"])
+    checks["only_concrete_tools_in_tool_control"] = uses("tool_classification") == {"git", "postman"}
+    git_usages = [u["usage"].lower() for d in grouped["tool_classification"] for u in d["tools"] if u["tool_id"] == "git"]
+    checks["git_not_mapped_to_pull_request"] = bool(git_usages) and all(
+        "ветк" in usage and not any(term in usage for term in ("pull request", "ревью", "review", "запрос на слияние"))
+        for usage in git_usages
+    )
+    checks["no_unmentioned_tools"] = all(u["tool_id"] in {"python", "postgresql", "sql", "docker", "git", "postman"} for d in model["definitions"] for u in d["tools"])
     warnings = []
     if "sql" not in uses("architect"):
         warnings.append("SQL omitted as an instrument in architect case despite SQL schema in source")
