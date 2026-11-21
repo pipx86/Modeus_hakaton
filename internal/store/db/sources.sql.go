@@ -207,7 +207,8 @@ SELECT COALESCE(to_char(vacancy_published_at AT TIME ZONE 'UTC', 'YYYY-MM'), '')
 FROM sources s
 LEFT JOIN vacancy_market_details d ON d.source_id = s.id
 WHERE s.type = 'vacancy'
-  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+  AND (vacancy_allows_ungraded(s.title) OR
+       derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
   AND strpos(lower(s.title), lower($1::text)) > 0
   AND (s.vacancy_published_at IS NULL OR
        (s.vacancy_published_at >= $2::timestamptz AND

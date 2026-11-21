@@ -596,8 +596,8 @@ func (p *PGStore) ClearRunTree(runID string) error {
 	return translate(tx.Commit(ctx))
 }
 
-// ListGlobalSources returns shared materials but leaves ungraded vacancies out
-// of the analysis context. Their source records remain stored for updates.
+// ListGlobalSources returns shared materials. Ungraded DevOps and data analyst
+// vacancies are preserved because these pilot roles have no mandatory grade.
 func (p *PGStore) ListGlobalSources(limit int) ([]domain.Source, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 5
@@ -608,7 +608,8 @@ func (p *PGStore) ListGlobalSources(limit int) ([]domain.Source, error) {
 FROM sources s
 LEFT JOIN vacancy_market_details d ON d.source_id = s.id
 WHERE s.run_id IS NULL
-  AND (s.type <> 'vacancy' OR derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
+  AND (s.type <> 'vacancy' OR vacancy_allows_ungraded(s.title) OR
+       derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
 ORDER BY s.created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, translate(err)

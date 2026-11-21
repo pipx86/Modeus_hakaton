@@ -39,7 +39,10 @@ FROM vacancy_catalog;
 
 -- name: GetVacancyCatalogStats :one
 WITH experience AS (
-    SELECT v.experience AS level, count(*) AS amount FROM vacancy_catalog v GROUP BY v.experience
+    SELECT v.experience AS level, count(*) AS amount
+    FROM vacancy_catalog v
+    WHERE v.experience <> ''
+    GROUP BY v.experience
 ),
 salary AS (
     SELECT salary_currency AS currency, count(*) AS count,

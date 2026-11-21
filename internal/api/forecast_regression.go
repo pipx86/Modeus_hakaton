@@ -40,7 +40,8 @@ func (s *Server) handleRegression(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := pgStore.Pool.Query(r.Context(), `
 		SELECT name, description, area, experience, salary_from, salary_to, parsed_skills, key_skills
-		FROM vacancy_catalog`)
+		FROM vacancy_catalog
+		WHERE experience <> ''`)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось загрузить вакансии")
 		return

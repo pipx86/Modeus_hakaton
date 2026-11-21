@@ -30,7 +30,8 @@ func (a *VacancyAdapter) ByProfession(ctx context.Context, profession string, li
 		FROM sources s
 		LEFT JOIN vacancy_market_details d ON d.source_id = s.id
 		WHERE s.provider IN ('hh', 'trudvsem') AND s.type = 'vacancy'
-		  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+		  AND (vacancy_allows_ungraded(s.title) OR
+		       derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
 		  AND (s.title ILIKE $1 OR s.content ILIKE $1)
 		ORDER BY s.updated_at DESC NULLS LAST
 		LIMIT $2`, "%"+strings.TrimSpace(profession)+"%", limit)
@@ -82,7 +83,8 @@ func (a *VacancyAdapter) byProfessionTokens(ctx context.Context, profession stri
 		FROM sources s
 		LEFT JOIN vacancy_market_details d ON d.source_id = s.id
 		WHERE s.provider IN ('hh', 'trudvsem') AND s.type = 'vacancy'
-		  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+		  AND (vacancy_allows_ungraded(s.title) OR
+		       derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
 		ORDER BY s.updated_at DESC NULLS LAST
 		LIMIT 300`)
 	if err != nil {
