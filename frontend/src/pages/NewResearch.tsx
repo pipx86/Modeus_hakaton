@@ -3,7 +3,7 @@
  * @description Запуск исследования профессиональной деятельности.
  */
 
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -11,21 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   ApiRequestError,
   createRun,
   importHHProfile,
   importResume,
-  listAcademicPrograms,
-  type AcademicProgramOption,
   type CreateRunInput,
-  type RunResultKind,
 } from "@/lib/api/client"
 import { stripControlChars } from "@/lib/security"
 import {
@@ -34,7 +24,6 @@ import {
   Loader2Icon,
   MessageSquareTextIcon,
   NetworkIcon,
-  RefreshCwIcon,
 } from "lucide-react"
 
 const STEPS = [
@@ -61,35 +50,6 @@ const ROLE_SUGGESTIONS: RoleSuggestion[] = [
 const PROFESSION_MAX = 120
 
 /** Варианты ожидаемого результата исследования (карточка 25). */
-const RESULT_KIND_OPTIONS: { value: RunResultKind; label: string; description: string }[] = [
-  {
-    value: "activity",
-    label: "Описание деятельности",
-    description: "Интервью и дерево деятельности без привязки к программе.",
-  },
-  {
-    value: "program",
-    label: "Описание и сопоставление с образовательной программой",
-    description: "Дополнительно свяжем узлы деятельности с элементами программы.",
-  },
-]
-
-/** Подпись программы в выпадающем списке: код (если есть) и название. */
-function programLabel(program: AcademicProgramOption): string {
-  return program.code ? `${program.code} · ${program.title}` : program.title
-}
-
-/** Понятная ошибка загрузки списка программ. */
-function describeProgramsError(error: unknown): string {
-  if (error instanceof ApiRequestError) {
-    if (error.status === 403) return "Список программ доступен методисту."
-    if (error.status === 501) return "Список образовательных программ пока не подключён."
-    if (error.status === 0) return "Сервер недоступен: список программ не загружен."
-    return error.message
-  }
-  return "Не удалось загрузить список образовательных программ."
-}
-
 export function NewResearch() {
   const navigate = useNavigate()
   const [profession, setProfession] = useState("")
@@ -103,15 +63,6 @@ export function NewResearch() {
 
   const [roleOpen, setRoleOpen] = useState(false)
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null)
-
-  // Карточка 25: ожидаемый результат. Программы грузятся лениво, только когда
-  // пользователь выбрал режим сопоставления.
-  const [resultKind, setResultKind] = useState<RunResultKind>("activity")
-  const [programId, setProgramId] = useState<string | null>(null)
-  const [programs, setPrograms] = useState<AcademicProgramOption[] | null>(null)
-  const [programsRequested, setProgramsRequested] = useState(false)
-  const [programsLoading, setProgramsLoading] = useState(false)
-  const [programsError, setProgramsError] = useState<string | null>(null)
 
   const professionError =
     profession.trim().length === 0
@@ -127,35 +78,9 @@ export function NewResearch() {
     return (role.levels ?? []).some((level) => level.toLowerCase().includes(query))
   })
 
-  const canSubmit = !professionError && !submitting && !(resultKind === "program" && !programId)
-  const programsPending = programsLoading || (programs === null && !programsError)
+  const canSubmit = !professionError && !submitting
 
   /** Загружает (или перезагружает) список программ; повторный вызов доступен из ошибки. */
-  const loadPrograms = useCallback(async () => {
-    setProgramsRequested(true)
-    setProgramsLoading(true)
-    setProgramsError(null)
-    try {
-      const options = await listAcademicPrograms()
-      setPrograms(options)
-      setProgramId((previous) =>
-        previous && options.some((program) => program.id === previous) ? previous : null,
-      )
-    } catch (cause) {
-      setPrograms([])
-      setProgramId(null)
-      setProgramsError(describeProgramsError(cause))
-    } finally {
-      setProgramsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (resultKind !== "program" || programsRequested) return
-    // Загрузка асинхронная: список появится после ответа API.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadPrograms()
-  }, [resultKind, programsRequested, loadPrograms])
 
   const uploadResume = async (file: File | undefined) => {
     if (!file) return
@@ -202,10 +127,9 @@ export function NewResearch() {
         profession: stripControlChars(profession).trim(),
         type: "chat",
         profile_context: profileContext || undefined,
-        result_kind: resultKind,
+        result_kind: "activity",
       }
       // program_id отправляем только для режима сопоставления с программой.
-      if (resultKind === "program" && programId) input.program_id = programId
       const run = await createRun(input)
       toast.success("Исследование запущено")
       navigate(run?.id ? `/research/${run.id}` : "/")
@@ -320,104 +244,7 @@ export function NewResearch() {
                 )}
               </div>
 
-              <fieldset className="space-y-2">
-                <legend className="mb-2 text-sm font-medium">Ожидаемый результат</legend>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {RESULT_KIND_OPTIONS.map((option) => {
-                    const active = resultKind === option.value
-                    return (
-                      <label
-                        key={option.value}
-                        className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm transition-colors ${
-                          active
-                            ? "border-primary bg-primary/5"
-                            : "hover:bg-accent/40 hover:text-accent-foreground"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="result-kind"
-                          value={option.value}
-                          checked={active}
-                          onChange={() => setResultKind(option.value)}
-                          disabled={submitting}
-                          className="mt-0.5 size-3.5 shrink-0 accent-primary"
-                        />
-                        <span className="space-y-0.5">
-                          <span className="block font-medium">{option.label}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {option.description}
-                          </span>
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </fieldset>
 
-              {resultKind === "program" && (
-                <div className="space-y-2">
-                  <Label htmlFor="program">Образовательная программа</Label>
-                  {programsPending ? (
-                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <Loader2Icon className="size-3.5 animate-spin" />
-                      Загружаем список программ…
-                    </p>
-                  ) : programsError ? (
-                    <div className="space-y-2 rounded-lg border border-destructive/40 p-3 text-sm">
-                      <p className="text-destructive">{programsError}</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void loadPrograms()}
-                        disabled={programsLoading}
-                      >
-                        <RefreshCwIcon className="size-3.5" />
-                        Повторить
-                      </Button>
-                    </div>
-                  ) : programs && programs.length > 0 ? (
-                    <Select
-                      value={programId ?? ""}
-                      onValueChange={(value) => setProgramId(value || null)}
-                      disabled={submitting}
-                    >
-                      <SelectTrigger id="program">
-                        <SelectValue placeholder="Выберите программу" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {programs.map((program) => (
-                          <SelectItem key={program.id} value={program.id}>
-                            {programLabel(program)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">
-                        Список образовательных программ пуст.
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void loadPrograms()}
-                        disabled={programsLoading}
-                      >
-                        <RefreshCwIcon className="size-3.5" />
-                        Обновить список
-                      </Button>
-                    </div>
-                  )}
-                  {!programsPending && !programsError && !programId && (
-                    <p className="text-xs text-muted-foreground">
-                      Чтобы запустить исследование, выберите образовательную программу.
-                    </p>
-                  )}
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label htmlFor="resume-file">Резюме PDF/DOCX или профиль HH (необязательно)</Label>
