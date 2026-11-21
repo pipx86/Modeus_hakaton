@@ -1065,7 +1065,7 @@ describe("Research", () => {
       screen.getByRole("tab", { name: "Конфликты" }).focus()
     })
 
-    expect(await screen.findByText("Предварительно выбрано — требуется проверка")).toBeInTheDocument()
+    expect(await screen.findByText("Предварительно выбрано - требуется проверка")).toBeInTheDocument()
     expect(screen.getByText("Аналитик")).toBeInTheDocument()
     expect(
       fetchCalls().some((call) => call.url.includes("/runs/7/conflicts")),

@@ -33,7 +33,7 @@ describe("ConflictsTab", () => {
     expect(screen.getByText("Аналитик")).toBeInTheDocument()
     expect(screen.getByText("Data Analyst")).toBeInTheDocument()
     expect(screen.getByText("приоритет 300")).toBeInTheDocument()
-    expect(screen.getByText("Предварительно выбрано — требуется проверка")).toBeInTheDocument()
+    expect(screen.getByText("Предварительно выбрано - требуется проверка")).toBeInTheDocument()
     expect(screen.getByText(CONFLICT.reason)).toBeInTheDocument()
     expect(screen.getByText(/Найдено конфликтов: 1/)).toBeInTheDocument()
   })
