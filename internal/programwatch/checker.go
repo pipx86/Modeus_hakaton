@@ -58,6 +58,12 @@ func (c *Checker) CheckAndSave(ctx context.Context, source Source) (CheckResult,
 	now := c.now()
 	result, update := c.check(ctx, source)
 	update.CheckedAt = now
+	// Статус и текст ошибки живут в результате проверки; сохраняем их вместе
+	// с валидаторами, иначе в реестре остаётся пустой last_status.
+	update.Status = result.Status
+	if result.Error != "" {
+		update.Error = result.Error
+	}
 	if result.Status == StatusError {
 		update.FailureCount = source.FailureCount + 1
 		// last_checked_at сдвигается так, чтобы due-условие

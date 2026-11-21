@@ -68,7 +68,7 @@ const LAST_STATUS_VARIANTS: Record<
   unchanged: "secondary",
   changed: "default",
   needs_parser: "outline",
-  needs_attention: "warning",
+  needs_attention: "outline",
   error: "destructive",
 }
 

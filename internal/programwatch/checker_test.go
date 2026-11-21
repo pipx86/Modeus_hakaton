@@ -538,3 +538,51 @@ func TestErrorsAreDistinguishable(t *testing.T) {
 		t.Fatal("errors.Is должен видеть ErrNotFound")
 	}
 }
+
+func TestCheckerSavesStatusAndError(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/broken.csv" {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		_, _ = w.Write([]byte(testCSV))
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, handler, store, drafts)
+
+	changed := store.add(Source{
+		ProgramKey:    "mirea/09.03.01/2024/full-time",
+		URL:           server.URL + "/program.csv",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+	if _, err := checker.CheckAndSave(context.Background(), changed); err != nil {
+		t.Fatalf("CheckAndSave changed: %v", err)
+	}
+	update := store.lastCheck(t, changed.ID)
+	if update.Status != StatusChanged {
+		t.Fatalf("last_status = %q, ожидали %q", update.Status, StatusChanged)
+	}
+	if update.DraftID == "" {
+		t.Fatal("draft_id должен сохраняться при changed")
+	}
+
+	broken := store.add(Source{
+		ProgramKey:    "mirea/09.03.02/2024/full-time",
+		URL:           server.URL + "/broken.csv",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+	if _, err := checker.CheckAndSave(context.Background(), broken); err != nil {
+		t.Fatalf("CheckAndSave broken: %v", err)
+	}
+	update = store.lastCheck(t, broken.ID)
+	if update.Status != StatusError {
+		t.Fatalf("last_status = %q, ожидали %q", update.Status, StatusError)
+	}
+	if update.Error == "" {
+		t.Fatal("last_error должен сохраняться при ошибке")
+	}
+}
