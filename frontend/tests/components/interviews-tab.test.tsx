@@ -122,14 +122,15 @@ function stubInterviewsApi(options: StubOptions = {}) {
 }
 
 describe("InterviewsTab", () => {
-  it("показывает статусы сессий и основания выбранного интервью", async () => {
+  it("показывает интервью и основания выбранного интервью без статусных бейджей", async () => {
     const onFocusNode = vi.fn()
     stubInterviewsApi()
     render(<InterviewsTab runId="7" onFocusNode={onFocusNode} />)
 
     expect((await screen.findAllByText("Анна")).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Завершено").length).toBeGreaterThan(0)
-    expect(screen.getByText("Идёт")).toBeInTheDocument()
+    // Статусные бейджи убраны из интерфейса: статус читается по датам интервью.
+    expect(screen.queryByText("Завершено")).not.toBeInTheDocument()
+    expect(screen.queryByText("Идёт")).not.toBeInTheDocument()
 
     expect(
       await screen.findByText("Каждую неделю я собираю требования у заказчика."),

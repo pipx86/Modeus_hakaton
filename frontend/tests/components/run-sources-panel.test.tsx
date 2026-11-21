@@ -127,7 +127,9 @@ describe("RunSourcesPanel", () => {
     expect(screen.getByText(/Интервью · 6 ноября 2026/)).toBeInTheDocument()
     expect(screen.getByText(/Профстандарт · 5 ноября 2026/)).toBeInTheDocument()
     expect(screen.getByText("Обоснований: 2")).toBeInTheDocument()
-    expect(screen.getByText("ID: s-1")).toBeInTheDocument()
+    // Технический id материала в списке не показывается: без ссылки остаётся
+    // только человекочитаемое название, тип и дата.
+    expect(screen.queryByText("ID: s-1")).not.toBeInTheDocument()
 
     const link = screen.getByRole("link", { name: /Открыть материал/ })
     expect(link).toHaveAttribute("href", "https://example.org/standard")

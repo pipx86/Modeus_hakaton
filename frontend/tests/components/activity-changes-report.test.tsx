@@ -167,7 +167,7 @@ describe("ActivityChangesReport", () => {
 
     expect(await screen.findByText("Состав деятельности не изменился")).toBeInTheDocument()
     expect(
-      screen.getByText(/обновились подтверждающие материалы: новых — 2/),
+      screen.getByText(/обновились подтверждающие материалы: новых - 2/),
     ).toBeInTheDocument()
     expect(screen.getByText("Новых материалов: 2")).toBeInTheDocument()
   })

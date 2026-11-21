@@ -28,6 +28,8 @@ interface ConflictsTabProps {
  */
 export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
   const [items, setItems] = useState<Conflict[]>([])
+  // Названия узлов по id: методисту нужен текст узла, а не его UUID.
+  const [nodeTitles, setNodeTitles] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,6 +50,21 @@ export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
       }
       setItems(Array.isArray(data) ? data : [])
       setError(null)
+      try {
+        const { data: treeData } = await apiClient.GET("/runs/{id}/tree", {
+          params: { path: { id: runId } },
+        })
+        const nodes = (treeData as { nodes?: Array<{ id: string; title: string }> } | undefined)?.nodes
+        if (Array.isArray(nodes)) {
+          const titles: Record<string, string> = {}
+          for (const node of nodes) {
+            if (node?.id) titles[node.id] = node.title
+          }
+          setNodeTitles(titles)
+        }
+      } catch {
+        // Названия необязательны: конфликт показываем и без них.
+      }
     } catch {
       setItems([])
       setError("Сервер недоступен: не удалось загрузить конфликты.")
@@ -110,7 +127,7 @@ export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{FIELD_LABELS[conflict.field] ?? conflict.field}</Badge>
             <span className="text-xs text-muted-foreground">
-              узел {conflict.node_id.slice(0, 8)}
+              узел «{nodeTitles[conflict.node_id] ?? "не найден в дереве"}»
             </span>
             {onFocusNode && (
               <Button

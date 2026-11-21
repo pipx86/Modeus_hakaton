@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { Research } from "@/pages/Research"
 import { clearToken, storeToken } from "@/lib/auth"
@@ -43,10 +44,21 @@ function stubRun(
     nodePatchError?: boolean
     approveError?: boolean
     createEvidenceError?: boolean
+    /** Статус прогона в GET /runs/7 (по умолчанию done). */
+    runStatus?: string
+    /** Статус после успешного retry; нужен, чтобы проверить возобновление поллинга. */
+    retryRunStatus?: string
+    /** Ответ POST /runs/7/retry; по умолчанию 202 accepted. */
+    retry?: { status: number; body?: unknown }
   } = {},
 ) {
+  let retried = false
   return setFetchHandler(async (url, init) => {
     const method = init?.method ?? "GET"
+    if (url.endsWith("/api/v1/runs/7/retry") && method === "POST") {
+      retried = true
+      return overrides.retry ?? { status: 202, body: { run_id: "7", status: "running", retried: true } }
+    }
     if (url.includes("/api/v1/sources/") && method === "DELETE") {
       return overrides.deleteError
         ? { status: 409, body: { code: "CONFLICT", message: "источник используется" } }
@@ -127,7 +139,7 @@ function stubRun(
           generated_at: "2026-11-21T10:00:00Z",
           proposals: [],
           summary:
-            "Связей элементов деятельности с компетенциями программы пока нет — предложений нет.",
+            "Связей элементов деятельности с компетенциями программы пока нет - предложений нет.",
           disclaimer:
             "предложения системы, решение принимает методист; система не утверждает и не переписывает программу",
         },
@@ -174,7 +186,10 @@ function stubRun(
         status: 200,
         body: {
           id: "7",
-          status: "done",
+          status:
+            retried && overrides.retryRunStatus
+              ? overrides.retryRunStatus
+              : (overrides.runStatus ?? "done"),
           profession: "Data Scientist",
           started_at: "2026-11-06T10:00:00Z",
         },
@@ -788,14 +803,15 @@ describe("Research", () => {
     ).toBeInTheDocument()
   })
 
-  it("предлагает локальный экспорт дерева и печать", async () => {
+  it("не показывает локальный экспорт дерева, печать остаётся", async () => {
     stubRun({ tree: [{ id: "role", type: "role", title: "Аналитик", evidence: [] }] })
     renderPage()
     await screen.findByRole("heading", { name: "Data Scientist" })
     expect(screen.queryByRole("button", { name: "Поделиться ссылкой" })).not.toBeInTheDocument()
     act(() => screen.getByRole("tab", { name: "Дерево" }).focus())
-    expect(await screen.findByRole("button", { name: "Скачать JSON" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Скачать Markdown" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Скачать JSON" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Скачать Markdown" })).not.toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "Печать / PDF" })).toBeInTheDocument()
   })
 
   it("вызывает печать страницы", async () => {
@@ -1066,6 +1082,110 @@ describe("Research", () => {
       expect(screen.queryByRole("tab", { name: "Конфликты" })).not.toBeInTheDocument()
     } finally {
       clearToken()
+    }
+  })
+
+  it("при упавшем интервью показывает блок и повторяет анализ по кнопке", async () => {
+    const success = vi.spyOn(toast, "success")
+    try {
+      stubRun({ runStatus: "failed", retryRunStatus: "running" })
+
+      renderPage()
+
+      expect(await screen.findByText("Интервью не завершилось")).toBeInTheDocument()
+      expect(
+        screen.getByText(/Модель могла быть недоступна. Ответы сохранены/),
+      ).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "Повторить анализ" }))
+
+      await waitFor(() => {
+        const retry = fetchCalls().find(
+          (call) =>
+            call.url.endsWith("/api/v1/runs/7/retry") && call.init.method === "POST",
+        )
+        expect(retry).toBeDefined()
+      })
+      await waitFor(() => {
+        expect(success).toHaveBeenCalledWith("Повторный анализ запущен", expect.anything())
+      })
+      // После 202 статус перечитан: running снимает блок failed.
+      await waitFor(() =>
+        expect(screen.queryByText("Интервью не завершилось")).not.toBeInTheDocument(),
+      )
+    } finally {
+      success.mockRestore()
+    }
+  })
+
+  it("в гостевом режиме не показывает кнопку повтора упавшего анализа", async () => {
+    stubRun({ runStatus: "failed" })
+
+    renderPage("7", "?view=readonly")
+
+    expect(await screen.findByText("Интервью не завершилось")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Повторить анализ" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("после retry продолжает опрашивать статус, пока backend не завершит анализ", async () => {
+    const intervals = vi.spyOn(window, "setInterval")
+    const pollingIntervals = () =>
+      intervals.mock.calls.filter(([, delay]) => delay === 5000).length
+    try {
+      // Backend может ещё отдавать failed, пока повторная финализация идёт.
+      stubRun({ runStatus: "failed", retryRunStatus: "failed" })
+      renderPage()
+
+      const before = pollingIntervals()
+      fireEvent.click(await screen.findByRole("button", { name: "Повторить анализ" }))
+
+      await waitFor(() => expect(pollingIntervals()).toBeGreaterThan(before))
+    } finally {
+      intervals.mockRestore()
+    }
+  })
+
+  it("объясняет конфликт TREE_ALREADY_EXISTS при повторе анализа", async () => {
+    const error = vi.spyOn(toast, "error")
+    try {
+      stubRun({
+        runStatus: "failed",
+        retry: {
+          status: 409,
+          body: { code: "TREE_ALREADY_EXISTS", message: "дерево уже построено" },
+        },
+      })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole("button", { name: "Повторить анализ" }))
+
+      await waitFor(() =>
+        expect(error).toHaveBeenCalledWith("Дерево уже построено, обновите страницу"),
+      )
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it("объясняет конфликт RETRY_IN_PROGRESS при повторе анализа", async () => {
+    const error = vi.spyOn(toast, "error")
+    try {
+      stubRun({
+        runStatus: "failed",
+        retry: {
+          status: 409,
+          body: { code: "RETRY_IN_PROGRESS", message: "анализ уже выполняется" },
+        },
+      })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole("button", { name: "Повторить анализ" }))
+
+      await waitFor(() => expect(error).toHaveBeenCalledWith("Анализ уже выполняется"))
+    } finally {
+      error.mockRestore()
     }
   })
 })

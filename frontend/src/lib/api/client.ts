@@ -5,7 +5,7 @@
 
 import createClient from "openapi-fetch"
 import { frontendLog } from "@/lib/frontend-log"
-import { normalizeDashes } from "@/lib/text"
+import { normalizeDashes, normalizeText } from "@/lib/text"
 import { getValidToken } from "@/lib/auth"
 import type { paths, components } from "./schema"
 
@@ -242,7 +242,7 @@ async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
     try {
       const body = (await response.json()) as { code?: unknown; message?: unknown }
       if (typeof body?.code === "string") code = body.code
-      if (typeof body?.message === "string" && body.message.trim()) message = body.message
+      if (typeof body?.message === "string" && body.message.trim()) message = normalizeText(body.message)
     } catch {
       // Тело не JSON (например, HTML страницы ошибки прокси) - оставляем сообщение по статусу.
     }
@@ -253,7 +253,7 @@ async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (response.status === 204) return undefined as T
   try {
-    return (await response.json()) as T
+    return normalizeDashes((await response.json()) as T) as T
   } catch {
     throw new ApiRequestError("Сервер вернул некорректный ответ.", response.status)
   }
@@ -730,6 +730,28 @@ export async function createRun(input: CreateRunInput): Promise<Run> {
   })
 }
 
+/** Ответ `POST /runs/{id}/retry`: повторный анализ поставлен в очередь. */
+export interface RetryRunResponse {
+  run_id?: string
+  status?: RunStatus
+  retried?: boolean
+  message?: string
+}
+
+/**
+ * Повторяет анализ упавшего интервью (`POST /runs/{id}/retry`).
+ *
+ * Backend отвечает 202, а конфликтные случаи - 409 с кодом:
+ * `TREE_ALREADY_EXISTS` (дерево уже построено) или `RETRY_IN_PROGRESS`
+ * (анализ уже идёт). Они приходят как {@link ApiRequestError}, чтобы экран
+ * показал точное объяснение вместо общего текста.
+ */
+export async function retryRun(runId: string): Promise<RetryRunResponse> {
+  return requestApi<RetryRunResponse>(`/runs/${encodeURIComponent(runId)}/retry`, {
+    method: "POST",
+  })
+}
+
 // ---------------------------------------------------------------------------
 // P1-карточки MVP: состав использованных материалов, основания из интервью и
 // отчёт о покрытии программы деятельностью. Эндпоинтов пока нет в сгенерированной
@@ -947,7 +969,7 @@ export interface ActivityChangeReport {
 /**
  * Сравнивает деятельность двух исследований. Узлы сопоставляются на бэкенде
  * семантически (тип + нормализованное название + путь предков), поэтому
- * added/removed — это действительно появившиеся и исчезнувшие элементы, а не
+ * added/removed - это действительно появившиеся и исчезнувшие элементы, а не
  * разница идентификаторов.
  */
 export async function getActivityChanges(

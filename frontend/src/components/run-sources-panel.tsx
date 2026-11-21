@@ -365,11 +365,7 @@ export function RunSourcesPanel({
                         Открыть материал
                         <ExternalLinkIcon className="size-3" />
                       </a>
-                    ) : (
-                      <code className="shrink-0 text-[11px] text-muted-foreground">
-                        ID: {source.id}
-                      </code>
-                    )}
+                    ) : null}
                   </div>
                   {expanded && (
                     <div className="space-y-2 border-t bg-muted/20 px-3 py-2.5">
@@ -440,7 +436,7 @@ export function RunSourcesPanel({
             <DialogTitle>Обоснование материала</DialogTitle>
             <DialogDescription>
               {detail?.nodeTitle ?? "Узел дерева"}
-              {detail?.nodeId ? ` · узел ${detail.nodeId}` : ""}
+              
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -448,10 +444,6 @@ export function RunSourcesPanel({
               «{detail?.evidence.quote ?? ""}»
             </blockquote>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-mono">source_id: {detail?.evidence.source_id ?? "-"}</span>
-              {detail?.evidence.ref_id && (
-                <span className="font-mono">ref_id: {detail.evidence.ref_id}</span>
-              )}
               <span
                 className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                   EVIDENCE_STATUS_CLASS[detail?.evidence.status ?? "pending"]

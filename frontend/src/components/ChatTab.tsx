@@ -225,16 +225,10 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
             <span className="font-medium">
               Вопросы: {progress.asked} из {progress.total}
             </span>
-            <span className="text-muted-foreground">Осталось: {progress.remaining}</span>
             {progress.average_quality > 0 && (
               <span className="text-muted-foreground">Качество ответов: {progress.average_quality}/100</span>
             )}
           </div>
-          {progress.uncovered_topics?.length > 0 && (
-            <p className="mt-1 text-muted-foreground">
-              Не затронуты: <span className="text-foreground">{progress.uncovered_topics.join(", ")}</span>
-            </p>
-          )}
           {progress.contradictions && progress.contradictions.length > 0 && (
             <p className="mt-1 text-warning">
               Расхождение с GitHub: {progress.contradictions.join(", ")}. Агент уточнит это в следующем вопросе.
@@ -245,7 +239,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
       {loadError && messages.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
           <InfoIcon className="size-3.5 shrink-0" />
-          <span>Интервью было прервано. История сохранена, можно продолжить с последнего вопроса.</span>
+          <span>{loadError}</span>
           <Button variant="outline" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={() => void retry()}>
             <RefreshCwIcon className="size-3" />
             Продолжить

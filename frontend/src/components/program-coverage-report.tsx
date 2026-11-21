@@ -132,7 +132,6 @@ function CoverageNodeCard({ node }: { node: ProgramCoverageNode }) {
         <Badge variant="outline" className={`ml-auto ${COVERAGE_STATUS_CLASS[status]}`}>
           {COVERAGE_STATUS_LABEL[status]}
         </Badge>
-        <code className="w-full text-[11px] text-muted-foreground sm:w-auto">{node.node_id}</code>
       </div>
       {node.links.length === 0 ? (
         <p className="text-xs text-muted-foreground">

@@ -24,7 +24,7 @@ const SUGGESTIONS: ProgramSuggestionsResponse = {
       id: "unmapped_activity:n-1",
       kind: "unmapped_activity",
       target: { node_id: "n-1" },
-      rationale: "У задачи «Собирать требования» нет ни одной связи с компетенциями программы; кандидат — рассмотреть добавление в программу.",
+      rationale: "У задачи «Собирать требования» нет ни одной связи с компетенциями программы; кандидат - рассмотреть добавление в программу.",
       priority: "high",
       status: "proposal",
     },
@@ -113,7 +113,7 @@ describe("ProgramSuggestions", () => {
       suggestions: {
         ...SUGGESTIONS,
         proposals: [],
-        summary: "Связей элементов деятельности с компетенциями программы пока нет — предложений нет.",
+        summary: "Связей элементов деятельности с компетенциями программы пока нет - предложений нет.",
       },
     })
     render(<ProgramSuggestions runId="7" />)
@@ -121,7 +121,7 @@ describe("ProgramSuggestions", () => {
     expect(await screen.findByText("Предложений нет")).toBeInTheDocument()
     expect(
       screen.getByText(
-        "Связей элементов деятельности с компетенциями программы пока нет — предложений нет.",
+        "Связей элементов деятельности с компетенциями программы пока нет - предложений нет.",
       ),
     ).toBeInTheDocument()
     expect(screen.getByText(DISCLAIMER)).toBeInTheDocument()

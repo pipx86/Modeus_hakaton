@@ -201,7 +201,7 @@ describe("SnapshotReviewTab", () => {
     expect(screen.getByText(/Новая цитата/)).toBeInTheDocument()
     expect(screen.getByText("Удалённые обоснования")).toBeInTheDocument()
     expect(screen.getByText(/Удалённая цитата/)).toBeInTheDocument()
-    expect(screen.getAllByText("source_id: src-2").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("«Удалённая цитата»").length).toBeGreaterThan(0)
 
     expect(screen.getByText("Обоснования в сравнении")).toBeInTheDocument()
     expect(screen.getByText(/Корневая новая цитата/)).toBeInTheDocument()
@@ -228,8 +228,10 @@ describe("SnapshotReviewTab", () => {
 
     const dialog = await screen.findByRole("dialog")
     expect(within(dialog).getByText(/Цитата добавленного узла/)).toBeInTheDocument()
-    expect(within(dialog).getByText("src-1")).toBeInTheDocument()
-    expect(within(dialog).getByText("p-7")).toBeInTheDocument()
+    // Технические id (source_id/ref_id) в диалоге не показываются: методисту нужен
+    // источник и цитата, а не внутренние идентификаторы.
+    expect(within(dialog).queryByText("src-1")).not.toBeInTheDocument()
+    expect(within(dialog).queryByText("p-7")).not.toBeInTheDocument()
     expect(within(dialog).getByText("Вакансия DS")).toBeInTheDocument()
     expect(within(dialog).getByRole("link", { name: /Открыть источник/ })).toHaveAttribute(
       "href",

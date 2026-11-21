@@ -45,11 +45,12 @@ import { SourceChanges } from "@/components/source-changes"
 import { ProgramCoverageReport } from "@/components/program-coverage-report"
 import { ProgramSuggestions } from "@/components/program-suggestions"
 import { ActivityChangesReport } from "@/components/activity-changes-report"
-import { ReviewSummary } from "@/components/review-summary"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
 import {
   apiClient,
+  ApiRequestError,
+  retryRun,
   type ActivityNode,
   type ChatMessage,
   type Evidence,
@@ -61,7 +62,7 @@ import {
 import { getCurrentRole } from "@/lib/auth"
 import { stripControlChars } from "@/lib/security"
 import { buildSourceIndex } from "@/lib/provenance"
-import { downloadText, treeToJson, treeToMarkdown } from "@/lib/export-tree"
+import { treeToMarkdown } from "@/lib/export-tree"
 import {
   CheckIcon,
   EyeIcon,
@@ -69,6 +70,7 @@ import {
   Loader2Icon,
   NetworkIcon,
   PrinterIcon,
+  RotateCcwIcon,
   SearchIcon,
   PencilIcon,
   Trash2Icon,
@@ -109,6 +111,15 @@ function confidenceClass(value: number) {
 const TAB_TRIGGER_CLASS =
   "h-full items-center justify-center py-0 leading-none transition-colors data-[state=active]:bg-primary data-[state=active]:font-semibold data-[state=active]:!text-primary-foreground data-[state=active]:shadow-sm dark:data-[state=active]:!text-primary-foreground"
 const ROOT_PARENT = "__root__"
+/**
+ * Период и предел поллинга после успешного retry. Backend может не менять
+ * сохранённый статус прогона до окончания повторной финализации: GET /runs/{id}
+ * продолжает отдавать `failed`, хотя анализ уже идёт. Поэтому страница поллит
+ * статус независимо от `isActive`, пока не увидит `done`/`degraded` или не
+ * истечёт окно ожидания.
+ */
+const RETRY_POLL_INTERVAL_MS = 5000
+const RETRY_POLL_MAX_MS = 10 * 60 * 1000
 /**
  * Форматирует дату ISO в русскую длинную форму («6 ноября 2026»). Возвращает подсказку при
  * отсутствии значения и оригинал строки, если дату не удалось разобрать, - чтобы битые
@@ -1249,12 +1260,6 @@ function TreeTab({
   return (
     <>
       <div className="mb-3 flex justify-end gap-2" data-print-hide>
-        <Button variant="outline" size="sm" onClick={() => downloadText(`tree-${id}.json`, treeToJson(nodes), "application/json;charset=utf-8")}>
-          Скачать JSON
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => downloadText(`tree-${id}.md`, treeToMarkdown(nodes), "text/markdown;charset=utf-8")}>
-          Скачать Markdown
-        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -1465,7 +1470,6 @@ export function Research() {
       if (previous === next) return
       if (next === "done") {
         autoChatRef.current = true
-        setTab("tree")
         toast.success("Запуск завершён", { description: "Дерево деятельности готово." })
       }
       if (next === "failed") {
@@ -1475,6 +1479,65 @@ export function Research() {
       }
     },
   })
+
+  const [retrying, setRetrying] = useState(false)
+  /** Идёт окно поллинга после retry (backend может ещё отдавать `failed`). */
+  const [retryPolling, setRetryPolling] = useState(false)
+  const retryPollStartedAt = useRef(0)
+  /**
+   * Повтор анализа упавшего интервью: backend принимает ответы и запускает
+   * пайплайн заново, поэтому после 202 достаточно перечитать статус - если он
+   * снова `pending`/`running`, {@link useRunPolling} сам возобновит поллинг.
+   * 409 обрабатывается отдельно: `TREE_ALREADY_EXISTS` и `RETRY_IN_PROGRESS`
+   * означают разные действия, и общий текст «не удалось» здесь вреден.
+   */
+  const retryAnalysis = useCallback(async () => {
+    if (retrying) return
+    setRetrying(true)
+    try {
+      await retryRun(id)
+      setRetryPolling(true)
+      retryPollStartedAt.current = Date.now()
+      toast.success("Повторный анализ запущен", {
+        description: "Статус обновится автоматически.",
+      })
+      await loadRun()
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.code === "TREE_ALREADY_EXISTS") {
+        toast.error("Дерево уже построено, обновите страницу")
+        await loadRun()
+        return
+      }
+      if (error instanceof ApiRequestError && error.code === "RETRY_IN_PROGRESS") {
+        toast.error("Анализ уже выполняется")
+        await loadRun()
+        return
+      }
+      toast.error("Не удалось повторить анализ", { description: errorMessage(error) })
+    } finally {
+      setRetrying(false)
+    }
+  }, [id, loadRun, retrying])
+
+  useEffect(() => {
+    // Пока backend не показал running, обычный поллинг useRunPolling выключен.
+    // После retry опрашиваем статус сами, иначе блок failed останется навсегда.
+    if (!retryPolling || isActive) return
+    const timer = window.setInterval(() => void loadRun(), RETRY_POLL_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [retryPolling, isActive, loadRun])
+
+  useEffect(() => {
+    if (!retryPolling) return
+    if (run?.status === "done" || run?.status === "degraded") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRetryPolling(false)
+      return
+    }
+    if (Date.now() - retryPollStartedAt.current >= RETRY_POLL_MAX_MS) {
+      setRetryPolling(false)
+    }
+  }, [run?.status, retryPolling])
 
   useEffect(() => {
     if (!run || autoChatRef.current) return
@@ -1522,9 +1585,30 @@ export function Research() {
           </p>
         )}
         {run?.status === "failed" && (
-          <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            Исследование завершилось ошибкой.
-          </p>
+          <div className="mt-3 flex flex-col gap-3 rounded-xl border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="font-medium text-destructive">Интервью не завершилось</p>
+              <p className="text-sm text-muted-foreground">
+                Модель могла быть недоступна. Ответы сохранены - анализ можно повторить,
+                не проводя интервью заново.
+              </p>
+            </div>
+            {!treeReadOnly && (
+              <Button
+                variant="destructive"
+                className="shrink-0"
+                onClick={() => void retryAnalysis()}
+                disabled={retrying}
+              >
+                {retrying ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <RotateCcwIcon className="size-4" />
+                )}
+                Повторить анализ
+              </Button>
+            )}
+          </div>
         )}
       </div>
       {error && !run && (
@@ -1568,7 +1652,6 @@ export function Research() {
         )
       ) : (
       <>
-        {reviewerView && run && <ReviewSummary runId={id} />}
         <Tabs value={tab} onValueChange={handleTabChange} className="flex-col">
         <TabsList className="h-9 items-center" data-print-hide>
           <TabsTrigger value="sources" className={TAB_TRIGGER_CLASS}>

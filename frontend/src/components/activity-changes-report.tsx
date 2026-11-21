@@ -97,8 +97,7 @@ function NewSources({ sources }: { sources: ActivityChangeSource[] }) {
             className="flex flex-wrap items-center gap-2 rounded-md border bg-background/60 px-2.5 py-1.5 text-xs"
           >
             <Badge variant="outline">{sourceTypeLabel(source.source_type)}</Badge>
-            <span className="min-w-0 break-words">{source.source_title || source.source_id}</span>
-            <code className="ml-auto text-[11px] text-muted-foreground">{source.source_id}</code>
+            <span className="min-w-0 break-words">{source.source_title || "Источник без названия"}</span>
           </li>
         ))}
       </ul>
@@ -126,7 +125,6 @@ function ChangeNodeCard({ node }: { node: ActivityChangeNode }) {
             "корневой узел"
           )}
         </span>
-        <code className="text-[11px]">{node.node_id}</code>
         {node.changed_fields && node.changed_fields.length > 0 && (
           <span>
             Изменённые поля:{" "}
@@ -335,7 +333,7 @@ export function ActivityChangesReport({ runId }: { runId: string }) {
               >
                 {runs.map((run) => (
                   <option key={run.id} value={run.id}>
-                    {run.profession || "Без названия профессии"} — {run.id.slice(0, 8)}
+                    {run.profession || "Без названия профессии"} - {run.id.slice(0, 8)}
                   </option>
                 ))}
               </select>
@@ -405,9 +403,9 @@ export function ActivityChangesReport({ runId }: { runId: string }) {
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {sourceDelta > 0
-                        ? `Но обновились подтверждающие материалы: новых — ${
+                        ? `Но обновились подтверждающие материалы: новых - ${
                             summary.sources_added
-                          }, больше не используется — ${summary.sources_removed}.`
+                          }, больше не используется - ${summary.sources_removed}.`
                         : "Функции, задачи и действия обоих исследований совпадают по типу, названию и пути в дереве."}
                     </p>
                   </div>

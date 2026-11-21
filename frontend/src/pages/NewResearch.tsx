@@ -257,7 +257,7 @@ export function NewResearch() {
                         setSelectedLevel(null)
                       }, 100)
                     }
-                    placeholder="Например: Data Scientist"
+                    placeholder="Например: аналитик данных"
                     autoFocus
                     maxLength={PROFESSION_MAX}
                     autoComplete="off"

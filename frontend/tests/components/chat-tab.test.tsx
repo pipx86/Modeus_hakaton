@@ -6,6 +6,7 @@ import { StrictMode } from "react"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
+import { MemoryRouter } from "react-router-dom"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { ChatTab } from "@/components/ChatTab"
 
@@ -82,7 +83,12 @@ function stubChat() {
 }
 
 function renderTab() {
-  return render(<ChatTab runId="7" active />)
+  // ChatTab содержит ссылки react-router: вне Router баннер ошибки упал бы.
+  return render(
+    <MemoryRouter>
+      <ChatTab runId="7" active />
+    </MemoryRouter>,
+  )
 }
 
 describe("ChatTab", () => {
@@ -213,6 +219,51 @@ describe("ChatTab", () => {
     expect(await screen.findByText(/SSE-поток недоступен/)).toBeInTheDocument()
     expect(source.closed).toBe(true)
   })
+
+  it("останавливает опрос и сообщает, если прогон удалили", async () => {
+    let deleted = false
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/runs/7/messages") && method === "GET") {
+        if (deleted) {
+          return { status: 404, body: { code: "NOT_FOUND", message: "прогон не найден" } }
+        }
+        return {
+          status: 200,
+          body: [
+            {
+              id: "m1",
+              role: "agent",
+              content: "Какие задачи вы решаете чаще всего?",
+              created_at: "2026-11-10T10:00:00Z",
+            },
+          ],
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderTab()
+    await screen.findByText("Какие задачи вы решаете чаще всего?")
+    const source = FakeEventSource.instances[0]
+    deleted = true
+
+    act(() => {
+      source.onerror?.()
+    })
+    act(() => {
+      source.onerror?.()
+    })
+    act(() => {
+      source.onerror?.()
+    })
+
+    // Первый тик опроса (5 с) получает 404: интервал очищается, вкладка
+    // показывает терминальное сообщение вместо бесконечных повторов.
+    expect(
+      await screen.findByText(/Исследование не найдено/, {}, { timeout: 8000 }),
+    ).toBeInTheDocument()
+  }, 15000)
 
   it("показывает ошибку отправки и не добавляет сообщение в ленту", async () => {
     setFetchHandler(async (url, init) => {

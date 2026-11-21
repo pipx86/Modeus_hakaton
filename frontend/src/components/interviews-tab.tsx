@@ -17,7 +17,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 import { MessagesSquareIcon, RefreshCwIcon, UserIcon } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { NODE_TYPE_LABELS } from "@/components/activity-tree-model"
@@ -29,21 +28,10 @@ import {
   type EvidenceStatus,
   type InterviewEvidence,
   type InterviewMessage,
-  type InterviewStatus,
   type RunInterview,
 } from "@/lib/api/client"
 
-const INTERVIEW_STATUS_LABEL: Record<InterviewStatus, string> = {
-  active: "Идёт",
-  completed: "Завершено",
-  failed: "Прервано",
-}
 
-const INTERVIEW_STATUS_CLASS: Record<InterviewStatus, string> = {
-  active: "bg-primary/10 text-primary",
-  completed: "bg-success/15 text-success",
-  failed: "bg-destructive/15 text-destructive",
-}
 
 const EVIDENCE_STATUS_LABEL: Record<EvidenceStatus, string> = {
   pending: "На проверке",
@@ -289,12 +277,6 @@ export function InterviewsTab({
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">
                         {respondentLabel(interview)}
                       </span>
-                      <Badge
-                        variant="outline"
-                        className={INTERVIEW_STATUS_CLASS[interview.status]}
-                      >
-                        {INTERVIEW_STATUS_LABEL[interview.status] ?? interview.status}
-                      </Badge>
                     </span>
                     {interview.respondent_role && (
                       <span className="block truncate text-xs text-muted-foreground">
@@ -326,9 +308,6 @@ export function InterviewsTab({
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className={INTERVIEW_STATUS_CLASS[selected.status]}>
-                  {INTERVIEW_STATUS_LABEL[selected.status] ?? selected.status}
-                </Badge>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -363,40 +342,49 @@ export function InterviewsTab({
                 <p className="text-sm text-muted-foreground">В этом интервью пока нет сообщений.</p>
               </div>
             ) : (
-              <ul className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+              <ul className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
                 {messages.map((message) => {
                   const fromUser = message.role === "user"
                   const citations = (message.citations ?? []).filter(
                     (citation) => citation && typeof citation.quote === "string" && citation.quote.trim(),
                   )
                   return (
-                    <li
-                      key={message.id}
-                      className={`space-y-1 rounded-lg border p-3 text-sm ${
-                        fromUser ? "border-primary/30 bg-primary/5" : "bg-muted/30"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                        <span className="font-medium text-foreground">
-                          {fromUser ? "Респондент" : "Интервьюер"}
-                        </span>
-                        <span>{formatDateTime(message.created_at)}</span>
+                    <li key={message.id} className={`flex ${fromUser ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`max-w-[80%] space-y-1 rounded-lg px-3 py-2 text-sm ${
+                          fromUser
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-foreground"
+                        }`}
+                      >
+                        <div
+                          className={`flex flex-wrap items-center gap-2 text-[11px] ${
+                            fromUser ? "text-primary-foreground/80" : "text-muted-foreground"
+                          }`}
+                        >
+                          <span className="font-medium">{fromUser ? "Респондент" : "Интервьюер"}</span>
+                          <span>{formatDateTime(message.created_at)}</span>
+                        </div>
+                        <p className="whitespace-pre-wrap break-words leading-relaxed">
+                          {message.content}
+                        </p>
+                        {citations.length > 0 && (
+                          <ul className="space-y-1">
+                            {citations.map((citation, index) => (
+                              <li
+                                key={citation.id ?? citation.ref_id ?? `citation-${index}`}
+                                className={`rounded-md px-2 py-1 text-xs ${
+                                  fromUser
+                                    ? "bg-primary-foreground/10 text-primary-foreground/90"
+                                    : "border bg-background/70 text-muted-foreground"
+                                }`}
+                              >
+                                {citation.title ? `${citation.title}: ` : ""}«{citation.quote}»
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
-                      <p className="whitespace-pre-wrap break-words leading-relaxed">
-                        {message.content}
-                      </p>
-                      {citations.length > 0 && (
-                        <ul className="space-y-1">
-                          {citations.map((citation, index) => (
-                            <li
-                              key={citation.id ?? citation.ref_id ?? `citation-${index}`}
-                              className="rounded-md border bg-background/70 px-2 py-1 text-xs text-muted-foreground"
-                            >
-                              {citation.title ? `${citation.title}: ` : ""}«{citation.quote}»
-                            </li>
-                          ))}
-                        </ul>
-                      )}
                     </li>
                   )
                 })}
@@ -484,7 +472,7 @@ export function InterviewsTab({
                             {nodeTypeLabel(item.node_type)}
                           </span>
                           <span className="min-w-0 break-words text-muted-foreground">
-                            Источник: {item.source_title || item.source_id}
+                            Источник: {item.source_title || "без названия"}
                           </span>
                         </div>
                       </li>

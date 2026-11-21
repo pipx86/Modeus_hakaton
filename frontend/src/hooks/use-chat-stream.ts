@@ -122,10 +122,18 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
             })
           }
           pollTimer = window.setInterval(async () => {
-            const { data } = await apiClient.GET("/runs/{id}/messages", {
+            const { data, error } = await apiClient.GET("/runs/{id}/messages", {
               params: { path: { id: runId } },
             })
-            if (data) appendMessages(data)
+            if (data) {
+              appendMessages(data)
+              return
+            }
+            // Прогон удалён или сессия исчезла: опрашивать дальше бессмысленно.
+            if (error?.code === "NOT_FOUND") {
+              if (pollTimer !== undefined) window.clearInterval(pollTimer)
+              setLoadError("Исследование не найдено: возможно, его удалили.")
+            }
           }, 5000)
         }
       },

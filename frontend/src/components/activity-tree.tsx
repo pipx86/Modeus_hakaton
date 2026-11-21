@@ -230,7 +230,6 @@ function EvidenceList({
             <p className="whitespace-pre-wrap break-words leading-relaxed text-foreground/90">
               {item.quote}
             </p>
-            {item.ref_id && <p className="text-xs text-muted-foreground">Фрагмент источника: {item.ref_id}</p>}
           </li>
         )
       })}

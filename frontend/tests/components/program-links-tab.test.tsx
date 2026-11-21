@@ -179,7 +179,8 @@ describe("ProgramLinksTab", () => {
     render(<ProgramLinksTab runId="7" />)
 
     expect(await screen.findByText("Сопоставления ещё не сформированы")).toBeInTheDocument()
-    expect(screen.getByText("Сопоставлений: 0")).toBeInTheDocument()
+    // Счётчик нуля не дублирует пустое состояние: его нет.
+    expect(screen.queryByText(/Сопоставлений:/)).not.toBeInTheDocument()
     expect(screen.getByText(/Предложения по связям узлов деятельности/)).toBeInTheDocument()
     expect(screen.queryByText(/пробел в программе/i)).not.toBeInTheDocument()
 

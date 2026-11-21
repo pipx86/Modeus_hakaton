@@ -95,12 +95,6 @@ function ProposalCard({ proposal }: { proposal: ProgramProposal }) {
             Компетенция: <span className="text-foreground">{target.competency_title}</span>
           </span>
         )}
-        {target.competency_id && <code className="text-[11px]">{target.competency_id}</code>}
-        {target.node_id && (
-          <span>
-            Узел: <code className="text-[11px]">{target.node_id}</code>
-          </span>
-        )}
       </div>
     </li>
   )

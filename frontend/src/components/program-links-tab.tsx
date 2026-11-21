@@ -184,7 +184,7 @@ function LinkCard({
       {link.evidence?.length ? (
         <details className="rounded-md border bg-background px-3 py-2 text-sm">
           <summary className="cursor-pointer font-medium">Основания из версии дерева {link.snapshot_version ? `v${link.snapshot_version}` : ""} ({link.evidence.length})</summary>
-          <ul className="mt-2 space-y-2">{link.evidence.map((item)=><li key={item.id} className="border-t pt-2"><p className="whitespace-pre-wrap">«{item.quote}»</p><p className="mt-1 text-xs text-muted-foreground">Фрагмент: {item.ref_id||"не указан"} · {item.claim_origin==="source_statement"?"утверждение источника":item.claim_origin==="model_interpretation"?"интерпретация модели":"происхождение не классифицировано"}</p></li>)}</ul>
+          <ul className="mt-2 space-y-2">{link.evidence.map((item)=><li key={item.id} className="border-t pt-2"><p className="whitespace-pre-wrap">«{item.quote}»</p><p className="mt-1 text-xs text-muted-foreground">{item.claim_origin==="source_statement"?"утверждение источника":item.claim_origin==="model_interpretation"?"интерпретация модели":"происхождение не классифицировано"}</p></li>)}</ul>
         </details>
       ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -197,7 +197,7 @@ function LinkCard({
           <div className="space-y-1">
             <Label htmlFor={`program-link-target-${link.id}`}>Исправить цель сопоставления</Label>
             <select id={`program-link-target-${link.id}`} value={selectedTarget} onChange={(event)=>onTargetChange(event.target.value)} disabled={busy} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
-              {targets.map((target)=><option key={`${target.competency_id}|${target.ksa_id??""}`} value={`${target.competency_id}|${target.ksa_id??""}`}>{target.competency_title}{target.ksa_title?` — ${target.ksa_title}`:" — вся компетенция"}</option>)}
+              {targets.map((target)=><option key={`${target.competency_id}|${target.ksa_id??""}`} value={`${target.competency_id}|${target.ksa_id??""}`}>{target.competency_title}{target.ksa_title?` - ${target.ksa_title}`:" - вся компетенция"}</option>)}
             </select>
           </div>
           <div className="space-y-1">
@@ -275,7 +275,6 @@ function EmptyLinks({
           </p>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">Сопоставлений: 0</p>
       <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
         {refreshing ? (
           <Loader2Icon className="size-3.5 animate-spin" />

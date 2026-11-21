@@ -11,7 +11,7 @@
  *    обоснования (`evidence_added`/`evidence_removed`, поля бэкенд добавляет аддитивно;
  *    при их отсутствии блок не рендерится). Блок явно отделён от решений по программе:
  *    сопоставления ведутся на вкладке «Программа» и в diff не входят. У каждой цитаты
- *    видны source_id и ref_id, клик открывает диалог исходной цитаты с источником и
+ *    клик открывает диалог исходной цитаты с источником и
  *    переходом к узлу в дереве.
  * 2. Очередь проверки - `GET /reviews/evidence?status=...`; строку можно подтвердить
  *    или отклонить существующими `POST /evidences/{id}/approve|reject` (204). После
@@ -33,6 +33,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import {
+  ArrowUpRightIcon,
   CheckIcon,
   ChevronDownIcon,
   CopyIcon,
@@ -280,12 +281,6 @@ function EvidenceDeltaList({
             >
               «{item.quote}»
             </span>
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-              source_id: {item.source_id}
-            </span>
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-              evidence_id: {item.id}
-            </span>
           </li>
         ))}
       </ul>
@@ -353,14 +348,6 @@ function EvidenceQuotes({
               className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-left text-sm transition-colors hover:border-primary/40 hover:bg-muted/50"
             >
               <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-muted-foreground">{item.quote}</span>
-              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                source_id: {item.source_id}
-              </span>
-              {item.ref_id && (
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                  ref_id: {item.ref_id}
-                </span>
-              )}
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                   EVIDENCE_STATUS_CLASS[item.status ?? "pending"]
@@ -417,7 +404,6 @@ function DiffNodeSection({
                 >
                   {node.title}
                 </span>
-                <code className="ml-auto text-[11px] text-muted-foreground">{node.id}</code>
               </div>
               {node.description && (
                 <p className="text-sm text-muted-foreground">{node.description}</p>
@@ -461,7 +447,6 @@ function ChangedNode({
             {SNAPSHOT_FIELD_LABELS[field] ?? field}
           </Badge>
         ))}
-        <code className="ml-auto text-[11px] text-muted-foreground">{change.id}</code>
       </div>
       <dl className="space-y-1.5">
         {change.fields.includes("title") && (
@@ -590,7 +575,6 @@ function QuoteDetailDialog({
           <DialogTitle>Исходная цитата</DialogTitle>
           <DialogDescription>
             {detail?.nodeTitle ?? "Узел дерева"}
-            {detail?.nodeId ? ` · узел ${detail.nodeId}` : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -600,10 +584,6 @@ function QuoteDetailDialog({
           <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-1.5 text-sm">
             <dt className="text-muted-foreground">Источник</dt>
             <dd className="break-words">{detail?.sourceTitle ?? detail?.sourceId ?? "-"}</dd>
-            <dt className="text-muted-foreground">source_id</dt>
-            <dd className="font-mono text-xs break-all">{detail?.sourceId ?? "-"}</dd>
-            <dt className="text-muted-foreground">ref_id</dt>
-            <dd className="font-mono text-xs break-all">{detail?.refId ?? "не указан"}</dd>
             <dt className="text-muted-foreground">Статус</dt>
             <dd>
               <span
@@ -1270,24 +1250,22 @@ function ReviewQueueSection({
                     {item.node_title && (
                       <span className="text-sm font-medium">{item.node_title}</span>
                     )}
-                    <code className="text-[11px] text-muted-foreground">{item.node_id}</code>
                     <span className="ml-auto">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className="h-6 gap-1 px-2 text-xs"
+                        className="h-7 gap-1.5 rounded-full border-primary/30 px-3 text-xs font-medium shadow-sm transition-colors hover:border-primary/60 hover:bg-primary/10 hover:text-primary"
                         aria-label={item.node_title ? `Открыть цитату узла ${item.node_title}` : "Открыть цитату"}
                         onClick={() => openDetail(item)}
                       >
+                        <ArrowUpRightIcon className="size-3.5" />
                         Открыть
                       </Button>
                     </span>
                   </div>
                   <blockquote className="whitespace-pre-wrap break-words text-sm text-muted-foreground">«{item.quote}»</blockquote>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>Источник: {item.source_title || item.source_id}</span>
-                    <span className="font-mono">source_id: {item.source_id}</span>
-                    {item.ref_id && <span className="font-mono">ref_id: {item.ref_id}</span>}
+                    <span>Источник: {item.source_title || "без названия"}</span>
                     <Link
                       to={`/research/${item.run_id}?node=${encodeURIComponent(item.node_id)}`}
                       className="underline underline-offset-4 hover:text-foreground"
@@ -1305,7 +1283,6 @@ function ReviewQueueSection({
                         <ExternalLinkIcon className="size-3" />
                       </a>
                     )}
-                    <span className="font-mono">исследование: {item.run_id}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
