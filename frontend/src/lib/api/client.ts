@@ -1232,3 +1232,99 @@ export async function publishProgramDraft(
 export async function rejectProgramDraft(id: string): Promise<void> {
   await requestApi(`/admin/programs/drafts/${encodeURIComponent(id)}/reject`, { method: "POST" })
 }
+
+// ---------------------------------------------------------------------------
+// Реестр источников образовательных программ: страницы с описанием программы,
+// которые сервер проверяет по расписанию и при изменении создаёт черновик.
+// Эндпоинтов пока нет в сгенерированной OpenAPI-схеме, формы фиксированы планом
+// MVP, поэтому ниже ручные типы и те же raw-fetch обёртки, что у импорта.
+// ---------------------------------------------------------------------------
+
+/** Результат проверки источника: без изменений, новый черновик, нужен разбор файла или ошибка. */
+export type ProgramWatchStatus = "unchanged" | "changed" | "needs_parser" | "needs_attention" | "error"
+
+/**
+ * Источник программы в реестре (`GET /admin/program-sources`).
+ * `draft_id` заполняется, когда проверка создала черновик программы.
+ */
+export interface ProgramWatchSource {
+  id: string
+  program_key: string
+  url: string
+  doc_format?: string | null
+  interval_hours: number
+  enabled: boolean
+  last_checked_at?: string | null
+  last_status?: ProgramWatchStatus | null
+  last_error?: string | null
+  draft_id?: string | null
+}
+
+/** Ответ проверки источника (`POST /admin/program-sources/{id}/check`). */
+export interface ProgramWatchCheckResult {
+  status: ProgramWatchStatus
+  draft_id?: string | null
+  error?: string | null
+}
+
+/** Тело `POST /admin/program-sources`. */
+export interface ProgramWatchSourceInput {
+  program_key: string
+  url: string
+  interval_hours?: number
+  doc_format?: string
+}
+
+/** Тело `PATCH /admin/program-sources/{id}`: включение и интервал проверки. */
+export interface ProgramWatchSourceUpdate {
+  enabled?: boolean
+  interval_hours?: number
+}
+
+/** Последние источники программы; форма `{items: [...]}`, старый бэкенд мог отдать массив. */
+export async function listProgramWatchSources(): Promise<ProgramWatchSource[]> {
+  const data = await requestApi<ProgramWatchSource[] | { items?: ProgramWatchSource[] }>(
+    "/admin/program-sources",
+  )
+  if (Array.isArray(data)) return data
+  return Array.isArray(data?.items) ? data.items : []
+}
+
+/** Добавляет источник программы; строгий ключ проверяет сервер (400 или 409). */
+export async function createProgramWatchSource(
+  input: ProgramWatchSourceInput,
+): Promise<ProgramWatchSource> {
+  return requestApi<ProgramWatchSource>("/admin/program-sources", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+}
+
+/** Включает или выключает источник, меняет интервал проверки. */
+export async function updateProgramWatchSource(
+  id: string,
+  input: ProgramWatchSourceUpdate,
+): Promise<ProgramWatchSource> {
+  return requestApi<ProgramWatchSource>(`/admin/program-sources/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+}
+
+/** Удаляет источник программы; сервер отвечает 204. */
+export async function deleteProgramWatchSource(id: string): Promise<void> {
+  await requestApi(`/admin/program-sources/${encodeURIComponent(id)}`, { method: "DELETE" })
+}
+
+/**
+ * Запускает проверку источника сейчас. При изменении страницы сервер создаёт
+ * черновик программы и возвращает его `draft_id`.
+ */
+export async function checkProgramWatchSource(id: string): Promise<ProgramWatchCheckResult> {
+  return requestApi<ProgramWatchCheckResult>(
+    `/admin/program-sources/${encodeURIComponent(id)}/check`,
+    { method: "POST" },
+  )
+}

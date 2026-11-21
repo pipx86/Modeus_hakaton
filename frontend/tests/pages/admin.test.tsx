@@ -316,4 +316,79 @@ describe("админка", () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:metrics")
   })
+
+  it("открывает черновик из реестра источников в карточке импорта", async () => {
+    storeToken(makeToken({ sub: "demo-admin", role: "admin", exp: 4102444800 }))
+
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/users")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/runs")) return { status: 200, body: [] }
+      if (url.endsWith("/api/v1/health")) return { status: 200, body: { status: "ok" } }
+      if (url.endsWith("/api/v1/sources")) return { status: 200, body: [] }
+      if (url.includes("/api/v1/llm/usage")) return { status: 200, body: { items: [] } }
+      if (url.includes("/api/v1/llm/requests")) return { status: 200, body: { items: [] } }
+      if (url.endsWith("/api/v1/admin/programs/drafts") && method === "GET") {
+        return { status: 200, body: { items: [] } }
+      }
+      if (url.endsWith("/api/v1/admin/program-sources") && method === "GET") {
+        return {
+          status: 200,
+          body: {
+            items: [
+              {
+                id: "source-1",
+                program_key: "mgu/01.03.02/2026/full-time",
+                url: "https://mgu.example.ru/programs/01.03.02",
+                interval_hours: 24,
+                enabled: true,
+                last_checked_at: null,
+                last_status: null,
+                last_error: null,
+                draft_id: null,
+              },
+            ],
+          },
+        }
+      }
+      if (
+        url.endsWith("/api/v1/admin/program-sources/source-1/check") &&
+        method === "POST"
+      ) {
+        return { status: 200, body: { status: "changed", draft_id: "draft-5" } }
+      }
+      if (url.endsWith("/api/v1/admin/programs/drafts/draft-5") && method === "GET") {
+        return {
+          status: 200,
+          body: {
+            program_key: "mgu/01.03.02/2026/full-time",
+            status: "draft",
+            program: {
+              title: "Прикладная математика и информатика",
+              code: "01.03.02",
+              organization: "МГУ",
+              competencies: [],
+            },
+            report: { competencies: 0, ksa: 0, warnings: [] },
+          },
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+
+    renderAdmin()
+
+    expect(await screen.findByText("mgu/01.03.02/2026/full-time")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Проверить сейчас" }))
+
+    expect(await screen.findByText("Создан черновик")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Открыть" }))
+
+    expect(
+      await screen.findByText("Прикладная математика и информатика"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText("Код программы: mgu/01.03.02/2026/full-time"),
+    ).toBeInTheDocument()
+  })
 })

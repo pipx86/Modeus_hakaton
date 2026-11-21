@@ -153,11 +153,25 @@ function describeActionFailure(error: ApiRequestError, fallback: string): string
   return describeError(error, fallback)
 }
 
+/** Черновик, который нужно открыть по запросу снаружи; `seq` различает повторные клики. */
+export interface ProgramImportDraftRequest {
+  id: string
+  seq: number
+}
+
+export interface ProgramImportTabProps {
+  /**
+   * Черновик, который нужно открыть сразу: например, после проверки источника
+   * программы в соседней карточке реестра.
+   */
+  openDraftRequest?: ProgramImportDraftRequest | null
+}
+
 /**
  * Импорт образовательной программы: загрузка, карточка черновика и список
  * последних черновиков. Компонент рассчитан на встраивание в карточку админки.
  */
-export function ProgramImportTab() {
+export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
   const [drafts, setDrafts] = useState<ProgramDraftSummary[]>([])
   const [listState, setListState] = useState<ListState>("loading")
   const [listError, setListError] = useState<string | null>(null)
@@ -207,6 +221,47 @@ export function ProgramImportTab() {
       cancelled = true
     }
   }, [reloadToken])
+
+  useEffect(() => {
+    const request = openDraftRequest
+    if (!request?.id) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const detail = await getProgramDraft(request.id)
+        if (cancelled) return
+        setDraft({
+          ...detail,
+          id: request.id,
+          program_key: detail.program_key,
+          status: detail.status,
+        })
+        setExpandedKsa({})
+        setTaxonomy("")
+        setPublishResult(null)
+        setActionError(null)
+        setUploadError(null)
+      } catch (cause) {
+        if (cancelled) return
+        if (cause instanceof ApiRequestError && cause.status === 403) {
+          setListState("forbidden")
+          return
+        }
+        if (cause instanceof ApiRequestError && cause.status === 501) {
+          setListState("unsupported")
+          return
+        }
+        toast.error("Не удалось открыть черновик", {
+          description: describeError(cause, "Повторите попытку."),
+        })
+      }
+    }
+    // Запрос приходит из соседней карточки: карточка черновика обновится после ответа API.
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [openDraftRequest])
 
   const reloadDrafts = () => {
     setListState("loading")

@@ -3,7 +3,7 @@
  * @description Администрирование: исследования, LLM-метрики, расход токенов и материалы для агентов.
  */
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   ActivityIcon,
@@ -11,6 +11,7 @@ import {
   DatabaseIcon,
   DownloadIcon,
   FileUpIcon,
+  GlobeIcon,
   RefreshCwIcon,
   ShieldAlertIcon,
   Trash2Icon,
@@ -25,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import { ProgramImportTab } from "@/components/program-import-tab"
+import { ProgramWatchTab } from "@/components/program-watch-tab"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
@@ -159,6 +161,9 @@ export function Admin() {
   const [sourceFileKey, setSourceFileKey] = useState(0)
   const [sourceSaving, setSourceSaving] = useState(false)
   const [indexingId, setIndexingId] = useState<string | null>(null)
+  // Запрос на открытие черновика приходит из карточки «Источники программ».
+  const [draftRequest, setDraftRequest] = useState<{ id: string; seq: number } | null>(null)
+  const importCardRef = useRef<HTMLDivElement | null>(null)
 
   const loadSourceQuality = useCallback(async () => {
     try {
@@ -335,6 +340,12 @@ export function Admin() {
     await loadSourceQuality()
     await loadLlmRequests()
     setRefreshing(false)
+  }
+
+  /** Открывает черновик из реестра источников в карточке импорта. */
+  const openProgramDraft = (draftId: string) => {
+    setDraftRequest((previous) => ({ id: draftId, seq: (previous?.seq ?? 0) + 1 }))
+    importCardRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })
   }
 
   const activatePromptVersion = async (version: PromptVersion) => {
@@ -1140,7 +1151,7 @@ export function Admin() {
         </CardContent>
         )}
       </Card>
-      <Card>
+      <Card ref={importCardRef} id="program-import">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <FileUpIcon className="size-4 shrink-0" />
@@ -1152,7 +1163,22 @@ export function Admin() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ProgramImportTab />
+          <ProgramImportTab openDraftRequest={draftRequest} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <GlobeIcon className="size-4 shrink-0" />
+            Источники программ
+          </CardTitle>
+          <CardDescription>
+            Реестр страниц с описанием образовательных программ: сервер проверяет их по
+            расписанию и создаёт черновик, когда на странице появляются изменения.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ProgramWatchTab onOpenDraft={openProgramDraft} />
         </CardContent>
       </Card>
       <Card>
