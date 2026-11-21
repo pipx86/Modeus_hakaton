@@ -297,7 +297,7 @@ func TestПрограммаНеНайдена(t *testing.T) {
 	if report.Ready {
 		t.Fatal("ненайденная программа не готова")
 	}
-	if !problemsContain(report.Problems, "не найдена в базе") {
+	if !problemsContain(report.Problems, "не найдена") {
 		t.Fatalf("нет проблемы отсутствия программы: %#v", report.Problems)
 	}
 }

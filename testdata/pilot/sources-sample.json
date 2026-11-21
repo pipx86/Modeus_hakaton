@@ -1,0 +1,62 @@
+{
+  "sources": [
+    {
+      "id": "src-hh-vacancy-da-001",
+      "type": "vacancy",
+      "title": "Аналитик данных — вакансия hh",
+      "content": "Требования: уверенный SQL, опыт работы с корпоративным хранилищем, построение дашбордов и регулярной отчётности по продуктовым метрикам.",
+      "source_url": "https://hh.example/vacancy/da-001",
+      "created_at": "2026-11-10T09:00:00Z",
+      "published_at": "2026-11-01T08:00:00Z"
+    },
+    {
+      "id": "src-hh-vacancy-da-002",
+      "type": "vacancy",
+      "title": "Ведущий аналитик данных — вакансия hh",
+      "content": "Задачи: аналитическая поддержка продуктовых решений, согласование методик расчёта метрик, контроль качества выгрузок перед публикацией.",
+      "source_url": "https://hh.example/vacancy/da-002",
+      "created_at": "2026-11-10T09:05:00Z",
+      "published_at": "2026-11-02T08:00:00Z"
+    },
+    {
+      "id": "src-interview-da-methodist",
+      "type": "interview",
+      "title": "Интервью методиста с аналитиком данных",
+      "content": "Респондент описывает роль аналитика данных, еженедельную отчётность, построение дашбордов и проверку выгрузок перед публикацией.",
+      "source_url": "https://wiki.example/interviews/da-methodist",
+      "created_at": "2026-11-11T11:30:00Z"
+    },
+    {
+      "id": "src-interview-da-lead",
+      "type": "interview",
+      "title": "Интервью с руководителем направления аналитики",
+      "content": "Руководитель называет ключевыми функциями аналитическую поддержку решений и работу с хранилищем данных, отдельно просит согласовывать методику расчёта метрик.",
+      "source_url": "https://wiki.example/interviews/da-lead",
+      "created_at": "2026-11-11T14:00:00Z"
+    },
+    {
+      "id": "src-standard-da",
+      "type": "standard",
+      "title": "Профессиональный стандарт «Аналитик данных»",
+      "content": "Стандарт описывает подготовку отчётности, работу с хранилищем данных и аналитическую поддержку управленческих решений.",
+      "source_url": "https://profstandart.example/analyst",
+      "created_at": "2026-11-12T10:00:00Z"
+    },
+    {
+      "id": "src-document-reporting",
+      "type": "document",
+      "title": "Регламент отчётности продуктовой команды",
+      "content": "Регламент фиксирует порядок публикации дашбордов в корпоративном BI, проверку качества данных и сроки подготовки регулярных отчётов.",
+      "source_url": "https://wiki.example/docs/reporting-policy",
+      "created_at": "2026-11-13T12:00:00Z"
+    }
+  ],
+  "analyzer_matches": [
+    "src-hh-vacancy-da-001",
+    "src-hh-vacancy-da-002",
+    "src-interview-da-methodist",
+    "src-interview-da-lead",
+    "src-standard-da",
+    "src-document-reporting"
+  ]
+}

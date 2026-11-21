@@ -51,6 +51,29 @@ type GeneratedNode struct {
 	Title    string          `json:"title"`
 }
 
+// GeneratedTree переводит дерево пайплайна в формат CompareTrees. Пустой
+// ParentID у корня — это нормализация указателя: CompareTrees не различает
+// «нет родителя» и пустую строку.
+func GeneratedTree(nodes []domain.Node) []GeneratedNode {
+	if len(nodes) == 0 {
+		return nil
+	}
+	generated := make([]GeneratedNode, 0, len(nodes))
+	for _, node := range nodes {
+		parentID := ""
+		if node.ParentID != nil {
+			parentID = *node.ParentID
+		}
+		generated = append(generated, GeneratedNode{
+			ID:       node.ID,
+			Type:     node.Type,
+			ParentID: parentID,
+			Title:    node.Title,
+		})
+	}
+	return generated
+}
+
 // ReferenceReport — результат сравнения. Matched, Missing, Extra,
 // LevelMismatch и AmbiguousMissing содержат id узлов; LevelMismatch имеет вид
 // "id: ожидался task, получен action". Precision/Recall/F1 считаются по

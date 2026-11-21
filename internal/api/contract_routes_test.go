@@ -51,6 +51,8 @@ var demoContractRoutes = []contractRoute{
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/conflicts"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/agent-messages"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/snapshots/" + contractID},
+	{http.MethodGet, "/api/v1/runs/" + contractID + "/activity-changes"},
+	{http.MethodGet, "/api/v1/runs/" + contractID + "/program-suggestions"},
 }
 
 func contractHandler() http.Handler {

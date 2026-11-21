@@ -103,6 +103,32 @@ if report.Precision < baselinePrecision {
 его рядом с кейсом (константа в тесте или поле кейса) и обновляйте осознанно,
 вместе с diff эталона.
 
+## Подключение одной командой
+
+**Пилотный эталон заполняет методист.** Пока пилот не выбран, согласованного
+эталона в репозитории нет, и `data-analyst.json` остаётся только примером
+формата. Готовый файл подключается к eval без кода:
+
+```powershell
+go run ./cmd/agent-eval -reference internal/agent/eval/testdata/reference/<профессия>.json -case <кейс> -enforce-thresholds
+```
+
+`-reference` загружает файл через `eval.LoadReference`, `-case` выбирает кейс,
+дерево которого сравнивается с эталоном (по умолчанию — последний кейс),
+`-enforce-thresholds` возвращает код 1, если не выполнен `recall >= 0.80` или
+есть `level_mismatch`. Флаг `-report json` печатает `eval.ReferenceReport` для
+CI. Без этих флагов `agent-eval` ведёт себя как раньше; ошибка загрузки эталона
+или неизвестное имя кейса дают код 2.
+
+Демонстрационный прогон на примере формата:
+
+```powershell
+go run ./cmd/agent-eval -reference internal/agent/eval/testdata/reference/data-analyst.json -case data-analyst-baseline
+```
+
+Он ожидаемо покажет recall 0.50: пример эталона не совпадает с baseline. Это
+иллюстрация отчёта, а не приёмка пилота.
+
 ## Как читать отчёт
 
 | Поле | Что означает | Как реагировать |
@@ -148,6 +174,10 @@ if report.Precision < baselinePrecision {
 | `precision` | >= baseline | блокирующий |
 | `f1` | — | информационный |
 | `ambiguous_missing` | — | информационный |
+
+`cmd/agent-eval -enforce-thresholds` реализует блокирующие проверки `error`,
+`level_mismatch` и `recall >= 0.80`. Precision относительно baseline остаётся
+ручной проверкой: baseline зависит от эталона и фиксируется вместе с ним.
 
 Почему recall 0.80: на эталоне из 10 узлов это допускает пропуск двух
 обязательных узлов, но не развал дерева. Precision нельзя ухудшать относительно

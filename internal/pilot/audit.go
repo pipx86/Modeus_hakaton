@@ -32,13 +32,13 @@ const unknownSourceType = "unknown"
 // нулевыми: схема хранит created_at (дату импорта) и, только для вакансий,
 // vacancy_published_at; отдельной даты материала у остальных типов нет.
 type SourceRow struct {
-	ID          string
-	Type        string
-	Title       string
-	Content     string
-	URL         string
-	CreatedAt   time.Time
-	PublishedAt time.Time
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	Title       string    `json:"title"`
+	Content     string    `json:"content,omitempty"`
+	URL         string    `json:"source_url,omitempty"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+	PublishedAt time.Time `json:"published_at,omitempty"`
 }
 
 // SourceAudit — покрытие одного типа источников. Valid означает, что у
@@ -67,7 +67,7 @@ type SourceReport struct {
 }
 
 // ProgramFacts — всё, что аудит знает о программе до применения правил.
-// Found=false означает, что программы с таким ID нет в базе.
+// Found=false означает, что программы с таким ID нет в источнике данных.
 type ProgramFacts struct {
 	ID                  string
 	Title               string
@@ -197,7 +197,7 @@ func BuildProgramReport(facts ProgramFacts) ProgramAudit {
 	}
 
 	if !facts.Found {
-		report.Problems = append(report.Problems, "программа с указанным ID не найдена в базе")
+		report.Problems = append(report.Problems, "программа с указанным ID не найдена")
 		return report
 	}
 	if facts.Competencies == 0 {

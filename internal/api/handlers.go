@@ -170,6 +170,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/review/summary", s.handleReviewSummary)
 	// Покрытие образовательной программы узлами дерева (карточка 24).
 	mux.HandleFunc("GET /api/v1/runs/{id}/program-coverage", s.handleProgramCoverage)
+	// Отчёт об изменениях деятельности при повторном исследовании (карточка 31).
+	mux.HandleFunc("GET /api/v1/runs/{id}/activity-changes", s.handleActivityChanges)
+	// Предложения по учебным изменениям на основе сопоставления (карточка 32).
+	mux.HandleFunc("GET /api/v1/runs/{id}/program-suggestions", s.handleProgramSuggestions)
 	// Интервью одного исследования: несколько респондентов, у каждого своя
 	// история ответов (карточка 12 плана MVP).
 	mux.HandleFunc("GET /api/v1/runs/{id}/interviews", s.handleListRunInterviews)

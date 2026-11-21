@@ -862,3 +862,174 @@ export async function getProgramCoverage(runId: string): Promise<ProgramCoverage
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// Карточки 31 и 32 плана MVP: отчёт об изменениях деятельности между двумя
+// исследованиями и предложения по программе на основе сопоставления.
+// Эндпоинтов пока нет в сгенерированной OpenAPI-схеме, формы фиксированы
+// планом MVP, поэтому здесь ручные типы и те же raw-fetch обёртки, что у
+// покрытия программы и снимков.
+// ---------------------------------------------------------------------------
+
+/** Краткая карточка исследования для выбора «противника» в сравнении. */
+export interface RunListItem {
+  id: string
+  profession: string
+  status?: RunStatus
+  created_at?: string
+}
+
+/**
+ * Список исследований для выбора второго прогона. Форма ответа `GET /runs`
+ * исторически нестабильна, поэтому поля нормализуются, а записи без id
+ * отбрасываются.
+ */
+export async function listRuns(): Promise<RunListItem[]> {
+  const data = await requestApi<RunListItem[]>("/runs")
+  if (!Array.isArray(data)) return []
+  const runs: RunListItem[] = []
+  for (const raw of data) {
+    if (!raw || typeof raw !== "object") continue
+    const id = typeof raw.id === "string" ? raw.id.trim() : ""
+    if (!id) continue
+    runs.push({
+      id,
+      profession: typeof raw.profession === "string" ? raw.profession : "",
+      status: typeof raw.status === "string" ? (raw.status as RunStatus) : undefined,
+      created_at: typeof raw.created_at === "string" ? raw.created_at : undefined,
+    })
+  }
+  return runs
+}
+
+/** Материал, который подтверждает узел и не встречается в дереве противника. */
+export interface ActivityChangeSource {
+  source_id: string
+  source_title: string
+  source_type: SourceType
+}
+
+/** Поля узла, изменение которых показывает отчёт. */
+export type ActivityChangeField = "title" | "description" | "type"
+
+/** Узел в одной из категорий отчёта об изменениях деятельности. */
+export interface ActivityChangeNode {
+  node_id: string
+  node_title: string
+  node_type: NodeType
+  parent_title: string | null
+  evidence_count: number
+  new_sources: ActivityChangeSource[]
+  /** Только у changed: изменившиеся поля в порядке title, description, type. */
+  changed_fields?: ActivityChangeField[]
+}
+
+/** Счётчики отчёта об изменениях деятельности. */
+export interface ActivityChangeSummary {
+  added: number
+  removed: number
+  changed: number
+  sources_added: number
+  sources_removed: number
+}
+
+/** Ответ `GET /runs/{id}/activity-changes?against={run_id}`. */
+export interface ActivityChangeReport {
+  run_id: string
+  against_run_id: string
+  same_profession: boolean
+  added: ActivityChangeNode[]
+  removed: ActivityChangeNode[]
+  changed: ActivityChangeNode[]
+  summary: ActivityChangeSummary
+}
+
+/**
+ * Сравнивает деятельность двух исследований. Узлы сопоставляются на бэкенде
+ * семантически (тип + нормализованное название + путь предков), поэтому
+ * added/removed — это действительно появившиеся и исчезнувшие элементы, а не
+ * разница идентификаторов.
+ */
+export async function getActivityChanges(
+  runId: string,
+  againstRunId: string,
+): Promise<ActivityChangeReport> {
+  const query = new URLSearchParams({ against: againstRunId }).toString()
+  const data = await requestApi<ActivityChangeReport>(
+    `/runs/${encodeURIComponent(runId)}/activity-changes?${query}`,
+  )
+  return {
+    run_id: typeof data?.run_id === "string" ? data.run_id : runId,
+    against_run_id:
+      typeof data?.against_run_id === "string" ? data.against_run_id : againstRunId,
+    same_profession: data?.same_profession === true,
+    added: Array.isArray(data?.added) ? data.added : [],
+    removed: Array.isArray(data?.removed) ? data.removed : [],
+    changed: Array.isArray(data?.changed) ? data.changed : [],
+    summary: {
+      added: Number(data?.summary?.added ?? 0) || 0,
+      removed: Number(data?.summary?.removed ?? 0) || 0,
+      changed: Number(data?.summary?.changed ?? 0) || 0,
+      sources_added: Number(data?.summary?.sources_added ?? 0) || 0,
+      sources_removed: Number(data?.summary?.sources_removed ?? 0) || 0,
+    },
+  }
+}
+
+/** Виды предложений по программе (карточка 32). */
+export type ProgramProposalKind =
+  | "unmapped_activity"
+  | "unconfirmed_competency"
+  | "uncovered_competency"
+  | "conflicting_links"
+
+/** Приоритет предложения: высокий, средний или низкий. */
+export type ProgramProposalPriority = "high" | "medium" | "low"
+
+/** На что указывает предложение: узел деятельности или компетенция программы. */
+export interface ProgramSuggestionTarget {
+  node_id?: string
+  competency_id?: string
+  competency_title?: string
+}
+
+/** Одно предложение системы; решение остаётся за методистом. */
+export interface ProgramProposal {
+  id: string
+  kind: ProgramProposalKind
+  target: ProgramSuggestionTarget
+  rationale: string
+  priority: ProgramProposalPriority
+  status: "proposal"
+}
+
+/** Ответ `GET /runs/{id}/program-suggestions`. */
+export interface ProgramSuggestions {
+  run_id: string
+  program_id: string | null
+  program_title: string | null
+  generated_at: string
+  proposals: ProgramProposal[]
+  /** Нейтральное пояснение, в том числе для пустого списка предложений. */
+  summary?: string
+  disclaimer: string
+}
+
+/**
+ * Предложения по учебным изменениям на основе сопоставления деятельности с
+ * программой. Ничего не меняет: система только предлагает.
+ */
+export async function getProgramSuggestions(runId: string): Promise<ProgramSuggestions> {
+  const data = await requestApi<ProgramSuggestions>(
+    `/runs/${encodeURIComponent(runId)}/program-suggestions`,
+  )
+  return {
+    run_id: typeof data?.run_id === "string" ? data.run_id : runId,
+    program_id: typeof data?.program_id === "string" ? data.program_id : null,
+    program_title: typeof data?.program_title === "string" ? data.program_title : null,
+    generated_at: typeof data?.generated_at === "string" ? data.generated_at : "",
+    proposals: Array.isArray(data?.proposals) ? data.proposals : [],
+    summary: typeof data?.summary === "string" ? data.summary : "",
+    disclaimer: typeof data?.disclaimer === "string" ? data.disclaimer : "",
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "program": {
+    "id": "program-data-analyst-2026",
+    "title": "Прикладная аналитика данных",
+    "has_learning_outcomes": false,
+    "has_disciplines": false
+  },
+  "competencies": [
+    {
+      "id": "comp-sql",
+      "code": "SQL",
+      "title": "SQL и работа с хранилищем данных"
+    },
+    {
+      "id": "comp-reporting",
+      "code": "REP",
+      "title": "Отчётность и визуализация"
+    },
+    {
+      "id": "comp-quality",
+      "code": "DQ",
+      "title": "Качество данных"
+    }
+  ],
+  "ksa": [
+    {
+      "id": "ksa-sql-queries",
+      "competency_id": "comp-sql",
+      "kind": "skill",
+      "title": "Писать SQL-запросы"
+    },
+    {
+      "id": "ksa-data-model",
+      "competency_id": "comp-sql",
+      "kind": "knowledge",
+      "title": "Понимать модель данных хранилища"
+    },
+    {
+      "id": "ksa-bi-dashboard",
+      "competency_id": "comp-reporting",
+      "kind": "skill",
+      "title": "Строить дашборды в BI"
+    },
+    {
+      "id": "ksa-metrics",
+      "competency_id": "comp-reporting",
+      "kind": "knowledge",
+      "title": "Согласовывать методику расчёта метрик"
+    },
+    {
+      "id": "ksa-quality-checks",
+      "competency_id": "comp-quality",
+      "kind": "skill",
+      "title": "Проверять выгрузки и качество данных"
+    }
+  ],
+  "taxonomy_links": [
+    {
+      "competency_id": "comp-sql",
+      "taxonomy_item_id": "taxonomy.sql"
+    },
+    {
+      "ksa_id": "ksa-bi-dashboard",
+      "taxonomy_item_id": "taxonomy.bi"
+    },
+    {
+      "ksa_id": "ksa-quality-checks",
+      "taxonomy_item_id": "taxonomy.data-quality"
+    }
+  ]
+}

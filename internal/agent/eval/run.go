@@ -43,6 +43,10 @@ type CaseReport struct {
 	Failures []string `json:"failures,omitempty"`
 	Metrics  Metrics  `json:"metrics"`
 	Expect   Expect   `json:"expect"`
+	// Tree is the synthesized tree in the comparison format. It is excluded
+	// from the JSON report so machine-readable baselines do not grow; commands
+	// use it to compare a case with a manual reference (eval.CompareTrees).
+	Tree []GeneratedNode `json:"-"`
 }
 
 // Report is the result of one evaluation run. It is JSON-serializable and
@@ -79,6 +83,7 @@ func RunCase(ctx context.Context, tc Case) CaseReport {
 		return report
 	}
 	report.Metrics = collectMetrics(result, client)
+	report.Tree = GeneratedTree(result.Synthesis.Tree)
 	report.Failures = CheckResult(tc, result)
 	if tc.Expect.ModelCalls != nil && report.Metrics.ModelCalls != *tc.Expect.ModelCalls {
 		report.Failures = append(report.Failures,

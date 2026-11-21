@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { listSourceChanges, type SourceChange } from "@/lib/api/client"
@@ -7,18 +7,30 @@ export function SourceChanges({ runId, onFocusNode }: { runId: string; onFocusNo
   const [items, setItems] = useState<SourceChange[]>([])
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      setItems(await listSourceChanges(runId))
-      setError(false)
-    } catch {
-      setError(true)
-    } finally {
-      setLoading(false)
+  const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      try {
+        const data = await listSourceChanges(runId)
+        if (cancelled) return
+        setItems(data)
+        setError(false)
+      } catch {
+        if (cancelled) return
+        setError(true)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }, [runId])
-  useEffect(() => { void load() }, [load])
+    // Загрузка асинхронная: состояние обновится после ответа API.
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [runId, reloadToken])
 
   return (
     <Card>
@@ -28,7 +40,7 @@ export function SourceChanges({ runId, onFocusNode }: { runId: string; onFocusNo
       </CardHeader>
       <CardContent className="space-y-2">
         {loading ? <p>Загрузка…</p> : error ? (
-          <div role="alert">Не удалось получить изменения. <Button variant="outline" size="sm" onClick={() => void load()}>Повторить загрузку изменений</Button></div>
+          <div role="alert">Не удалось получить изменения. <Button variant="outline" size="sm" onClick={() => setReloadToken((token) => token + 1)}>Повторить загрузку изменений</Button></div>
         ) : items.length === 0 ? <p className="text-sm text-muted-foreground">Новых изменений использованных источников не обнаружено.</p> : (
           <ul className="space-y-2">
             {items.map((item) => (

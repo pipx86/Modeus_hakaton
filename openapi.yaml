@@ -3681,6 +3681,104 @@ paths:
           $ref: "#/components/responses/InternalError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+  /runs/{id}/activity-changes:
+    get:
+      tags: [runs]
+      summary: Changes of professional activity between two research runs
+      description: >-
+        Compares the current activity trees of two runs owned by the same user.
+        Nodes are matched semantically by type, normalized title and normalized
+        ancestor path, because independent runs never share node ids. Returns
+        added, removed and changed nodes with parent title, evidence count and
+        the new sources that confirm the node; summary reports counts per
+        category and the number of unique sources added or removed. A different
+        profession is not an error: same_profession=false marks the report. A
+        run without a tree returns 409 TREE_MISSING. Read-only card 31 of the
+        MVP plan; access is the run owner or an administrator (roles admin,
+        user, specialist).
+      operationId: getActivityChanges
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: against
+          in: query
+          required: true
+          description: Run id to compare with.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Activity change report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityChangeReport"
+        "400":
+          description: The against parameter is missing or not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: BAD_REQUEST
+                message: against должен быть UUID исследования
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: One of the runs has no activity tree yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: TREE_MISSING
+                message: у исследования ещё нет дерева деятельности — сравнивать пока нечего
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /runs/{id}/program-suggestions:
+    get:
+      tags: [review]
+      summary: Program-related suggestions based on activity mapping
+      description: >-
+        Builds read-only proposals from saved activity-to-program links:
+        `unmapped_activity` for a task or action without an approved link,
+        `unconfirmed_competency` for a competency with proposed links but no
+        approval, `uncovered_competency` for a competency without any activity
+        link, and `conflicting_links` for a node with approved and rejected
+        links to different competencies. Priorities are high for task-level
+        unmapped, medium for other unmapped and unconfirmed, and low for
+        uncovered and conflicting. Every proposal has status `proposal`; the
+        system never approves or rewrites the program. When the run is not in
+        program mode or has no links yet, the response is still 200 with an
+        empty `proposals` array and an explanatory `summary`. Read-only card 32
+        of the MVP plan; access is the run owner or an administrator (roles
+        admin, user, specialist).
+      operationId: getProgramSuggestions
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Program suggestions; an empty proposals array is a valid answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramSuggestions"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
   /runs/{id}/conflicts:
     get:
       tags: [runs]
@@ -5500,6 +5598,199 @@ components:
             $ref: "#/components/schemas/ProgramCoverageCompetency"
         counts:
           $ref: "#/components/schemas/ProgramCoverageCounts"
+    ActivityChangeSource:
+      type: object
+      description: >-
+        Material that confirms a report node and does not appear anywhere in the
+        tree of the compared run.
+      required: [source_id, source_title, source_type]
+      additionalProperties: false
+      properties:
+        source_id:
+          type: string
+          minLength: 1
+        source_title:
+          type: string
+        source_type:
+          $ref: "#/components/schemas/SourceType"
+    ActivityChangeNode:
+      type: object
+      description: >-
+        One node of the activity change report (card 31 of the MVP plan). The
+        changed_fields array is present only on nodes of the `changed` array.
+      required: [node_id, node_title, node_type, parent_title, evidence_count, new_sources]
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+          minLength: 1
+        node_title:
+          type: string
+        node_type:
+          $ref: "#/components/schemas/NodeType"
+        parent_title:
+          type: string
+          nullable: true
+          description: Title of the parent node in the same tree; null for a root node.
+        evidence_count:
+          type: integer
+          minimum: 0
+          description: Number of evidence items attached to the node in its own run.
+        new_sources:
+          type: array
+          description: >-
+            Materials of this node that are not used anywhere in the compared
+            run, sorted by title and id. Always an array; removed nodes report
+            an empty array because nothing new confirms a disappeared node.
+          items:
+            $ref: "#/components/schemas/ActivityChangeSource"
+        changed_fields:
+          type: array
+          description: >-
+            Present only for changed nodes: fields whose raw values differ, in
+            the fixed contract order title, description, type. A change that is
+            only case/punctuation in the title keeps the semantic match and is
+            reported here.
+          items:
+            type: string
+            enum: [title, description, type]
+    ActivityChangeSummary:
+      type: object
+      description: >-
+        Counts of the activity change report. sources_added and sources_removed
+        count unique materials of the whole tree, not node-source pairs.
+      required: [added, removed, changed, sources_added, sources_removed]
+      additionalProperties: false
+      properties:
+        added:
+          type: integer
+          minimum: 0
+        removed:
+          type: integer
+          minimum: 0
+        changed:
+          type: integer
+          minimum: 0
+        sources_added:
+          type: integer
+          minimum: 0
+        sources_removed:
+          type: integer
+          minimum: 0
+    ActivityChangeReport:
+      type: object
+      description: JSON body of GET /runs/{id}/activity-changes?against={run_id} (card 31).
+      required: [run_id, against_run_id, same_profession, added, removed, changed, summary]
+      additionalProperties: false
+      properties:
+        run_id:
+          type: string
+          minLength: 1
+        against_run_id:
+          type: string
+          minLength: 1
+        same_profession:
+          type: boolean
+          description: >-
+            True when both runs describe the same profession after
+            normalization. False is not an error; it only marks that changes
+            may be caused by a different profession.
+        added:
+          type: array
+          description: Nodes that exist only in the current run, in tree order.
+          items:
+            $ref: "#/components/schemas/ActivityChangeNode"
+        removed:
+          type: array
+          description: Nodes that exist only in the compared run, in tree order.
+          items:
+            $ref: "#/components/schemas/ActivityChangeNode"
+        changed:
+          type: array
+          description: Semantically matched nodes whose fields changed, in tree order.
+          items:
+            $ref: "#/components/schemas/ActivityChangeNode"
+        summary:
+          $ref: "#/components/schemas/ActivityChangeSummary"
+    ProgramSuggestionTarget:
+      type: object
+      description: >-
+        What a proposal points at: node_id for activity proposals,
+        competency_id plus competency_title for competency proposals. Omitted
+        fields are absent from JSON.
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+          minLength: 1
+        competency_id:
+          type: string
+          minLength: 1
+        competency_title:
+          type: string
+    ProgramProposal:
+      type: object
+      description: One suggestion of card 32 of the MVP plan.
+      required: [id, kind, target, rationale, priority, status]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: Stable id built from the kind and the target id.
+        kind:
+          type: string
+          enum: [unmapped_activity, unconfirmed_competency, uncovered_competency, conflicting_links]
+        target:
+          $ref: "#/components/schemas/ProgramSuggestionTarget"
+        rationale:
+          type: string
+          description: Short neutral Russian explanation of why the candidate is worth checking.
+        priority:
+          type: string
+          enum: [high, medium, low]
+        status:
+          type: string
+          enum: [proposal]
+          description: The system only proposes; it never approves or rewrites the program.
+    ProgramSuggestions:
+      type: object
+      description: JSON body of GET /runs/{id}/program-suggestions (card 32 of the MVP plan).
+      required: [run_id, program_id, program_title, generated_at, proposals, summary, disclaimer]
+      additionalProperties: false
+      properties:
+        run_id:
+          type: string
+          minLength: 1
+        program_id:
+          type: string
+          nullable: true
+          description: Selected program; null when the run result kind is not program.
+        program_title:
+          type: string
+          nullable: true
+          description: Title of the selected program; null together with program_id.
+        generated_at:
+          type: string
+          format: date-time
+          description: Time the report was built, UTC.
+        proposals:
+          type: array
+          description: >-
+            Suggestions ordered by priority, kind and id. Empty when the run has
+            no program mapping or no open candidates; the summary explains why.
+          items:
+            $ref: "#/components/schemas/ProgramProposal"
+        summary:
+          type: string
+          description: >-
+            Human-readable neutral summary with priority counts, or the reason
+            the list is empty.
+        disclaimer:
+          type: string
+          description: >-
+            Fixed notice that the system only proposes and the methodologist
+            makes the decision.
     ChatMessage:
       type: object
       required: [id, role, content, created_at]

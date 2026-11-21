@@ -33,6 +33,8 @@ function stubRun(
     sources?: unknown[]
     runSources?: unknown[]
     programCoverage?: unknown
+    programSuggestions?: unknown
+    runs?: unknown[]
     evidences?: unknown[]
     snapshots?: unknown[]
     reviewQueue?: unknown[]
@@ -105,6 +107,45 @@ function stubRun(
     }
     if (url.endsWith("/api/v1/runs/7/sources") && method === "GET") {
       return { status: 200, body: overrides.runSources ?? [] }
+    }
+    if (url.endsWith("/api/v1/runs") && method === "GET") {
+      return {
+        status: 200,
+        body: overrides.runs ?? [
+          { id: "7", profession: "Data Scientist", status: "done" },
+          { id: "8", profession: "Инженер данных", status: "done" },
+        ],
+      }
+    }
+    if (url.endsWith("/api/v1/runs/7/program-suggestions") && method === "GET") {
+      return {
+        status: 200,
+        body: overrides.programSuggestions ?? {
+          run_id: "7",
+          program_id: "p-1",
+          program_title: "Прикладная математика",
+          generated_at: "2026-11-21T10:00:00Z",
+          proposals: [],
+          summary:
+            "Связей элементов деятельности с компетенциями программы пока нет — предложений нет.",
+          disclaimer:
+            "предложения системы, решение принимает методист; система не утверждает и не переписывает программу",
+        },
+      }
+    }
+    if (url.includes("/api/v1/runs/7/activity-changes") && method === "GET") {
+      return {
+        status: 200,
+        body: {
+          run_id: "7",
+          against_run_id: "8",
+          same_profession: true,
+          added: [],
+          removed: [],
+          changed: [],
+          summary: { added: 0, removed: 0, changed: 0, sources_added: 0, sources_removed: 0 },
+        },
+      }
     }
     if (url.endsWith("/api/v1/runs/7/program-coverage") && method === "GET") {
       return {

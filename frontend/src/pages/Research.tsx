@@ -43,6 +43,8 @@ import { InterviewsTab } from "@/components/interviews-tab"
 import { RunSourcesPanel } from "@/components/run-sources-panel"
 import { SourceChanges } from "@/components/source-changes"
 import { ProgramCoverageReport } from "@/components/program-coverage-report"
+import { ProgramSuggestions } from "@/components/program-suggestions"
+import { ActivityChangesReport } from "@/components/activity-changes-report"
 import { ReviewSummary } from "@/components/review-summary"
 import { useRunPolling } from "@/hooks/use-run-polling"
 import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-model"
@@ -1625,13 +1627,17 @@ export function Research() {
         </TabsContent>
         <TabsContent value="snapshots">
           {reviewerView && (
-            <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
+            <div className="space-y-6">
+              <ActivityChangesReport runId={id} />
+              <SnapshotReviewTab runId={id} onFocusNode={focusNode} readOnly={treeReadOnly} />
+            </div>
           )}
         </TabsContent>
         <TabsContent value="program">
           {reviewerView && (
             <div className="space-y-4">
               <ProgramCoverageReport runId={id} />
+              <ProgramSuggestions runId={id} />
               <ProgramLinksTab
                 runId={id}
                 nodeId={programNodeId}
