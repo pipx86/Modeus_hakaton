@@ -218,7 +218,7 @@ func TestEducationImportLinksOnlyResolvedCodes(t *testing.T) {
 	pool.ExpectQuery("INSERT INTO education_programs").WithArgs(program.Title, "Колледж", "01").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("program"))
 	pool.ExpectExec("INSERT INTO program_sources").WithArgs("program", "source").WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	pool.ExpectQuery("INSERT INTO program_competencies").WithArgs("program", "PC1", "Проверять оборудование").
+	pool.ExpectQuery("INSERT INTO program_competencies").WithArgs("program", "PC1", "Проверять оборудование", "").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("competency"))
 	lookup := func(code string) *pgxmock.ExpectedQuery {
 		return pool.ExpectQuery("FROM taxonomy_items WHERE taxonomy_id").WithArgs("taxonomy", code)

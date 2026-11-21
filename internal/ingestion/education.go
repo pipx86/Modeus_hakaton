@@ -18,8 +18,11 @@ type ProgramKSA struct {
 	TaxonomyCodes []string `json:"taxonomy_codes"`
 }
 type ProgramCompetency struct {
-	Code          string       `json:"code"`
-	Title         string       `json:"title"`
+	Code  string `json:"code"`
+	Title string `json:"title"`
+	// Type — вид компетенции (УК/ОПК/ПК) отдельной колонкой. Пустое значение
+	// допустимо для старых программ.
+	Type          string       `json:"type,omitempty"`
 	TaxonomyCodes []string     `json:"taxonomy_codes"`
 	KSA           []ProgramKSA `json:"ksa"`
 }
@@ -59,6 +62,11 @@ func ReadEducation(r io.Reader) (EducationProgram, error) {
 			return result, fmt.Errorf("повтор кода компетенции %s", c.Code)
 		}
 		seen[c.Code] = true
+		compType, ok := normalizeCompetencyType(c.Type)
+		if !ok {
+			return result, fmt.Errorf("компетенция %s: неизвестный тип %q", c.Code, c.Type)
+		}
+		c.Type = compType
 		ksaSeen := map[string]bool{}
 		for j := range c.KSA {
 			k := &c.KSA[j]
@@ -81,6 +89,8 @@ func ReadEducation(r io.Reader) (EducationProgram, error) {
 }
 
 // ReadEducationText читает размеченный текст, а не пытается угадывать смысл документа.
+// Тип компетенции необязателен: "Компетенция: КОД | Название | ПК" или
+// отдельная строка "Тип: ПК" после компетенции.
 func ReadEducationText(text, title string) (EducationProgram, error) {
 	program := EducationProgram{Title: strings.TrimSpace(title)}
 	for n, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
@@ -96,11 +106,28 @@ func ReadEducationText(text, title string) (EducationProgram, error) {
 		value = strings.TrimSpace(value)
 		switch label {
 		case "компетенция":
-			code, name, ok := strings.Cut(value, "|")
-			if !ok || strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
-				return program, fmt.Errorf("строка %d: компетенция записывается как код | название", n+1)
+			parts := strings.Split(value, "|")
+			if len(parts) < 2 || len(parts) > 3 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+				return program, fmt.Errorf("строка %d: компетенция записывается как код | название [| тип]", n+1)
 			}
-			program.Competencies = append(program.Competencies, ProgramCompetency{Code: strings.TrimSpace(code), Title: strings.TrimSpace(name)})
+			compType := ""
+			if len(parts) == 3 {
+				normalized, ok := normalizeCompetencyType(parts[2])
+				if !ok {
+					return program, fmt.Errorf("строка %d: неизвестный тип компетенции %q", n+1, strings.TrimSpace(parts[2]))
+				}
+				compType = normalized
+			}
+			program.Competencies = append(program.Competencies, ProgramCompetency{Code: strings.TrimSpace(parts[0]), Title: strings.TrimSpace(parts[1]), Type: compType})
+		case "тип", "type":
+			if len(program.Competencies) == 0 {
+				return program, fmt.Errorf("строка %d: сначала укажите компетенцию", n+1)
+			}
+			compType, ok := normalizeCompetencyType(value)
+			if !ok {
+				return program, fmt.Errorf("строка %d: неизвестный тип компетенции %q", n+1, value)
+			}
+			program.Competencies[len(program.Competencies)-1].Type = compType
 		case "знание", "умение", "навык":
 			if len(program.Competencies) == 0 {
 				return program, fmt.Errorf("строка %d: сначала укажите компетенцию", n+1)
@@ -200,9 +227,13 @@ DO UPDATE SET title=EXCLUDED.title,updated_at=now() RETURNING id::text`, data.Ti
 		return id, err
 	}
 	for _, c := range data.Competencies {
+		compType, ok := normalizeCompetencyType(c.Type)
+		if !ok {
+			return report, fmt.Errorf("компетенция %s: неизвестный тип %q", c.Code, c.Type)
+		}
 		var cid string
-		err = tx.QueryRow(ctx, `INSERT INTO program_competencies(program_id,code,title) VALUES($1,$2,$3)
-ON CONFLICT (program_id,code) WHERE code IS NOT NULL DO UPDATE SET title=EXCLUDED.title,updated_at=now() RETURNING id::text`, report.ProgramID, c.Code, c.Title).Scan(&cid)
+		err = tx.QueryRow(ctx, `INSERT INTO program_competencies(program_id,code,title,type) VALUES($1,$2,$3,NULLIF($4,''))
+ON CONFLICT (program_id,code) WHERE code IS NOT NULL DO UPDATE SET title=EXCLUDED.title,type=EXCLUDED.type,updated_at=now() RETURNING id::text`, report.ProgramID, c.Code, c.Title, compType).Scan(&cid)
 		if err != nil {
 			return report, err
 		}

@@ -4466,6 +4466,182 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /admin/programs/import:
+    post:
+      tags: [academic]
+      summary: Импортировать образовательную программу в черновик
+      description: >-
+        Принимает файл CSV, XLSX, JSON или размеченный TXT/MD и постоянный ключ
+        программы. Файл разбирается и валидируется, но не публикуется: создаётся
+        черновик для проверки человеком. Ошибки строк возвращаются списком в
+        details (HTTP 422) и не обрывают разбор на первой строке.
+      operationId: importProgramDraft
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, key]
+              additionalProperties: false
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV, XLSX, JSON или TXT/MD; не больше 20 МБ.
+                key:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Постоянный код программы, под которым черновик будет опубликован.
+      responses:
+        "201":
+          description: Черновик создан; возвращаются draft_id, разобранная программа и отчёт.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramImportResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          description: Файл больше 20 МБ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ProgramImportInvalid"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/programs/drafts:
+    get:
+      tags: [academic]
+      summary: Список черновиков импорта образовательных программ
+      description: >-
+        Только admin. Черновики возвращаются от новых к старым вместе со
+        счётчиками компетенций, KSA и предупреждений.
+      operationId: listProgramImportDrafts
+      responses:
+        "200":
+          description: Черновики импорта.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramImportDraftSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/programs/drafts/{id}:
+    get:
+      tags: [academic]
+      summary: Черновик импорта образовательной программы
+      description: Только admin. Возвращает черновик вместе с разобранной программой и отчётом импорта.
+      operationId: getProgramImportDraft
+      parameters:
+        - $ref: "#/components/parameters/ProgramDraftId"
+      responses:
+        "200":
+          description: Черновик программы.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramImportDraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/programs/drafts/{id}/publish:
+    post:
+      tags: [academic]
+      summary: Опубликовать черновик образовательной программы
+      description: >-
+        Только admin. Сохраняет программу через ingestion.SaveEducation и
+        переводит черновик в published. taxonomy — необязательный UUID
+        справочника для сопоставления кодов. Повторная публикация или публикация
+        отклонённого черновика возвращает 409.
+      operationId: publishProgramImportDraft
+      parameters:
+        - $ref: "#/components/parameters/ProgramDraftId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramImportPublishRequest"
+      responses:
+        "200":
+          description: Отчёт публикации.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EducationReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/programs/drafts/{id}/reject:
+    post:
+      tags: [academic]
+      summary: Отклонить черновик образовательной программы
+      description: >-
+        Только admin. Переводит черновик в rejected; необязательная причина
+        сохраняется в поле error. Повторное решение возвращает 409.
+      operationId: rejectProgramImportDraft
+      parameters:
+        - $ref: "#/components/parameters/ProgramDraftId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramImportRejectRequest"
+      responses:
+        "204":
+          description: Черновик отклонён.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4519,7 +4695,39 @@ components:
         another run is indistinguishable from a missing one (404).
       schema:
         type: string
+    ProgramDraftId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор черновика импорта (UUID).
+      schema:
+        type: string
+        format: uuid
+
   responses:
+    Conflict:
+      description: Черновик уже опубликован или отклонён.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: PROGRAM_DRAFT_ALREADY_DECIDED
+            message: черновик уже опубликован или отклонён
+    ProgramImportInvalid:
+      description: >-
+        Файл программы не прошёл проверку. details содержит все найденные
+        проблемы с номерами строк или листов.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ProgramImportError"
+          example:
+            code: PROGRAM_IMPORT_INVALID
+            message: файл программы не прошёл проверку
+            details:
+              - "строка 5: повтор кода компетенции \"K1\""
+              - "лист «KSA», строка 3: неизвестный вид KSA"
     BadRequest:
       description: Malformed request body, path or query parameter.
       content:
@@ -6857,3 +7065,225 @@ components:
         note:
           type: string
           description: Human-readable explanation of the chosen match strategy (or why nothing matched).
+    ProgramKSA:
+      type: object
+      description: Знание, умение или навык компетенции.
+      required: [kind, title]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [knowledge, skill, ability]
+        title:
+          type: string
+        taxonomy_codes:
+          type: array
+          items:
+            type: string
+    ProgramCompetency:
+      type: object
+      description: >-
+        Компетенция образовательной программы. Тип хранится отдельным полем, а
+        не выводится из кода: один и тот же код может иметь разный тип в разных
+        программах.
+      required: [code, title]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [universal, general_professional, professional, other]
+          description: >-
+            Вид компетенции: universal (УК), general_professional (ОПК),
+            professional (ПК), other (иное). Пустое значение допустимо и даёт
+            предупреждение при импорте.
+        taxonomy_codes:
+          type: array
+          items:
+            type: string
+        ksa:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProgramKSA"
+    EducationProgram:
+      type: object
+      description: Разобранная образовательная программа, сохранённая в черновике.
+      required: [code, title, competencies]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        organization:
+          type: string
+        competencies:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ProgramCompetency"
+    EducationReport:
+      type: object
+      description: Отчёт ingestion.SaveEducation о сопоставлении программы с таксономией.
+      required: [program_id, unmatched_competencies, unmatched_ksa, unknown_taxonomy_codes]
+      additionalProperties: false
+      properties:
+        program_id:
+          type: string
+          format: uuid
+        unmatched_competencies:
+          type: integer
+          minimum: 0
+        unmatched_ksa:
+          type: integer
+          minimum: 0
+        unknown_taxonomy_codes:
+          type: array
+          items:
+            type: string
+    ProgramImportReport:
+      type: object
+      description: Сводка импорта до публикации.
+      required: [competencies, ksa, warnings]
+      additionalProperties: false
+      properties:
+        competencies:
+          type: integer
+          minimum: 0
+        ksa:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+    ProgramImportCounts:
+      type: object
+      description: Счётчики строки списка черновиков.
+      required: [competencies, ksa, warnings]
+      additionalProperties: false
+      properties:
+        competencies:
+          type: integer
+          minimum: 0
+        ksa:
+          type: integer
+          minimum: 0
+        warnings:
+          type: integer
+          minimum: 0
+    ProgramImportDraft:
+      type: object
+      description: Черновик импортированной программы, ожидающий решения администратора.
+      required: [id, status, key, source_name, source_format, program, report, warnings, created_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, published, rejected]
+        key:
+          type: string
+        source_name:
+          type: string
+        source_format:
+          type: string
+          enum: [csv, xlsx, json, text]
+        program:
+          $ref: "#/components/schemas/EducationProgram"
+        report:
+          $ref: "#/components/schemas/ProgramImportReport"
+        warnings:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+          description: JWT subject создателя, если он является UUID.
+        created_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        decided_by:
+          type: string
+        error:
+          type: string
+          description: Причина отклонения, если черновик отклонён.
+    ProgramImportResult:
+      type: object
+      description: Ответ на создание черновика импорта.
+      required: [draft_id, program, report, status]
+      additionalProperties: false
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        program:
+          $ref: "#/components/schemas/EducationProgram"
+        report:
+          $ref: "#/components/schemas/ProgramImportReport"
+        status:
+          type: string
+          enum: [draft]
+    ProgramImportDraftSummary:
+      type: object
+      description: Строка списка черновиков импорта.
+      required: [id, key, source_name, status, created_at, counts]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        source_name:
+          type: string
+        status:
+          type: string
+          enum: [draft, published, rejected]
+        created_at:
+          type: string
+          format: date-time
+        counts:
+          $ref: "#/components/schemas/ProgramImportCounts"
+    ProgramImportPublishRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        taxonomy:
+          type: string
+          format: uuid
+          description: Необязательный UUID таксономии для сопоставления кодов.
+    ProgramImportRejectRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 2000
+    ProgramImportError:
+      type: object
+      description: Ошибка импорта с полным списком проблем.
+      required: [code, message, details]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string

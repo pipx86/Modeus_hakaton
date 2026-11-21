@@ -62,6 +62,9 @@ type Server struct {
 	// retryLocks — in-memory защита от двух одновременных ретраев финализации
 	// одного прогона в рамках этого процесса.
 	retryLocks retryLocks
+	// programPublisher публикует проверенные черновики программ. В тестах
+	// подменяется заглушкой; для PostgreSQL по умолчанию используется PGStore.
+	programPublisher programPublisher
 }
 
 func NewServer(store Store) *Server {
@@ -87,6 +90,7 @@ func NewServerWithChat(store Store, chatService chatStarter) *Server {
 	}
 	if pg, ok := store.(*PGStore); ok {
 		server.eventStore = sse.NewPGEventStore(pg.Pool)
+		server.programPublisher = pg
 	}
 	return server
 }
@@ -205,6 +209,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{id}/attachments/link", s.handleInterviewLink)
 	mux.HandleFunc("GET /api/v1/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/v1/admin/sources/quality", s.handleSourceQuality)
+	mux.HandleFunc("POST /api/v1/admin/programs/import", s.handleProgramImport)
+	mux.HandleFunc("GET /api/v1/admin/programs/drafts", s.handleListProgramDrafts)
+	mux.HandleFunc("GET /api/v1/admin/programs/drafts/{id}", s.handleGetProgramDraft)
+	mux.HandleFunc("POST /api/v1/admin/programs/drafts/{id}/publish", s.handlePublishProgramDraft)
+	mux.HandleFunc("POST /api/v1/admin/programs/drafts/{id}/reject", s.handleRejectProgramDraft)
 	mux.HandleFunc("POST /api/v1/sources", s.handleCreateSource)
 	mux.HandleFunc("POST /api/v1/sources/upload", s.handleUploadSource)
 	mux.HandleFunc("GET /api/v1/sources", s.handleListSources)
