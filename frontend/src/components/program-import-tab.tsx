@@ -47,7 +47,7 @@ import {
 } from "@/lib/api/client"
 
 /** Форматы файлов программы, которые принимает импорт. */
-const IMPORT_ACCEPT = ".csv,.xlsx,.json,.txt"
+const IMPORT_ACCEPT = ".csv,.xlsx,.json,.txt,.pdf,.docx"
 
 const DRAFT_STATUS_LABELS: Record<string, string> = {
   draft: "Черновик",
@@ -534,7 +534,7 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
             {uploading ? "Загрузка..." : "Загрузить"}
           </Button>
           <p className="text-xs text-muted-foreground">
-            CSV, XLSX, JSON или TXT. Код программы обязателен.
+            CSV, XLSX, JSON, TXT, PDF или DOCX. PDF и DOCX разбирает LLM. Код программы обязателен.
           </p>
         </div>
 
