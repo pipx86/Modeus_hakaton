@@ -362,7 +362,7 @@ func (c *Checker) processPDF(ctx context.Context, source Source, documentURL, do
 		return CheckResult{Status: StatusNeedsParser, Error: "PDF и DOCX требуют LLM-адаптера"},
 			CheckUpdate{DocumentURL: stringPointer(documentURL)}
 	}
-	pages, err := c.PDFExtractor.ExtractPages(documentName, documentBody)
+	pages, err := c.PDFExtractor.ExtractPages(parserFileName(documentName, format), documentBody)
 	if err != nil {
 		return errorResult(fmt.Sprintf("не удалось прочитать %s: %s", strings.ToUpper(format), compactError(err.Error())))
 	}

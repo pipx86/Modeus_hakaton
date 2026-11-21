@@ -1544,3 +1544,22 @@ func TestCheckerPDFExtractorErrors(t *testing.T) {
 		t.Fatalf("result: %+v", result)
 	}
 }
+func TestParserFileNameAddsExtension(t *testing.T) {
+	cases := []struct {
+		name   string
+		format string
+		want   string
+	}{
+		{"downloads", "pdf", "downloads.pdf"},
+		{"", "pdf", "document.pdf"},
+		{"program", "docx", "program.docx"},
+		{"report.PDF", "pdf", "report.PDF"},
+		{"file.pdf", "pdf", "file.pdf"},
+		{"program", "", "program"},
+	}
+	for _, tc := range cases {
+		if got := parserFileName(tc.name, tc.format); got != tc.want {
+			t.Fatalf("parserFileName(%q, %q) = %q, ожидали %q", tc.name, tc.format, got, tc.want)
+		}
+	}
+}
