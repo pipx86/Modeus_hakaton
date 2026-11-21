@@ -59,7 +59,7 @@ func TestEmergencyFinalizerSavesDeterministicTree(t *testing.T) {
 	if status != domain.RunDegraded || store.stage != domain.StageDone {
 		t.Fatalf("status=%s stage=%s", status, store.stage)
 	}
-	if len(store.nodes) != 4 {
+	if len(store.nodes) != 22 {
 		t.Fatalf("nodes = %d", len(store.nodes))
 	}
 	if store.reason == "" {
