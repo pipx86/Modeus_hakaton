@@ -287,6 +287,7 @@ func run(ctx context.Context, c config) error {
 		app.SetLearningPlanner(learningPlanner)
 	}
 	startHHVacancyImporter(context.Background(), pool)
+	startTrudvsemVacancyImporter(context.Background(), pool)
 	// Семантическая индексация: источники, созданные через POST /sources и
 	// POST /sources/upload, индексируются в фоне (фрагменты + векторы Ollama).
 	// Уже существующие источники догоняет cmd/index-sources (README.md).

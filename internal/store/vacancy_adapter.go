@@ -28,7 +28,7 @@ func (a *VacancyAdapter) ByProfession(ctx context.Context, profession string, li
 	rows, err := a.store.pool.Query(ctx, `
 		SELECT COALESCE(external_id::text,''), id::text, title, COALESCE(content,''), COALESCE(source_url,'')
 		FROM sources
-		WHERE provider = 'hh' AND type = 'vacancy'
+		WHERE provider IN ('hh', 'trudvsem') AND type = 'vacancy'
 		  AND (title ILIKE $1 OR content ILIKE $1)
 		ORDER BY updated_at DESC NULLS LAST
 		LIMIT $2`, "%"+strings.TrimSpace(profession)+"%", limit)
@@ -78,7 +78,7 @@ func (a *VacancyAdapter) byProfessionTokens(ctx context.Context, profession stri
 	rows, err := a.store.pool.Query(ctx, `
 		SELECT COALESCE(external_id::text,''), id::text, title, COALESCE(content,''), COALESCE(source_url,'')
 		FROM sources
-		WHERE provider = 'hh' AND type = 'vacancy'
+		WHERE provider IN ('hh', 'trudvsem') AND type = 'vacancy'
 		ORDER BY updated_at DESC NULLS LAST
 		LIMIT 300`)
 	if err != nil {
