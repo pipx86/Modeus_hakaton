@@ -231,6 +231,7 @@ func run(ctx context.Context, c config) error {
 	// ChatSessionStore implements both chat.SessionStore and chat.MessageStore.
 	chatService.SetSessionStore(store.NewChatSessionStore(pool))
 	var learningPlanner *learningPlannerAdapter
+	var treeFinalizer chat.Finalizer = unavailableChatTree
 	if analystClient != nil {
 		learningPlanner = newLearningPlanner(pgStore, vacancyReader, analystClient)
 		// The analyst fallback selects materials from the existing source base by
@@ -240,11 +241,11 @@ func run(ctx context.Context, c config) error {
 		baseSources := baseSourceSelector(func(_ context.Context, profession string) []domain.Source {
 			return professionSources(pgStore, vacancyReader, profession)
 		})
-		treeFinalizer := newTreeFinalizerWithSelector(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, baseSources, newRAGRetriever(pgStore))
-		chatService.SetFinalizer(newHybridFinalizer(pgStore, treeFinalizer, learningPlanner))
-	} else {
-		chatService.SetFinalizer(unavailableChatTree)
+		treeFinalizer = newTreeFinalizerWithSelector(pgStore, analystClient, synthesizerClient, analystVersion, synthesizerVersion, baseSources, newRAGRetriever(pgStore))
 	}
+	// If the model pipeline is unavailable or fails, save a deterministic tree
+	// from the real interview answers and mark the run as degraded/demo.
+	chatService.SetFinalizer(newHybridFinalizer(pgStore, newEmergencyFinalizer(treeFinalizer, pgStore), learningPlanner))
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetProgramMatcher(analystClient)
 	if analystClient != nil {

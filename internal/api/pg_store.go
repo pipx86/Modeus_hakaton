@@ -557,6 +557,45 @@ func (p *PGStore) ListRuns() ([]*domain.Run, error) {
 	return result, rows.Err()
 }
 
+// SetDegradedReason explains a fallback/degraded result to the UI.
+func (p *PGStore) SetDegradedReason(runID, reason string) error {
+	ctx, cancel := operation()
+	defer cancel()
+	_, err := p.Pool.Exec(ctx, `UPDATE runs SET degraded_reason=$2, updated_at=now() WHERE id=$1`, runID, reason)
+	return translate(err)
+}
+
+// DegradedReason returns the stored explanation for a degraded run.
+func (p *PGStore) DegradedReason(runID string) (string, error) {
+	ctx, cancel := operation()
+	defer cancel()
+	var reason string
+	err := p.Pool.QueryRow(ctx, `SELECT COALESCE(degraded_reason,'') FROM runs WHERE id=$1`, runID).Scan(&reason)
+	return reason, translate(err)
+}
+
+// ClearRunTree removes a deterministic fallback tree before a real retry. Only
+// the demo marker is cleared; the interview messages stay intact.
+func (p *PGStore) ClearRunTree(runID string) error {
+	ctx, cancel := operation()
+	defer cancel()
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return translate(err)
+	}
+	defer tx.Rollback(context.Background())
+	if _, err := tx.Exec(ctx, `DELETE FROM snapshots WHERE run_id=$1`, runID); err != nil {
+		return translate(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM nodes WHERE run_id=$1`, runID); err != nil {
+		return translate(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE runs SET root_node_id=NULL, degraded_reason=NULL, updated_at=now() WHERE id=$1`, runID); err != nil {
+		return translate(err)
+	}
+	return translate(tx.Commit(ctx))
+}
+
 // ListGlobalSources возвращает материалы, загруженные в админке (run_id IS NULL).
 func (p *PGStore) ListGlobalSources(limit int) ([]domain.Source, error) {
 	if limit <= 0 || limit > 50 {

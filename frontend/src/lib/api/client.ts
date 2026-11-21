@@ -350,6 +350,12 @@ export async function getInterviewProgress(runId: string): Promise<InterviewProg
   return requestApi<InterviewProgress>(`/runs/${encodeURIComponent(runId)}/interview-progress`)
 }
 
+/** Пояснение к результату с ограничениями или резервному сценарию. */
+export async function getDegradedReason(runId: string): Promise<string> {
+  const result = await requestApi<{ reason?: string }>(`/runs/${encodeURIComponent(runId)}/degraded`)
+  return (result.reason ?? "").trim()
+}
+
 export interface InterviewABVariant {
   prompt_version: string
   sessions: number
