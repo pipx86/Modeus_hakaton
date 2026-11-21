@@ -6,11 +6,10 @@ package interviewer
 import (
 	"strings"
 
-	"activity-descriptor/internal/agent"
 	"activity-descriptor/internal/domain"
 )
 
-const CoreQuestionCount = 4
+const coreQuestionCount = 4
 
 // defaultPlan is the level sequence of a standard interview: ground the role,
 // then its functions, one recurring task and one concrete action.
@@ -20,19 +19,6 @@ func defaultPlan() []domain.QuestionLevel {
 		domain.QuestionFunction,
 		domain.QuestionTask,
 		domain.QuestionAction,
-	}
-}
-
-func extraQuestion(level domain.QuestionLevel) agent.InterviewerOutput {
-	text := "Какую ещё задачу вы выполняете регулярно?"
-	rationale := "Узнаём ещё одну регулярную задачу."
-	if level == domain.QuestionAction {
-		text = "Что вы обычно делаете первым в этой задаче?"
-		rationale = "Узнаём одно действие в этой задаче."
-	}
-	return agent.InterviewerOutput{
-		Question:  domain.Question{Level: level, Text: text, Rationale: rationale},
-		Rationale: rationale,
 	}
 }
 

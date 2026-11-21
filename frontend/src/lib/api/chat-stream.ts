@@ -16,7 +16,6 @@ export type StreamState = "open" | "reconnecting" | "failed"
 export interface ChatStreamHandlers {
   onThinking: () => void
   onAgentMessage: (message: ChatMessage) => void
-  onInterviewProgress?: () => void
   onRunStatus: (status: RunStatus) => void
   onStateChange: (state: StreamState) => void
 }
@@ -38,10 +37,6 @@ function dispatchEvent(raw: string, handlers: ChatStreamHandlers): void {
   const payloadText = data.join("\n")
   if (event === "agent_thinking") {
     handlers.onThinking()
-    return
-  }
-  if (event === "interview_progress") {
-    handlers.onInterviewProgress?.()
     return
   }
   try {
@@ -67,7 +62,6 @@ function connectWithEventSource(runId: string, handlers: ChatStreamHandlers): ()
   }
 
   source.addEventListener("agent_thinking", () => handlers.onThinking())
-  source.addEventListener("interview_progress", () => handlers.onInterviewProgress?.())
 
   source.addEventListener("agent_message", (event) => {
     const payload = JSON.parse((event as MessageEvent).data) as RunEvent

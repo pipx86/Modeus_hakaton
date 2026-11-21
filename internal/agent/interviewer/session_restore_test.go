@@ -160,7 +160,7 @@ func TestSessionSnapshotKeepsFallbacksAndError(t *testing.T) {
 	}
 }
 
-func TestRestoreSessionKeepsLegacySixQuestionPlan(t *testing.T) {
+func TestRestoreSessionShortensLegacySixQuestionPlan(t *testing.T) {
 	levels := []domain.QuestionLevel{
 		domain.QuestionRole, domain.QuestionFunction, domain.QuestionTask,
 		domain.QuestionAction, domain.QuestionTask, domain.QuestionAction,
@@ -172,7 +172,7 @@ func TestRestoreSessionKeepsLegacySixQuestionPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreSession: %v", err)
 	}
-	for range levels {
+	for range coreQuestionCount {
 		if _, err := restored.Next(context.Background()); err != nil {
 			t.Fatalf("Next: %v", err)
 		}
@@ -180,8 +180,21 @@ func TestRestoreSessionKeepsLegacySixQuestionPlan(t *testing.T) {
 			t.Fatalf("Answer: %v", err)
 		}
 	}
-	if !restored.Done() || len(restored.State().Questions) != 6 {
+	if !restored.Done() || len(restored.State().Questions) != coreQuestionCount {
 		t.Fatalf("legacy plan finished with %d questions", len(restored.State().Questions))
+	}
+
+	snapshot = restored.Snapshot()
+	snapshot.Plan = levels
+	snapshot.State.Questions = append(snapshot.State.Questions, domain.Question{
+		ID: "q-5", Level: domain.QuestionTask, Text: "Какую ещё задачу вы выполняете?",
+	})
+	restored, err = RestoreSession(session.agent, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.Done() || restored.PendingAnswer() || len(restored.State().Answers) != coreQuestionCount {
+		t.Fatal("a pending fifth question must not block analysis of the four saved answers")
 	}
 }
 

@@ -35,14 +35,13 @@ const (
 // interview: the serialized interviewer state plus the run-level metadata. It
 // is stored as JSONB in run_chat_sessions.state.
 type SessionSnapshot struct {
-	SchemaVersion        int                  `json:"schema_version"`
-	Profession           string               `json:"profession"`
-	PromptVersion        string               `json:"prompt_version,omitempty"`
-	Status               SessionStatus        `json:"status"`
-	Learning             bool                 `json:"learning,omitempty"`
-	AwaitingContinuation bool                 `json:"awaiting_continuation,omitempty"`
-	FinalStatus          domain.RunStatus     `json:"final_status,omitempty"`
-	Interviewer          interviewer.Snapshot `json:"interviewer"`
+	SchemaVersion int                  `json:"schema_version"`
+	Profession    string               `json:"profession"`
+	PromptVersion string               `json:"prompt_version,omitempty"`
+	Status        SessionStatus        `json:"status"`
+	Learning      bool                 `json:"learning,omitempty"`
+	FinalStatus   domain.RunStatus     `json:"final_status,omitempty"`
+	Interviewer   interviewer.Snapshot `json:"interviewer"`
 
 	// Version is the optimistic concurrency token of the row. It is read from
 	// the version column and never serialized into the state JSON.
@@ -122,8 +121,6 @@ var (
 	// ErrQuestionPending means the interviewer is still preparing the next
 	// question, so there is no open question to answer yet.
 	ErrQuestionPending = errors.New("chat: question is pending")
-	// ErrContinuationUnavailable means the interview is not waiting for a choice.
-	ErrContinuationUnavailable = errors.New("chat: continuation is unavailable")
 )
 
 // persistTimeout bounds one durable write/read of the chat history. The

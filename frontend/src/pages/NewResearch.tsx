@@ -13,8 +13,6 @@ import { Label } from "@/components/ui/label"
 import {
   ApiRequestError,
   createRun,
-  importHHProfile,
-  importResume,
   type CreateRunInput,
 } from "@/lib/api/client"
 import { stripControlChars } from "@/lib/security"
@@ -49,14 +47,9 @@ const ROLE_SUGGESTIONS: RoleSuggestion[] = [
 
 const PROFESSION_MAX = 120
 
-/** Варианты ожидаемого результата исследования (карточка 25). */
 export function NewResearch() {
   const navigate = useNavigate()
   const [profession, setProfession] = useState("")
-  const [profileContext, setProfileContext] = useState("")
-  const [profileLabel, setProfileLabel] = useState("")
-  const [hhURL, setHhURL] = useState("")
-  const [profileLoading, setProfileLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
@@ -80,42 +73,6 @@ export function NewResearch() {
 
   const canSubmit = !professionError && !submitting
 
-  /** Загружает (или перезагружает) список программ; повторный вызов доступен из ошибки. */
-
-  const uploadResume = async (file: File | undefined) => {
-    if (!file) return
-    setProfileLoading(true)
-    try {
-      const imported = await importResume(file)
-      setProfileContext(imported.text)
-      setProfileLabel(imported.filename ? `Резюме: ${imported.filename}` : "Резюме загружено")
-      toast.success("Резюме загружено")
-    } catch (cause) {
-      toast.error("Не удалось прочитать резюме", {
-        description: cause instanceof Error ? cause.message : "Проверьте формат PDF/DOCX.",
-      })
-    } finally {
-      setProfileLoading(false)
-    }
-  }
-
-  const loadHHProfile = async () => {
-    if (!hhURL.trim()) return
-    setProfileLoading(true)
-    try {
-      const imported = await importHHProfile(hhURL.trim())
-      setProfileContext(imported.text)
-      setProfileLabel(imported.title ? `HH: ${imported.title}` : "Профиль HH загружен")
-      toast.success("Профиль HH загружен")
-    } catch (cause) {
-      toast.error("Не удалось загрузить профиль HH", {
-        description: cause instanceof Error ? cause.message : "Проверьте ссылку на резюме.",
-      })
-    } finally {
-      setProfileLoading(false)
-    }
-  }
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitted(true)
@@ -126,10 +83,8 @@ export function NewResearch() {
       const input: CreateRunInput = {
         profession: stripControlChars(profession).trim(),
         type: "chat",
-        profile_context: profileContext || undefined,
         result_kind: "activity",
       }
-      // program_id отправляем только для режима сопоставления с программой.
       const run = await createRun(input)
       toast.success("Исследование запущено")
       navigate(run?.id ? `/research/${run.id}` : "/")
@@ -243,36 +198,6 @@ export function NewResearch() {
                   </p>
                 )}
               </div>
-
-
-
-              <div className="space-y-2">
-                <Label htmlFor="resume-file">Резюме PDF/DOCX или профиль HH (необязательно)</Label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    id="resume-file"
-                    type="file"
-                    accept=".pdf,.docx,.txt,.md"
-                    className="max-w-xs"
-                    onChange={(event) => void uploadResume(event.target.files?.[0])}
-                    disabled={submitting || profileLoading}
-                  />
-                  <span className="text-xs text-muted-foreground">или</span>
-                  <Input
-                    value={hhURL}
-                    onChange={(event) => setHhURL(event.target.value)}
-                    placeholder="https://hh.ru/resume/..."
-                    className="max-w-xs"
-                    disabled={submitting || profileLoading}
-                    aria-label="Ссылка на резюме HH"
-                  />
-                  <Button type="button" variant="outline" onClick={() => void loadHHProfile()} disabled={!hhURL.trim() || profileLoading}>
-                    {profileLoading ? "Загружаем..." : "Загрузить HH"}
-                  </Button>
-                </div>
-                {profileLabel && <p className="text-xs text-muted-foreground">{profileLabel}</p>}
-              </div>
-
               {apiError && (
                 <p className="flex items-center gap-1.5 text-sm text-destructive">
                   <AlertCircleIcon className="size-3.5 shrink-0" />

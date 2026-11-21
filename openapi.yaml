@@ -3179,7 +3179,7 @@ paths:
       description: >-
         `text/event-stream`. Pipeline events are `stage_change`, `error` and `done`
         with `data` containing `stage`, `status`, `pct` and, when applicable, `message`.
-        Chat runs additionally emit `agent_thinking`, `agent_message`, `interview_progress` and `run_status`
+        Chat runs additionally emit `agent_thinking`, `agent_message` and `run_status`
         events. Heartbeats are sent as `event: heartbeat`. The client may reconnect
         with `Last-Event-ID`; previously delivered events are skipped, and the stream
         closes when the run reaches done or failed. Access is limited to the owner
@@ -3208,93 +3208,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
-  /runs/{id}/interview-progress:
-    get:
-      tags: [chat]
-      summary: Read the active interview's progress
-      operationId: getInterviewProgress
-      parameters:
-        - $ref: "#/components/parameters/RunId"
-      responses:
-        "200":
-          description: Question counts and the state of the interview.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [asked, total, remaining, average_quality, last_quality, covered_topics, uncovered_topics]
-                properties:
-                  asked:
-                    type: integer
-                  total:
-                    type: integer
-                  remaining:
-                    type: integer
-                  average_quality:
-                    type: integer
-                  last_quality:
-                    type: integer
-                  covered_topics:
-                    type: array
-                    items: { type: string }
-                  uncovered_topics:
-                    type: array
-                    items: { type: string }
-                  contradictions:
-                    type: array
-                    items: { type: string }
-                  awaiting_continuation:
-                    type: boolean
-                    description: The four core answers are saved and the respondent must choose whether to continue.
-                  finishing:
-                    type: boolean
-                    description: The interview has finished and its answers are ready for analysis.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /runs/{id}/interview-continuation:
-    post:
-      tags: [chat]
-      summary: Finish or extend the expert interview
-      description: After four core answers, the owner or an administrator may finish the interview or opt in to two additional questions.
-      operationId: decideInterviewContinuation
-      parameters:
-        - $ref: "#/components/parameters/RunId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [continue]
-              properties:
-                continue:
-                  type: boolean
-                  description: Ask two additional questions when true, or start analysis immediately when false.
-      responses:
-        "204":
-          description: The decision was saved.
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: The interview is no longer waiting for the decision.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "503":
-          description: The chat service is unavailable.
   /runs/{id}/messages:
     get:
       tags: [chat]
@@ -3339,7 +3252,7 @@ paths:
     post:
       tags: [chat]
       summary: Send a user message to the interviewer
-      description: Records the respondent answer. After the core expert interview it awaits a decision. Otherwise it advances the interview or starts analysis. Only the owner or an administrator may answer a run with an owner.
+      description: Records the respondent answer and schedules the next question. Only the owner or an administrator may answer a run with an owner.
       operationId: sendMessage
       parameters:
         - $ref: "#/components/parameters/RunId"

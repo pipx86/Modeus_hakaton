@@ -24,12 +24,11 @@ const maxFallbackQuestions = 4
 // failure: the failure is recorded in LastError, the run degrades to fallback
 // questions and the dialog continues.
 type Session struct {
-	agent    *Agent
-	state    domain.InterviewSession
-	plan     []domain.QuestionLevel
-	extended bool
-	last     agent.InterviewerOutput
-	lastErr  error
+	agent   *Agent
+	state   domain.InterviewSession
+	plan    []domain.QuestionLevel
+	last    agent.InterviewerOutput
+	lastErr error
 	// clarifiedFor is the answer index a clarification has already been asked
 	// for, so one vague answer is clarified at most once.
 	clarifiedFor int
@@ -117,18 +116,10 @@ func (s *Session) LastError() error { return s.lastErr }
 // Done reports whether the question plan is exhausted or the model has
 // degraded to the fallback limit.
 func (s *Session) Done() bool {
-	return len(s.state.Questions) >= len(s.plan) || (!s.extended && s.fallbacks >= maxFallbackQuestions)
-}
-
-// CanExtend reports whether the respondent has finished the four core questions.
-func (s *Session) CanExtend() bool {
-	return !s.learning && len(s.plan) == CoreQuestionCount && len(s.state.Answers) == CoreQuestionCount
-}
-
-// Extend adds one more task and action to the same transcript.
-func (s *Session) Extend() {
-	s.plan = append(s.plan, domain.QuestionTask, domain.QuestionAction)
-	s.extended = true
+	if len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions {
+		return true
+	}
+	return false
 }
 
 // Next asks the model for the next question and records it. Model errors are
@@ -143,13 +134,7 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 	}
 
 	level := s.plan[len(s.state.Questions)]
-	if s.extended {
-		return s.recordQuestion(extraQuestion(level), level, false), nil
-	}
-	// Existing six-question snapshots retain their clarification behavior.
-	// The four-question interview follows its four levels without spending one
-	// of the respondent's turns on a follow-up.
-	clarify := len(s.plan) > CoreQuestionCount && s.needsClarification()
+	const clarify = false
 	progress := s.Progress()
 	in := agent.InterviewerInput{
 		SessionID:         s.state.ID,
@@ -178,17 +163,13 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 		s.state.Status = domain.SessionDegraded
 	}
 
-	return s.recordQuestion(out, level, clarify), nil
-}
-
-func (s *Session) recordQuestion(out agent.InterviewerOutput, level domain.QuestionLevel, clarify bool) domain.Question {
 	s.normalize(&out, level, clarify)
 	s.last = out
 	s.state.Questions = append(s.state.Questions, out.Question)
 	if s.state.Status != domain.SessionDegraded {
 		s.state.Status = domain.SessionInProgress
 	}
-	return out.Question
+	return out.Question, nil
 }
 
 // Answer records the respondent's answer to the last question. The session
@@ -238,7 +219,7 @@ func (s *Session) Close() domain.InterviewSession {
 func (s *Session) normalize(out *agent.InterviewerOutput, level domain.QuestionLevel, clarify bool) {
 	s.seq++
 	out.Question.ID = fmt.Sprintf("q-%d", s.seq)
-	if !out.Question.Level.Valid() || len(s.plan) == CoreQuestionCount {
+	if !out.Question.Level.Valid() || len(s.plan) == coreQuestionCount {
 		out.Question.Level = level
 	}
 	if strings.TrimSpace(out.Question.Text) == "" {

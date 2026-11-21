@@ -136,16 +136,16 @@ func TestChatSessionResumesAfterBackendRestart(t *testing.T) {
 		}
 	}
 
-	// Five answers remain; the restored session continues exactly where it
+	// Three answers remain; the restored session continues exactly where it
 	// stopped and finishes the plan.
-	for answerIndex := 0; answerIndex < 5; answerIndex++ {
+	for answerIndex := 0; answerIndex < 3; answerIndex++ {
 		waitForChatMessages(t, restartedHandler, runID, 4+2*answerIndex)
 		rec := do(t, restartedHandler, http.MethodPost, path, "teacher", `{"content":"Конкретный ответ про аналитику данных."}`)
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("POST after restart %d = %d: %s", answerIndex, rec.Code, rec.Body.String())
 		}
 	}
-	final := waitForChatMessages(t, restartedHandler, runID, 14)
+	final := waitForChatMessages(t, restartedHandler, runID, 10)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !strings.Contains(last.Content, "Интервью завершено") || !strings.Contains(last.Content, "«Дерево»") {
 		t.Fatalf("final Stepik message was not persisted: %+v", last)
@@ -164,16 +164,16 @@ func TestChatSessionResumesAfterBackendRestart(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM run_chat_messages WHERE run_id=$1`, runID).Scan(&messageRows); err != nil {
 		t.Fatal(err)
 	}
-	if messageRows != 14 {
-		t.Fatalf("stored %d messages, want 14", messageRows)
+	if messageRows != 10 {
+		t.Fatalf("stored %d messages, want 10", messageRows)
 	}
 
 	// A second restart serves the completed dialog and keeps it read-only.
 	third := newSessionChatService(pool, nil)
 	thirdHandler := NewServerWithChat(pg, third).Routes()
-	readOnly := waitForChatMessages(t, thirdHandler, runID, 14)
-	if len(readOnly) != 14 {
-		t.Fatalf("after second restart %d messages, want 14", len(readOnly))
+	readOnly := waitForChatMessages(t, thirdHandler, runID, 10)
+	if len(readOnly) != 10 {
+		t.Fatalf("after second restart %d messages, want 10", len(readOnly))
 	}
 	rejected := do(t, thirdHandler, http.MethodPost, path, "teacher", `{"content":"Поздний ответ."}`)
 	if rejected.Code != http.StatusConflict {
@@ -405,10 +405,6 @@ func TestChatSessionResumesInterruptedFinalization(t *testing.T) {
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("POST %d = %d: %s", answerIndex, rec.Code, rec.Body.String())
 		}
-	}
-	choice := do(t, firstHandler, http.MethodPost, "/api/v1/runs/"+runID+"/interview-continuation", "teacher", `{"continue":false}`)
-	if choice.Code != http.StatusNoContent {
-		t.Fatalf("finish interview = %d: %s", choice.Code, choice.Body.String())
 	}
 	waitForChatSessionStatus(t, pool, runID, chat.SessionFinalizing)
 	t.Cleanup(func() { close(blockFinalizer) })

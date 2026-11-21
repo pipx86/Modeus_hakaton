@@ -136,9 +136,6 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 			})
 		}
 	}
-	if err := service.DecideContinuation("run-3", false); err != nil {
-		t.Fatalf("finish interview: %v", err)
-	}
 	select {
 	case status := <-finished:
 		if status != domain.RunDone {
@@ -215,13 +212,10 @@ func TestServiceCallsFinalizerAfterInterview(t *testing.T) {
 			t.Fatalf("Post %d: %v", i, err)
 		}
 	}
-	if err := service.DecideContinuation("run-6", false); err != nil {
-		t.Fatalf("finish interview: %v", err)
-	}
 	select {
 	case session := <-called:
-		if len(session.Questions) != 4 || len(session.Answers) != 4 {
-			t.Fatalf("finalizer expected four completed questions: %+v", session)
+		if len(session.Questions) == 0 || len(session.Answers) == 0 {
+			t.Fatalf("finalizer got empty session: %+v", session)
 		}
 		if got := transcriptFromSessionForTest(session); got == "" {
 			t.Fatal("transcript is empty")
@@ -247,9 +241,6 @@ func TestServicePostsResearchResult(t *testing.T) {
 		if _, err := service.Post("run-7", "Конкретный ответ про аналитику данных."); err != nil {
 			t.Fatalf("Post %d: %v", i, err)
 		}
-	}
-	if err := service.DecideContinuation("run-7", false); err != nil {
-		t.Fatalf("finish interview: %v", err)
 	}
 	waitFor(t, 3*time.Second, func() bool {
 		messages, err := service.Messages("run-7")

@@ -146,21 +146,15 @@ func TestChatHistorySurvivesRestart(t *testing.T) {
 		t.Fatalf("user answer stored %d times, want 1", userRows)
 	}
 
-	// Opt in after the four core questions, then finish the additional pair.
-	for answerIndex := 1; answerIndex < 6; answerIndex++ {
-		if answerIndex == 4 {
-			choice := do(t, handler, http.MethodPost, "/api/v1/runs/"+run.ID+"/interview-continuation", "user", `{"continue":true}`)
-			if choice.Code != http.StatusNoContent {
-				t.Fatalf("continue interview = %d: %s", choice.Code, choice.Body.String())
-			}
-		}
+	// The fourth answer triggers analysis and the persisted result message.
+	for answerIndex := 1; answerIndex < 4; answerIndex++ {
 		waitForChatMessages(t, handler, run.ID, 2*answerIndex+2)
 		rec := do(t, handler, http.MethodPost, path, "user", `{"content":"Конкретный ответ про аналитику данных."}`)
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("POST answer %d = %d: %s", answerIndex, rec.Code, rec.Body.String())
 		}
 	}
-	final := waitForChatMessages(t, handler, run.ID, 14)
+	final := waitForChatMessages(t, handler, run.ID, 10)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !strings.Contains(last.Content, "Интервью завершено") || !strings.Contains(last.Content, "«Дерево»") {
 		t.Fatalf("final research message was not persisted: %+v", last)

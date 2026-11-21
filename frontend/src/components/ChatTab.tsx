@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { type ChatMessage, type Run, type RunStatus } from "@/lib/api/client"
-import { getInterviewProgress, type InterviewProgress, attachInterviewEvidence, attachInterviewLink, decideInterviewContinuation } from "@/lib/api/client"
+import { getInterviewProgress, type InterviewProgress, attachInterviewEvidence, attachInterviewLink } from "@/lib/api/client"
 import { downloadText } from "@/lib/export-tree"
 import { chatTranscriptToMarkdown } from "@/lib/export-chat"
 import { useChatStream } from "@/hooks/use-chat-stream"
@@ -78,7 +78,6 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
     setDraft,
     sending,
     thinking,
-    progressRevision,
     streamState,
     chatClosed,
     interviewFinished,
@@ -89,8 +88,6 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
   const bottomRef = useRef<HTMLDivElement>(null)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const [progress, setProgress] = useState<InterviewProgress | null>(null)
-  const [choosing, setChoosing] = useState(false)
-  const [choiceRevision, setChoiceRevision] = useState(0)
   const [attaching, setAttaching] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const appliedFocus = useRef<string | null>(null)
@@ -108,26 +105,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
     return () => {
       cancelled = true
     }
-  }, [active, runId, runMessages.length, progressRevision, choiceRevision])
-
-  const finalizing = interviewFinished || progress?.finishing
-  const awaitingChoice = !chatClosed && !finalizing && progress?.awaiting_continuation
-  const choose = async (continueInterview: boolean) => {
-    setChoosing(true)
-    try {
-      await decideInterviewContinuation(runId, continueInterview)
-      setProgress((current) => current ? {
-        ...current, awaiting_continuation: false, finishing: current.finishing || !continueInterview,
-      } : current)
-    } catch (error) {
-      toast.error("Не удалось сохранить выбор", {
-        description: error instanceof Error ? error.message : undefined,
-      })
-    } finally {
-      setChoosing(false)
-      setChoiceRevision((value) => value + 1)
-    }
-  }
+  }, [active, runId, messages.length])
 
   const renderContent = (message: (typeof messages)[number]) => {
     if (highlightedId !== message.id || !focus?.quote) return linkify(message.content)
@@ -288,7 +266,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
             </Button>
           )}
         </div>
-      ) : finalizing ? (
+      ) : interviewFinished ? (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <InfoIcon className="size-3.5 shrink-0" />
           Интервью завершено - агент-аналитик строит дерево.
@@ -355,7 +333,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
             </div>
           </div>
         ))}
-        {thinking && !awaitingChoice && (
+        {thinking && (
           <div className="flex justify-start">
             <div className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2">
               <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
@@ -372,19 +350,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
         <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           Режим просмотра: отправка сообщений недоступна.
         </p>
-      ) : awaitingChoice ? (
-        <div className="space-y-2 rounded-lg border p-3">
-          <p className="text-sm">Основные вопросы закончились. Хотите рассказать ещё об одной рабочей задаче?</p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void choose(false)} disabled={choosing}>
-              Завершить интервью
-            </Button>
-            <Button type="button" variant="outline" onClick={() => void choose(true)} disabled={choosing}>
-              Ответить ещё на два вопроса
-            </Button>
-          </div>
-        </div>
-      ) : (!finalizing || chatClosed) && (
+      ) : (
       <div className="flex items-end gap-2">
         <input
           ref={fileInput}

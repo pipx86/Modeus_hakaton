@@ -63,9 +63,6 @@ func TestServiceAttachesRunIDToLLMCalls(t *testing.T) {
 			t.Fatalf("Post %d: %v", i, err)
 		}
 	}
-	if err := service.DecideContinuation(runID, false); err != nil {
-		t.Fatalf("finish interview: %v", err)
-	}
 
 	select {
 	case got := <-finalizerRunIDs:
