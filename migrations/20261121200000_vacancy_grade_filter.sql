@@ -1,6 +1,7 @@
 -- +goose Up
 -- Keep source records intact; exclude ungraded vacancies from the analysis and
 -- market views so they remain available for future updates and review.
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION derive_vacancy_grade(experience_id text, vacancy_title text)
 RETURNS text
 LANGUAGE sql
@@ -28,6 +29,7 @@ AS $function$
     END
     FROM grade_markers;
 $function$;
+-- +goose StatementEnd
 
 CREATE OR REPLACE VIEW vacancy_catalog AS
 SELECT s.id AS source_id, s.external_id AS id, s.title AS name,

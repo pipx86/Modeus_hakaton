@@ -3,6 +3,7 @@
 -- Keep their vacancies even when the provider does not supply a grade. The raw
 -- provider experience remains available as experience_id; experience is blank
 -- so these vacancies do not alter junior/middle/senior statistics.
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION vacancy_allows_ungraded(vacancy_title text)
 RETURNS boolean
 LANGUAGE sql
@@ -12,6 +13,7 @@ AS $function$
     SELECT lower(COALESCE(vacancy_title, '')) ~
         $pattern$\m(dev[[:space:]-]?ops|девопс|data[[:space:]-]+(analyst|аналитик)|аналитик[[:space:]]+данных)\M$pattern$;
 $function$;
+-- +goose StatementEnd
 
 CREATE OR REPLACE VIEW vacancy_catalog AS
 SELECT s.id AS source_id, s.external_id AS id, s.title AS name,
