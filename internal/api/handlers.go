@@ -209,6 +209,12 @@ func (s *Server) Routes() http.Handler {
 	// (карточки 18, 23 и 26 плана MVP).
 	mux.HandleFunc("POST /api/v1/nodes/{id}/review", s.handleReviewNode)
 	mux.HandleFunc("GET /api/v1/runs/{id}/program-links", s.handleListProgramLinks)
+	mux.HandleFunc("GET /api/v1/runs/{id}/skill-model", s.handleGetSkillModel)
+	mux.HandleFunc("PUT /api/v1/runs/{id}/skill-model", s.handlePutSkillModel)
+	mux.HandleFunc("GET /api/v1/runs/{id}/skill-model/nodes", s.handleSkillNodes)
+	mux.HandleFunc("POST /api/v1/runs/{id}/skill-model/compare", s.handleCompareSkills)
+	mux.HandleFunc("POST /api/v1/runs/{id}/skill-model/extract", s.handleExtractSkills)
+	mux.HandleFunc("POST /api/v1/runs/{id}/skill-model/validate", s.handleValidateSkillModel)
 	mux.HandleFunc("POST /api/v1/runs/{id}/program-links/generate", s.handleGenerateProgramLinks)
 	mux.HandleFunc("POST /api/v1/runs/{id}/program-links/{link_id}/review", s.handleReviewProgramLink)
 	mux.HandleFunc("GET /api/v1/runs/{id}/review/summary", s.handleReviewSummary)

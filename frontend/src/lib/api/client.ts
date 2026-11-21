@@ -246,7 +246,7 @@ function parseErrorWarnings(body: ApiErrorBody | null): string[] {
  * @param path Путь от `apiBaseUrl` (начинается со слэша), с уже собранным query.
  * @param init Дополнительные опции fetch (метод, тело).
  */
-async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function requestApi<T>(path: string, init: RequestInit = {}, preserveText = false): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set("Accept", "application/json")
   const token = getValidToken() ?? apiToken
@@ -279,7 +279,8 @@ async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (response.status === 204) return undefined as T
   try {
-    return normalizeDashes((await response.json()) as T) as T
+    const data = (await response.json()) as T
+    return preserveText ? data : normalizeDashes(data)
   } catch {
     throw new ApiRequestError("Сервер вернул некорректный ответ.", response.status)
   }

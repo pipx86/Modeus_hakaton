@@ -44,6 +44,408 @@ tags:
 security:
   - bearerAuth: []
 paths:
+  /runs/{id}/skill-model:
+    get:
+      operationId: getSkillModel
+      tags:
+      - skills
+      summary: Словарь ЗУН и инструментов исследования
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: revision
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+        description: Сохранённая ревизия; без параметра возвращается текущая
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillModel'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Нужна авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Словарь уже изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Неверные определения или основания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Хранилище или модель недоступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: saveSkillModel
+      tags:
+      - skills
+      summary: Сохранить новую ревизию словаря
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillModel'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Нужна авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Словарь уже изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Неверные определения или основания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Хранилище или модель недоступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillModel'
+      description: Владелец или администратор. revision должен совпадать с текущим. Сохранённые определения неизменяемы.
+        Цитаты копирует сервер. Изменившиеся основания требуют повторной проверки. Это требования деятельности, не
+        оценка человека.
+  /runs/{id}/skill-model/nodes:
+    get:
+      operationId: getSkillModelNodes
+      tags:
+      - skills
+      summary: Узлы и цитаты для связывания с ЗУН
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Node'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Нужна авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Словарь уже изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Неверные определения или основания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Хранилище или модель недоступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /runs/{id}/skill-model/compare:
+    post:
+      operationId: compareSkillDefinitions
+      tags:
+      - skills
+      summary: Сравнить сохранённые определения
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillComparison'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Нужна авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Словарь уже изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Неверные определения или основания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Хранилище или модель недоступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillComparisonRequest'
+  /runs/{id}/skill-model/validate:
+    post:
+      operationId: validateSkillModel
+      tags:
+      - skills
+      summary: Проверить словарь без сохранения
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillModel'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Нужна авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Словарь уже изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Неверные определения или основания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Хранилище или модель недоступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillModel'
+  /runs/{id}/skill-model/extract:
+    post:
+      operationId: extractSkillCandidates
+      tags:
+      - skills
+      summary: Извлечь предложения без сохранения
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillModel'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Нужна авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Нет доступа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Словарь уже изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Неверные определения или основания
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Хранилище или модель недоступны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Модель недоступна или вернула некорректный ответ
   /ingest:
     post:
       tags: [sources]
@@ -5174,6 +5576,208 @@ components:
             code: GATEWAY_TIMEOUT
             message: upstream timeout
   schemas:
+    SkillTool:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      - kind
+      - aliases
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum:
+          - language
+          - database
+          - framework
+          - library
+          - platform
+          - application
+          - other
+        aliases:
+          type: array
+          items:
+            type: string
+    SkillToolUse:
+      type: object
+      additionalProperties: false
+      required:
+      - tool_id
+      - usage
+      - required
+      properties:
+        tool_id:
+          type: string
+        usage:
+          type: string
+        required:
+          type: boolean
+        version:
+          type: string
+    SkillDefinition:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - version
+      - title
+      - kind
+      - action
+      - object
+      - conditions
+      - result
+      - criterion
+      - autonomy
+      - scope
+      - tools
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        kind:
+          type: string
+          enum:
+          - knowledge
+          - skill
+          - proficiency
+        action:
+          type: string
+        object:
+          type: string
+        conditions:
+          type: string
+        result:
+          type: string
+        criterion:
+          type: string
+        autonomy:
+          type: string
+        scope:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillToolUse'
+    SkillRef:
+      type: object
+      additionalProperties: false
+      required:
+      - definition_id
+      - version
+      properties:
+        definition_id:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+    SkillNodeLink:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - node_id
+      - definition_id
+      - version
+      - evidence_ids
+      - evidence
+      - basis
+      - reason
+      - status
+      properties:
+        id:
+          type: string
+        node_id:
+          type: string
+        definition_id:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        evidence_ids:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/Evidence'
+        basis:
+          type: string
+          enum:
+          - requirement
+          - interview
+          - interpretation
+        reason:
+          type: string
+        status:
+          type: string
+          enum:
+          - proposed
+          - approved
+          - rejected
+        stale:
+          type: boolean
+    SkillModel:
+      type: object
+      additionalProperties: false
+      required:
+      - revision
+      - tools
+      - definitions
+      - links
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillTool'
+        definitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillDefinition'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillNodeLink'
+    SkillComparison:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - reasons
+      properties:
+        status:
+          type: string
+          enum:
+          - full
+          - partial
+          - not_established
+        reasons:
+          type: array
+          items:
+            type: string
+    SkillComparisonRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - expected
+      - actual
+      properties:
+        expected:
+          $ref: '#/components/schemas/SkillRef'
+        actual:
+          $ref: '#/components/schemas/SkillRef'
     MarketVacancy:
       type: object
       properties:

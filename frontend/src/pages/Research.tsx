@@ -39,6 +39,7 @@ import { CoverageTab } from "@/components/coverage-tab"
 import { LearningPlanView } from "@/components/learning-plan-view"
 import { RunStageStepper } from "@/components/run-stage"
 import { ProgramLinksTab } from "@/components/program-links-tab"
+import { SkillWorkbench } from "@/components/skill-workbench"
 import { InterviewsTab } from "@/components/interviews-tab"
 import { RunSourcesPanel } from "@/components/run-sources-panel"
 import { ReviewAccess } from "@/components/review-access"
@@ -1697,6 +1698,7 @@ export function Research() {
           <TabsTrigger value="tree" className={TAB_TRIGGER_CLASS}>
             Дерево
           </TabsTrigger>
+          {!guestView && <TabsTrigger value="skills" className={TAB_TRIGGER_CLASS}>ЗУН и инструменты</TabsTrigger>}
           {adminView && (
             <TabsTrigger value="coverage" className={TAB_TRIGGER_CLASS}>
               Покрытие
@@ -1746,6 +1748,7 @@ export function Research() {
         <TabsContent value="coverage">
           {adminView && <CoverageTab runId={id} />}
         </TabsContent>
+        <TabsContent value="skills">{!guestView && <SkillWorkbench key={id} runId={id} readOnly={role === "specialist"} />}</TabsContent>
         <TabsContent value="snapshots">
           {reviewerView && (
             <div className="space-y-6">
