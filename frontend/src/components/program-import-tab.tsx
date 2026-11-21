@@ -5,8 +5,9 @@
  *
  * Данные: `POST /admin/programs/import` (multipart: `file` и `key`),
  * `GET /admin/programs/drafts`, `GET /admin/programs/drafts/{id}`,
- * `POST /admin/programs/drafts/{id}/publish` и
- * `POST /admin/programs/drafts/{id}/reject`.
+ * `POST /admin/programs/drafts/{id}/publish`,
+ * `POST /admin/programs/drafts/{id}/reject` и
+ * `GET /admin/programs/drafts/{id}/export.docx` (скачивание файла черновика).
  *
  * Ошибка разбора приходит со статусом 422: показываем сообщение и предупреждения
  * из тела ответа. 403 означает, что раздел доступен только администратору, 501 -
@@ -20,6 +21,7 @@ import {
   AlertTriangleIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
+  DownloadIcon,
   FileUpIcon,
   GraduationCapIcon,
   Loader2Icon,
@@ -35,6 +37,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   ApiRequestError,
+  downloadProgramDraftDocx,
   getProgramDraft,
   importProgram,
   listProgramDrafts,
@@ -189,6 +192,7 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
   const [taxonomy, setTaxonomy] = useState("")
   const [publishing, setPublishing] = useState(false)
   const [rejecting, setRejecting] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [publishResult, setPublishResult] = useState<ProgramPublishResult | null>(null)
 
@@ -433,6 +437,50 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
     }
   }
 
+  /**
+   * Скачивает черновик в DOCX: сервер отдаёт файл, поэтому берём blob, создаём
+   * временную ссылку, кликаем по ней и сразу освобождаем URL. 403 и 501
+   * объясняем отдельными тостами: это не сбой сети, а ограничение доступа
+   * или возможностей сервера.
+   */
+  const downloadDraftDocx = async () => {
+    if (!draft?.id || downloading) return
+    setDownloading(true)
+    try {
+      const { blob, filename } = await downloadProgramDraftDocx(draft.id)
+      const url = URL.createObjectURL(blob)
+      try {
+        const link = document.createElement("a")
+        link.href = url
+        link.download = filename
+        link.rel = "noopener"
+        link.click()
+      } finally {
+        // Освобождаем URL даже если клик не удался: blob больше не нужен.
+        URL.revokeObjectURL(url)
+      }
+      toast.success("Файл сохранён")
+    } catch (cause) {
+      if (cause instanceof ApiRequestError && cause.status === 403) {
+        toast.error("Не удалось скачать DOCX", {
+          description: "Раздел доступен администратору",
+        })
+        return
+      }
+      if (cause instanceof ApiRequestError && cause.status === 501) {
+        toast.error("Не удалось скачать DOCX", {
+          description: "Сервер не поддерживает выгрузку",
+        })
+        return
+      }
+      toast.error("Не удалось скачать DOCX", {
+        description: describeError(cause, "Повторите попытку."),
+      })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const toggleKsa = (key: string) => {
     setExpandedKsa((previous) => ({ ...previous, [key]: !previous[key] }))
   }
@@ -490,10 +538,27 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
   const warnings = Array.isArray(draft?.report?.warnings) ? draft.report.warnings : []
   const draftStatus = draft?.status ?? "draft"
   const canDecide = draftStatus === "draft"
-  const draftBusy = publishing || rejecting
+  const draftBusy = publishing || rejecting || downloading
   const unknownTaxonomyCodes = Array.isArray(publishResult?.unknown_taxonomy_codes)
     ? publishResult.unknown_taxonomy_codes
     : []
+
+  /** Вторичная кнопка выгрузки DOCX с иконкой и состоянием загрузки. */
+  const downloadButton = (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={draftBusy || !draft?.id}
+      onClick={() => void downloadDraftDocx()}
+    >
+      {downloading ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <DownloadIcon className="size-4" />
+      )}
+      {downloading ? "Скачивание..." : "Скачать DOCX"}
+    </Button>
+  )
 
   return (
     <div className="space-y-5">
@@ -763,16 +828,20 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
                   {rejecting ? <Loader2Icon className="size-4 animate-spin" /> : <XIcon className="size-4" />}
                   {rejecting ? "Отклонение..." : "Отклонить"}
                 </Button>
+                {downloadButton}
               </div>
             </form>
           ) : (
-            <p className="rounded-lg border bg-background p-3 text-sm text-muted-foreground">
-              {draftStatus === "published"
-                ? "Черновик уже опубликован."
-                : draftStatus === "rejected"
-                  ? "Черновик отклонён."
-                  : "Решение по черновику уже принято."}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
+              <p className="text-sm text-muted-foreground">
+                {draftStatus === "published"
+                  ? "Черновик уже опубликован."
+                  : draftStatus === "rejected"
+                    ? "Черновик отклонён."
+                    : "Решение по черновику уже принято."}
+              </p>
+              {downloadButton}
+            </div>
           )}
         </section>
       )}

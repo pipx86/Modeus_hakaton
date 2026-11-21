@@ -5,6 +5,7 @@
 
 import createClient from "openapi-fetch"
 import { frontendLog } from "@/lib/frontend-log"
+import { stripControlChars } from "@/lib/security"
 import { normalizeDashes, normalizeText } from "@/lib/text"
 import { getValidToken } from "@/lib/auth"
 import type { paths, components } from "./schema"
@@ -1231,6 +1232,116 @@ export async function publishProgramDraft(
 /** Отклоняет черновик программы; сервер отвечает 204, повторное решение даёт 409. */
 export async function rejectProgramDraft(id: string): Promise<void> {
   await requestApi(`/admin/programs/drafts/${encodeURIComponent(id)}/reject`, { method: "POST" })
+}
+
+/** MIME-тип документа Word, который сервер отдаёт при выгрузке черновика. */
+export const PROGRAM_DRAFT_DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+/**
+ * Убирает из имени файла пути, кавычки и управляющие символы, чтобы имя из
+ * заголовка сервера нельзя было использовать как путь при сохранении.
+ */
+function sanitizeDownloadFilename(value: string): string {
+  const segments = value.split(/[\\/]/)
+  const base = segments.length > 0 ? segments[segments.length - 1] : value
+  return stripControlChars(base).replace(/"/g, "").trim()
+}
+
+/** Декодирует значение `filename*` (RFC 5987) и возвращает безопасное имя. */
+function decodeExtendedFilename(value: string): string | null {
+  let decoded = value
+  try {
+    decoded = decodeURIComponent(value)
+  } catch {
+    // Некорректная процентная последовательность: используем имя как пришло.
+  }
+  const name = sanitizeDownloadFilename(decoded)
+  return name || null
+}
+
+/**
+ * Достаёт имя файла из `Content-Disposition`.
+ *
+ * Поддерживает `filename="program.docx"`, `filename=program.docx` и
+ * RFC 5987 `filename*=UTF-8''program.docx`. Возвращает `null`, если заголовка
+ * нет или имя после очистки пустое: вызывающий подставит fallback.
+ */
+export function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null
+
+  const extended = /filename\*\s*=\s*([^;]+)/i.exec(header)
+  if (extended) {
+    const value = extended[1].trim().replace(/^["']|["']$/g, "")
+    const parts = /^[^']*'[^']*'(.*)$/.exec(value)
+    const name = decodeExtendedFilename(parts ? parts[1] : value)
+    if (name) return name
+  }
+
+  const plain = /filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]*))/i.exec(header)
+  if (!plain) return null
+  const raw = plain[1] ?? plain[2] ?? plain[3] ?? ""
+  const name = sanitizeDownloadFilename(raw)
+  return name || null
+}
+
+/**
+ * Скачивает DOCX черновика программы
+ * (`GET /admin/programs/drafts/{id}/export.docx`).
+ *
+ * Ответ - готовый файл, поэтому обёртка не использует `requestApi`: она не
+ * разбирает JSON, а возвращает `Blob` и имя из `Content-Disposition`. Если
+ * заголовка нет или имя пустое, имя будет `program-<id>.docx`. Ошибки приходят
+ * как {@link ApiRequestError} со статусом (403, 404, 501): экран сам решает,
+ * какой текст показать.
+ *
+ * @param id Id черновика.
+ */
+export async function downloadProgramDraftDocx(
+  id: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const path = `/admin/programs/drafts/${encodeURIComponent(id)}/export.docx`
+  const headers = new Headers()
+  headers.set("Accept", PROGRAM_DRAFT_DOCX_MIME)
+  const token = getValidToken() ?? apiToken
+  if (token) headers.set("Authorization", `Bearer ${token}`)
+
+  let response: Response
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, { headers })
+  } catch (error) {
+    frontendLog.error("API request failed", { path, error: String(error) })
+    throw new ApiRequestError("Сервер недоступен: проверьте соединение.", 0)
+  }
+
+  if (!response.ok) {
+    let code: string | undefined
+    let message = `Запрос завершился с HTTP ${response.status}`
+    try {
+      const body = (await response.json()) as ApiErrorBody
+      if (typeof body?.code === "string") code = body.code
+      if (typeof body?.message === "string" && body.message.trim()) {
+        message = normalizeText(body.message)
+      }
+    } catch {
+      // Тело не JSON (например, HTML страницы ошибки прокси): сообщение по статусу.
+    }
+    if (response.status >= 500) frontendLog.error("API 5xx", { path, status: response.status })
+    else frontendLog.warn("API 4xx", { path, status: response.status })
+    throw new ApiRequestError(message, response.status, code)
+  }
+
+  let blob: Blob
+  try {
+    blob = await response.blob()
+  } catch {
+    throw new ApiRequestError("Сервер вернул некорректный файл.", response.status)
+  }
+
+  const filename =
+    parseContentDispositionFilename(response.headers.get("content-disposition")) ??
+    `program-${id}.docx`
+  return { blob, filename }
 }
 
 // ---------------------------------------------------------------------------

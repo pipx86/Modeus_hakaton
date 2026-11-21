@@ -10,10 +10,13 @@ import { afterEach, describe, expect, test } from "vitest"
 import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import {
   ApiRequestError,
+  PROGRAM_DRAFT_DOCX_MIME,
   apiClient,
   compareRunSnapshots,
+  downloadProgramDraftDocx,
   listReviewEvidence,
   listRunSnapshots,
+  parseContentDispositionFilename,
 } from "@/lib/api/client"
 import { clearToken, storeToken } from "@/lib/auth"
 
@@ -113,5 +116,45 @@ describe("raw-fetch обёртки вне OpenAPI-схемы", () => {
     const error = await listReviewEvidence("pending").catch((reason: unknown) => reason)
     expect(error).toBeInstanceOf(ApiRequestError)
     expect(error).toMatchObject({ status: 403, code: "FORBIDDEN", message: "нет прав" })
+  })
+})
+
+describe("downloadProgramDraftDocx (DOCX черновика)", () => {
+  test("разбирает имя из Content-Disposition: кавычки, без кавычек и filename*", () => {
+    expect(parseContentDispositionFilename('attachment; filename="program-1.docx"')).toBe(
+      "program-1.docx",
+    )
+    expect(parseContentDispositionFilename("attachment; filename=program-2.docx")).toBe(
+      "program-2.docx",
+    )
+    expect(
+      parseContentDispositionFilename("attachment; filename*=UTF-8''program-%D0%9F.docx"),
+    ).toBe("program-П.docx")
+    expect(parseContentDispositionFilename(null)).toBeNull()
+    expect(parseContentDispositionFilename('attachment; filename=""')).toBeNull()
+  })
+
+  test("возвращает blob и fallback-имя, если заголовка нет", async () => {
+    const file = new Blob(["docx"])
+    setFetchHandler(() => ({
+      status: 200,
+      body: file,
+      headers: { "content-type": PROGRAM_DRAFT_DOCX_MIME },
+    }))
+    const result = await downloadProgramDraftDocx("draft 7")
+    expect(result.blob).toBe(file)
+    expect(result.filename).toBe("program-draft 7.docx")
+    const [call] = fetchCalls()
+    expect(call.url.endsWith("/api/v1/admin/programs/drafts/draft%207/export.docx")).toBe(true)
+  })
+
+  test("403 приходит как ApiRequestError со статусом и кодом", async () => {
+    setFetchHandler(() => ({
+      status: 403,
+      body: { code: "FORBIDDEN", message: "admin only" },
+    }))
+    const error = await downloadProgramDraftDocx("draft-1").catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(ApiRequestError)
+    expect(error).toMatchObject({ status: 403, code: "FORBIDDEN" })
   })
 })

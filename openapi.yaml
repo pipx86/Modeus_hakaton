@@ -9,7 +9,9 @@ info:
     All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`,
     require a JWT bearer token. Successful responses are JSON, except the run export
     which serves Markdown by default (`?format=md`) and JSON on request
-    (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as
+    (`?format=json`), the program draft export
+    `GET /admin/programs/drafts/{id}/export.docx` which serves a DOCX attachment,
+    and run progress, streamed by `GET /runs/{id}/events` as
     `text/event-stream`. Error responses carry a stable machine-readable `code` and
     a human-readable `message`.
     Forecasts, vacancy analytics, market dashboards, cross-run comparison, ZUN suggestions and new learning runs require MODEUS_ENABLE_DEFERRED_API=true. Existing learning plans and snapshot diffs remain readable with the default settings.
@@ -4589,6 +4591,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProgramImportDraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/programs/drafts/{id}/export.docx:
+    get:
+      tags: [academic]
+      summary: Выгрузить черновик образовательной программы в DOCX
+      description: >-
+        Только admin. Возвращает читабельный DOCX: название и реквизиты
+        программы, сводку, таблицу компетенций с знаниями/умениями/навыками,
+        предупреждения импорта и подпись по статусу черновика. Имя файла —
+        program-<безопасный код>.docx, в нём остаются только [a-z0-9._-].
+      operationId: exportProgramImportDraftDOCX
+      parameters:
+        - $ref: "#/components/parameters/ProgramDraftId"
+      responses:
+        "200":
+          description: DOCX-документ черновика.
+          headers:
+            Content-Disposition:
+              description: attachment; filename="program-<безопасный код>.docx".
+              schema:
+                type: string
+              example: attachment; filename="program-09.03.01.docx"
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+            application/msword:
+              schema:
+                type: string
+                format: binary
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

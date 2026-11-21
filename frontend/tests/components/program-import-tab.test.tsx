@@ -2,11 +2,19 @@
  * Импорт образовательной программы: загрузка файла с кодом программы, карточка
  * черновика, предупреждения, публикация с отчётом, отклонение, список черновиков,
  * а также состояния 403, 501 и пустого списка. Сеть подменена общим fetch-stub.
+ *
+ * Отдельный блок - выгрузка DOCX черновика: кнопка в карточке, Bearer-токен в
+ * запросе, временная ссылка на blob и тосты для 403/501.
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
-import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
+import { fetchCalls, setFetchHandler, type StubResponse } from "@/test/fetch-stub"
+import { clearToken, storeToken } from "@/lib/auth"
 import { ProgramImportTab } from "@/components/program-import-tab"
+
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 const IMPORT_RESPONSE = {
   draft_id: "draft-1",
@@ -106,7 +114,53 @@ function stubImportFlow() {
   })
 }
 
+/** JWT-подобный токен: фронтенд только декодирует payload и проверяет exp. */
+function makeToken(payload: Record<string, unknown>): string {
+  const encode = (value: unknown) =>
+    window.btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.signature`
+}
+
+/** Сценарий выгрузки: пустой список, импорт черновика draft-1, ответ export.docx. */
+function stubDraftExport(exportResponse: StubResponse) {
+  setFetchHandler(async (url, init) => {
+    const method = init?.method ?? "GET"
+    if (url.endsWith("/api/v1/admin/programs/drafts") && method === "GET") {
+      return { status: 200, body: { items: [] } }
+    }
+    if (url.endsWith("/api/v1/admin/programs/import") && method === "POST") {
+      return { status: 201, body: IMPORT_RESPONSE }
+    }
+    if (url.endsWith("/api/v1/admin/programs/drafts/draft-1/export.docx")) {
+      return exportResponse
+    }
+    return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+  })
+}
+
+/** Загружает IMPORT_RESPONSE и дожидается карточки черновика. */
+async function uploadDraft() {
+  expect(await screen.findByText("Черновиков пока нет.")).toBeInTheDocument()
+  fillProgramKey()
+  selectFile()
+  fireEvent.click(screen.getByRole("button", { name: "Загрузить" }))
+  expect(await screen.findByText("Прикладная математика и информатика")).toBeInTheDocument()
+}
+
+/** Заглушки blob-ссылок: jsdom не реализует createObjectURL. */
+function stubObjectUrls() {
+  const create = vi.fn<(blob: Blob) => string>(() => "blob:program-draft-docx")
+  const revoke = vi.fn()
+  Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke })
+  return { create, revoke }
+}
+
 describe("ProgramImportTab", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    clearToken()
+  })
+
   it("загружает программу и публикует черновик с отчётом", async () => {
     stubImportFlow()
     render(<ProgramImportTab />)
@@ -433,5 +487,108 @@ describe("ProgramImportTab", () => {
         ),
       ).toBe(true),
     )
+  })
+
+  it("показывает кнопку «Скачать DOCX» в карточке черновика", async () => {
+    stubDraftExport({
+      status: 200,
+      body: new Blob(["docx"], { type: DOCX_MIME }),
+      headers: { "content-type": DOCX_MIME },
+    })
+    render(<ProgramImportTab />)
+    await uploadDraft()
+
+    const card = screen.getByRole("region", { name: "Черновик программы" })
+    // Кнопка выгрузки стоит рядом с решениями по черновику.
+    expect(within(card).getByRole("button", { name: "Опубликовать" })).toBeInTheDocument()
+    expect(within(card).getByRole("button", { name: "Отклонить" })).toBeInTheDocument()
+    expect(within(card).getByRole("button", { name: "Скачать DOCX" })).toBeEnabled()
+  })
+
+  it("скачивает DOCX с Authorization и создаёт временную ссылку на blob", async () => {
+    const token = makeToken({ sub: "admin", role: "admin", exp: 4102444800 })
+    storeToken(token)
+    stubDraftExport({
+      status: 200,
+      body: new Blob(["docx-bytes"], { type: DOCX_MIME }),
+      headers: {
+        "content-type": DOCX_MIME,
+        "content-disposition": 'attachment; filename="program-01.03.02.docx"',
+      },
+    })
+    const urls = stubObjectUrls()
+    const anchors: HTMLAnchorElement[] = []
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        anchors.push(this)
+      })
+    const success = vi.spyOn(toast, "success")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    fireEvent.click(screen.getByRole("button", { name: "Скачать DOCX" }))
+
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+
+    const exportCall = fetchCalls().find((call) =>
+      call.url.endsWith("/api/v1/admin/programs/drafts/draft-1/export.docx"),
+    )
+    expect(exportCall).toBeDefined()
+    expect(exportCall?.init.method ?? "GET").toBe("GET")
+    expect(new Headers(exportCall?.init.headers).get("Authorization")).toBe(`Bearer ${token}`)
+
+    expect(urls.create).toHaveBeenCalledTimes(1)
+    expect(urls.create.mock.calls[0]?.[0]).toBeInstanceOf(Blob)
+    expect(urls.revoke).toHaveBeenCalledWith("blob:program-draft-docx")
+    expect(anchors[0]?.download).toBe("program-01.03.02.docx")
+    expect(anchors[0]?.href).toBe("blob:program-draft-docx")
+    await waitFor(() => expect(success).toHaveBeenCalledWith("Файл сохранён"))
+  })
+
+  it("на 403 показывает тост, что раздел доступен администратору, и не сохраняет файл", async () => {
+    stubDraftExport({
+      status: 403,
+      body: { code: "FORBIDDEN", message: "admin only" },
+    })
+    const urls = stubObjectUrls()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    const error = vi.spyOn(toast, "error")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    fireEvent.click(screen.getByRole("button", { name: "Скачать DOCX" }))
+
+    await waitFor(() => expect(error).toHaveBeenCalled())
+    expect(error.mock.calls[0]?.[1]).toMatchObject({
+      description: "Раздел доступен администратору",
+    })
+    expect(urls.create).not.toHaveBeenCalled()
+    expect(click).not.toHaveBeenCalled()
+    // Состояние загрузки снимается: попытку можно повторить.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Скачать DOCX" })).toBeEnabled(),
+    )
+  })
+
+  it("на 501 показывает тост, что сервер не поддерживает выгрузку, и не сохраняет файл", async () => {
+    stubDraftExport({
+      status: 501,
+      body: { code: "NOT_IMPLEMENTED", message: "not implemented" },
+    })
+    const urls = stubObjectUrls()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    const error = vi.spyOn(toast, "error")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    fireEvent.click(screen.getByRole("button", { name: "Скачать DOCX" }))
+
+    await waitFor(() => expect(error).toHaveBeenCalled())
+    expect(error.mock.calls[0]?.[1]).toMatchObject({
+      description: "Сервер не поддерживает выгрузку",
+    })
+    expect(urls.create).not.toHaveBeenCalled()
+    expect(click).not.toHaveBeenCalled()
   })
 })

@@ -8,6 +8,8 @@ import { vi } from "vitest"
 export interface StubResponse {
   status: number
   body?: unknown
+  /** Дополнительные заголовки ответа: Content-Type и Content-Disposition у файлов. */
+  headers?: Record<string, string>
 }
 
 export type FetchHandler = (
@@ -20,16 +22,25 @@ export interface NormalizedCall {
   init: RequestInit
 }
 
-function toResponse({ status, body }: StubResponse) {
+function toResponse({ status, body, headers }: StubResponse) {
+  const responseHeaders = new Headers({ "content-type": "application/json", ...headers })
   return {
     ok: status >= 200 && status < 300,
     status,
-    headers: {
-      get: (name: string) =>
-        name.toLowerCase() === "content-type" ? "application/json" : null,
-    },
+    headers: responseHeaders,
     json: async () => body,
-    text: async () => (typeof body === "string" ? body : JSON.stringify(body ?? "")),
+    text: async () => {
+      if (typeof body === "string") return body
+      if (body instanceof Blob) return body.text()
+      return JSON.stringify(body ?? "")
+    },
+    // Ответ-файл (например, DOCX) отдаётся тем же стабом, что и JSON.
+    blob: async () =>
+      body instanceof Blob
+        ? body
+        : new Blob([JSON.stringify(body ?? "")], {
+            type: responseHeaders.get("content-type") ?? "",
+          }),
   } as unknown as Response
 }
 
