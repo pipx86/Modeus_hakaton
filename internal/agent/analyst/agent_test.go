@@ -220,6 +220,22 @@ func TestDedupMergesEvidence(t *testing.T) {
 	}
 }
 
+func TestDedupMergesRussianInflectionsWithoutChangingTitle(t *testing.T) {
+	parentID := "function-1"
+	entities := []agent.ExtractedEntity{
+		{Node: domain.Node{ID: "a1", Type: domain.NodeTask, ParentID: &parentID, Title: "Настройка серверов"}},
+		{Node: domain.Node{ID: "a2", Type: domain.NodeTask, ParentID: &parentID, Title: "Настройки сервера"}},
+	}
+
+	deduped := DedupEntities(entities)
+	if len(deduped) != 1 {
+		t.Fatalf("deduped entities = %d, want 1", len(deduped))
+	}
+	if deduped[0].Title != "Настройка серверов" {
+		t.Fatalf("title = %q, want original title", deduped[0].Title)
+	}
+}
+
 func TestNormalizeEntitiesFillsIDs(t *testing.T) {
 	entities := NormalizeEntities([]agent.ExtractedEntity{{
 		Node: domain.Node{

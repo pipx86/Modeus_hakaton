@@ -23,5 +23,5 @@ func professionSources(pgStore *api.PGStore, vacancies domain.VacancyReader, pro
 	if global, err := pgStore.ListGlobalSources(50); err == nil {
 		sources = append(sources, global...)
 	}
-	return sourcecluster.Select("", sources, nil).Sources
+	return sourcecluster.Select(profession, sources, nil).Sources
 }

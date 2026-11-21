@@ -25,6 +25,11 @@ type Result struct {
 	Excluded   int
 }
 
+// minProfessionScore keeps content-only coincidences (for example a backend
+// vacancy that mentions "данные" once) out of an analyst cluster. A title match
+// or two content matches is required.
+const minProfessionScore = 2
+
 // Select keeps sources relevant to profession and explicit run sources. Explicit
 // sources are sources the researcher attached to the run on purpose; they are
 // trusted even when their text does not repeat the profession name.
@@ -54,7 +59,7 @@ func Select(profession string, sources []domain.Source, explicitIDs map[string]b
 			}
 			continue
 		}
-		if len(targetTokens) > 0 && scoreSource(targetTokens, source) == 0 {
+		if len(targetTokens) > 0 && scoreSource(targetTokens, source) < minProfessionScore {
 			result.Excluded++
 			continue
 		}
