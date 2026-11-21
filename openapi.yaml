@@ -4601,6 +4601,90 @@ paths:
           $ref: "#/components/responses/InternalError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+  /admin/programs/drafts/{id}/ksa:
+    post:
+      tags: [academic]
+      summary: Добавить KSA из ОПОП/РПД в черновик образовательной программы
+      description: >-
+        Только admin. Принимает PDF, DOCX, TXT или MD с текстом ОПОП/РПД,
+        извлекает знания, умения и навыки вторым LLM-промптом (fgosksa/v1) и
+        дописывает их в существующий черновик по коду компетенции. Формулировки
+        компетенций не меняются; коды, которых нет в программе, возвращаются в
+        unknown_codes и не создают компетенции. Повторная загрузка того же
+        документа идемпотентна: added=0, already_present равно числу уже
+        сохранённых KSA. PDF/DOCX разбираются существующим механизмом страниц
+        (OCR при OCR_ENABLED=true), TXT/MD — одной страницей. Таймаут —
+        PROGRAM_IMPORT_TIMEOUT_S (по умолчанию 15 минут) и общий для OCR и LLM.
+        Черновик загружается до разбора файла, поэтому неизвестный id даёт 404
+        независимо от содержимого формы. 422 — в документе нет KSA, он не
+        разобрался или LLM-адаптер не настроен; 503 — модель или OCR
+        недоступны либо не успели ответить.
+      operationId: importProgramDraftKSA
+      parameters:
+        - $ref: "#/components/parameters/ProgramDraftId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              additionalProperties: false
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >-
+                    PDF, DOCX, TXT или MD с текстом ОПОП/РПД; не больше 20 МБ.
+                    HTML и таблицы программ (CSV/XLSX/JSON) не принимаются.
+      responses:
+        "200":
+          description: KSA добавлены; счётчики описывают только текущий вызов.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramKSAImportResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: Файл больше 20 МБ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: >-
+            В документе не нашлось KSA (code=PROGRAM_KSA_NOT_FOUND), файл не
+            разобрался (code=PROGRAM_KSA_INVALID), для скана выключен OCR
+            (code=PROGRAM_KSA_OCR_DISABLED, PROGRAM_KSA_OCR_PAGE_LIMIT) или
+            LLM-адаптер не настроен (code=PROGRAM_KSA_LLM_NOT_CONFIGURED).
+            details содержит причину или подсказку по OCR.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramImportError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "503":
+          description: >-
+            LLM-адаптер или OCR недоступны либо не уложились в таймаут.
+            code = PROGRAM_KSA_LLM_UNAVAILABLE, PROGRAM_KSA_LLM_TIMEOUT,
+            PROGRAM_KSA_OCR_UNAVAILABLE, PROGRAM_KSA_OCR_TIMEOUT или
+            PROGRAM_KSA_EXTRACTION_UNAVAILABLE; details уточняет причину.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ProgramImportError"
+                  - $ref: "#/components/schemas/Error"
   /admin/programs/drafts/{id}/export.docx:
     get:
       tags: [academic]
@@ -7494,6 +7578,39 @@ components:
         error:
           type: string
           description: Причина отклонения, если черновик отклонён.
+    ProgramKSAImportResult:
+      type: object
+      description: Результат добавления KSA из ОПОП/РПД в черновик программы.
+      required: [draft_id, added, already_present, unknown_codes, warnings]
+      additionalProperties: false
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        added:
+          type: integer
+          minimum: 0
+          description: Сколько KSA дописано в программу этим вызовом.
+        already_present:
+          type: integer
+          minimum: 0
+          description: >-
+            Сколько KSA уже было в программе; сюда же входят повторы внутри
+            загруженного документа.
+        unknown_codes:
+          type: array
+          description: >-
+            Коды компетенций, которых нет в программе, без дублей и в
+            отсортированном виде. Новые компетенции по ним не создаются.
+          items:
+            type: string
+        warnings:
+          type: array
+          description: >-
+            Предупреждения текущего извлечения: отброшенные пункты, OCR,
+            приблизительные номера страниц DOCX.
+          items:
+            type: string
     ProgramImportResult:
       type: object
       description: Ответ на создание черновика импорта.

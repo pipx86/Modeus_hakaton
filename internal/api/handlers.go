@@ -247,6 +247,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/programs/drafts", s.handleListProgramDrafts)
 	mux.HandleFunc("GET /api/v1/admin/programs/drafts/{id}", s.handleGetProgramDraft)
 	mux.HandleFunc("GET /api/v1/admin/programs/drafts/{id}/export.docx", s.handleExportProgramDraftDOCX)
+	mux.HandleFunc("POST /api/v1/admin/programs/drafts/{id}/ksa", s.handleProgramDraftKSAImport)
 	mux.HandleFunc("POST /api/v1/admin/programs/drafts/{id}/publish", s.handlePublishProgramDraft)
 	mux.HandleFunc("POST /api/v1/admin/programs/drafts/{id}/reject", s.handleRejectProgramDraft)
 	mux.HandleFunc("POST /api/v1/admin/program-sources", s.handleCreateProgramSource)

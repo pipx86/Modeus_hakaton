@@ -5,6 +5,12 @@
  *
  * Отдельный блок - выгрузка DOCX черновика: кнопка в карточке, Bearer-токен в
  * запросе, временная ссылка на blob и тосты для 403/501.
+ *
+ * Ещё один блок - добавление KSA в существующий черновик
+ * (`POST .../drafts/{id}/ksa`): скрытый file-input, multipart с Authorization,
+ * обновление карточки через `getProgramDraft`, тосты со счётчиками и
+ * предупреждением о неизвестных кодах, ошибки 422/503/501 и повторная загрузка
+ * без дубликатов.
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -63,6 +69,64 @@ const PUBLISH_RESPONSE = {
   unmatched_competencies: 1,
   unmatched_ksa: 2,
   unknown_taxonomy_codes: ["tax-9", "tax-10"],
+}
+
+/** Ответ сервера на добавление KSA: один новый элемент, два уже были. */
+const KSA_RESPONSE = {
+  draft_id: "draft-1",
+  added: 1,
+  already_present: 2,
+  unknown_codes: [],
+  warnings: [],
+}
+
+/** Черновик после добавления KSA: у ОПК-1 появился третий элемент. */
+const UPDATED_DRAFT_DETAIL = {
+  program_key: "01.03.02",
+  source_name: "program.csv",
+  status: "draft",
+  program: {
+    title: "Прикладная математика и информатика",
+    code: "01.03.02",
+    organization: "Институт математики",
+    competencies: [
+      {
+        code: "ОПК-1",
+        type: "general_professional",
+        title: "Способен применять фундаментальные знания",
+        taxonomy_codes: ["tax-1"],
+        ksa: [
+          {
+            kind: "knowledge",
+            title: "Основы математического анализа",
+            taxonomy_codes: ["tax-1"],
+          },
+          {
+            kind: "skill",
+            title: "Решать прикладные задачи",
+            taxonomy_codes: [],
+          },
+          {
+            kind: "knowledge",
+            title: "Теория вероятностей",
+            taxonomy_codes: [],
+          },
+        ],
+      },
+      {
+        code: "ПК-2",
+        type: "professional",
+        title: "Способен разрабатывать программное обеспечение",
+        taxonomy_codes: [],
+        ksa: [],
+      },
+    ],
+  },
+  report: {
+    competencies: 2,
+    ksa: 3,
+    warnings: [],
+  },
 }
 
 function selectFile(name = "program.csv"): File {
@@ -145,6 +209,40 @@ async function uploadDraft() {
   selectFile()
   fireEvent.click(screen.getByRole("button", { name: "Загрузить" }))
   expect(await screen.findByText("Прикладная математика и информатика")).toBeInTheDocument()
+}
+
+/**
+ * Сценарий добавления KSA: пустой список, импорт черновика draft-1, ответ
+ * `/drafts/draft-1/ksa` (объект или фабрика для повторных вызовов) и
+ * перечитывание карточки через `GET /drafts/draft-1`.
+ */
+function stubKsaUpload(
+  ksaResponse: StubResponse | (() => StubResponse) = { status: 200, body: KSA_RESPONSE },
+  detail: unknown = UPDATED_DRAFT_DETAIL,
+) {
+  setFetchHandler(async (url, init) => {
+    const method = init?.method ?? "GET"
+    if (url.endsWith("/api/v1/admin/programs/drafts") && method === "GET") {
+      return { status: 200, body: { items: [] } }
+    }
+    if (url.endsWith("/api/v1/admin/programs/import") && method === "POST") {
+      return { status: 201, body: IMPORT_RESPONSE }
+    }
+    if (url.endsWith("/api/v1/admin/programs/drafts/draft-1/ksa") && method === "POST") {
+      return typeof ksaResponse === "function" ? ksaResponse() : ksaResponse
+    }
+    if (url.endsWith("/api/v1/admin/programs/drafts/draft-1") && method === "GET") {
+      return { status: 200, body: detail }
+    }
+    return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+  })
+}
+
+/** Выбирает файл в скрытом input добавления KSA. */
+function selectKsaFile(name = "ksa.docx"): File {
+  const file = new File(["ksa-content"], name, { type: DOCX_MIME })
+  fireEvent.change(screen.getByLabelText("Файл KSA"), { target: { files: [file] } })
+  return file
 }
 
 /** Заглушки blob-ссылок: jsdom не реализует createObjectURL. */
@@ -590,5 +688,222 @@ describe("ProgramImportTab", () => {
     })
     expect(urls.create).not.toHaveBeenCalled()
     expect(click).not.toHaveBeenCalled()
+  })
+
+  it("показывает в карточке черновика кнопку «Добавить KSA» и скрытый file-input", async () => {
+    stubKsaUpload()
+    render(<ProgramImportTab />)
+    await uploadDraft()
+
+    const card = screen.getByRole("region", { name: "Черновик программы" })
+    expect(within(card).getByRole("button", { name: "Добавить KSA" })).toBeEnabled()
+
+    const input = within(card).getByLabelText("Файл KSA")
+    expect(input).toHaveAttribute("type", "file")
+    expect(input).toHaveAttribute("accept", ".pdf,.docx,.txt,.md")
+    expect(input).toHaveClass("hidden")
+  })
+
+  it("загружает KSA multipart-запросом, обновляет таблицу и показывает тост", async () => {
+    const token = makeToken({ sub: "admin", role: "admin", exp: 4102444800 })
+    storeToken(token)
+    stubKsaUpload()
+    const success = vi.spyOn(toast, "success")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+
+    const ksaFile = selectKsaFile("ksa.docx")
+
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Добавлено KSA: 1, уже было: 2"),
+    )
+
+    const ksaCall = fetchCalls().find((call) =>
+      call.url.endsWith("/api/v1/admin/programs/drafts/draft-1/ksa"),
+    )
+    expect(ksaCall).toBeDefined()
+    expect(ksaCall?.init.method).toBe("POST")
+    const form = ksaCall?.init.body as FormData
+    expect(form.get("file")).toBe(ksaFile)
+    expect(new Headers(ksaCall?.init.headers).get("Authorization")).toBe(`Bearer ${token}`)
+
+    // Карточка перечитана через getProgramDraft: счётчик и таблица обновились.
+    expect(await screen.findByText("Компетенций: 2 · KSA: 3")).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Показать KSA: Способен применять фундаментальные знания",
+      }),
+    )
+    expect(screen.getByText("Теория вероятностей")).toBeInTheDocument()
+    expect(screen.getByText("Основы математического анализа")).toBeInTheDocument()
+    expect(screen.getByText("Решать прикладные задачи")).toBeInTheDocument()
+  })
+
+  it("показывает спиннер и блокирует кнопку, пока KSA загружаются", async () => {
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/admin/programs/drafts") && method === "GET") {
+        return { status: 200, body: { items: [] } }
+      }
+      if (url.endsWith("/api/v1/admin/programs/import") && method === "POST") {
+        return { status: 201, body: IMPORT_RESPONSE }
+      }
+      if (url.endsWith("/api/v1/admin/programs/drafts/draft-1/ksa") && method === "POST") {
+        await gate
+        return { status: 200, body: KSA_RESPONSE }
+      }
+      if (url.endsWith("/api/v1/admin/programs/drafts/draft-1") && method === "GET") {
+        return { status: 200, body: UPDATED_DRAFT_DETAIL }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    const success = vi.spyOn(toast, "success")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+
+    selectKsaFile()
+    const button = screen.getByRole("button", { name: "Добавить KSA" })
+    await waitFor(() => expect(button).toBeDisabled())
+    expect(button).toHaveAttribute("aria-busy", "true")
+    expect(button.querySelector("svg.animate-spin")).not.toBeNull()
+
+    release?.()
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Добавлено KSA: 1, уже было: 2"),
+    )
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(button).toHaveAttribute("aria-busy", "false")
+  })
+
+  it("на 422 показывает понятную ошибку извлечения KSA и не перечитывает черновик", async () => {
+    stubKsaUpload({
+      status: 422,
+      body: { code: "KSA_EXTRACT_FAILED", message: "не удалось извлечь KSA" },
+    })
+    const error = vi.spyOn(toast, "error")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    selectKsaFile()
+
+    await waitFor(() => expect(error).toHaveBeenCalledTimes(1))
+    expect(error.mock.calls[0]?.[0]).toBe("Не удалось извлечь KSA")
+    expect(error.mock.calls[0]?.[1]?.description).toContain("не удалось разобрать")
+
+    expect(
+      fetchCalls().some(
+        (call) =>
+          call.url.endsWith("/drafts/draft-1") && (call.init.method ?? "GET") === "GET",
+      ),
+    ).toBe(false)
+    // Состояние загрузки снимается: попытку можно повторить.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Добавить KSA" })).toBeEnabled())
+  })
+
+  it("на 503 сообщает, что LLM недоступна", async () => {
+    stubKsaUpload({
+      status: 503,
+      body: { code: "LLM_UNAVAILABLE", message: "llm unavailable" },
+    })
+    const error = vi.spyOn(toast, "error")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    selectKsaFile()
+
+    await waitFor(() => expect(error).toHaveBeenCalledTimes(1))
+    expect(error.mock.calls[0]?.[0]).toBe("LLM недоступна")
+    expect(error.mock.calls[0]?.[1]?.description).toContain("временно недоступен")
+  })
+
+  it("на 501 сообщает, что сервер не поддерживает добавление KSA", async () => {
+    stubKsaUpload({
+      status: 501,
+      body: { code: "NOT_IMPLEMENTED", message: "not implemented" },
+    })
+    const error = vi.spyOn(toast, "error")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    selectKsaFile()
+
+    await waitFor(() => expect(error).toHaveBeenCalledTimes(1))
+    expect(error.mock.calls[0]?.[0]).toBe("Добавление KSA не поддерживается")
+    expect(error.mock.calls[0]?.[1]?.description).toContain("функция ещё не включена")
+  })
+
+  it("при unknown_codes показывает предупреждение только с кодами компетенций", async () => {
+    stubKsaUpload({
+      status: 200,
+      body: {
+        draft_id: "draft-1",
+        added: 1,
+        already_present: 0,
+        unknown_codes: ["ОПК-9", "ПК-7"],
+        warnings: [],
+      },
+    })
+    const warning = vi.spyOn(toast, "warning")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+    selectKsaFile()
+
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(1))
+    expect(warning.mock.calls[0]?.[0]).toBe("Неизвестные коды компетенций")
+    const description = warning.mock.calls[0]?.[1]?.description
+    expect(description).toBe("ОПК-9, ПК-7")
+    expect(description).not.toContain("draft-1")
+  })
+
+  it("повторная загрузка не дублирует KSA и обновляет карточку по already_present", async () => {
+    const responses = [
+      KSA_RESPONSE,
+      { draft_id: "draft-1", added: 0, already_present: 3, unknown_codes: [], warnings: [] },
+    ]
+    let uploadIndex = 0
+    stubKsaUpload(() => ({
+      status: 200,
+      body: responses[Math.min(uploadIndex++, responses.length - 1)],
+    }))
+    const success = vi.spyOn(toast, "success")
+
+    render(<ProgramImportTab />)
+    await uploadDraft()
+
+    selectKsaFile("first.docx")
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Добавлено KSA: 1, уже было: 2"),
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Добавить KSA" })).toBeEnabled())
+
+    selectKsaFile("second.docx")
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Добавлено KSA: 0, уже было: 3"),
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Добавить KSA" })).toBeEnabled())
+
+    // Каждая успешная загрузка перечитывает черновик, а не дописывает KSA на клиенте.
+    const detailCalls = fetchCalls().filter(
+      (call) =>
+        call.url.endsWith("/drafts/draft-1") && (call.init.method ?? "GET") === "GET",
+    )
+    expect(detailCalls).toHaveLength(2)
+    expect(screen.getByText("Компетенций: 2 · KSA: 3")).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Показать KSA: Способен применять фундаментальные знания",
+      }),
+    )
+    expect(screen.getAllByText("Основы математического анализа")).toHaveLength(1)
+    expect(screen.getAllByText("Решать прикладные задачи")).toHaveLength(1)
+    expect(screen.getAllByText("Теория вероятностей")).toHaveLength(1)
   })
 })

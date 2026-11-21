@@ -12,4 +12,5 @@ import "embed"
 //go:embed analyst/v1
 //go:embed synthesizer/v1
 //go:embed fgos/v1
+//go:embed fgosksa/v1
 var FS embed.FS

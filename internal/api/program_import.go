@@ -103,6 +103,9 @@ type programDraftStore interface {
 	CreateProgramImportDraft(ctx context.Context, draft ProgramImportDraft) (ProgramImportDraft, error)
 	ListProgramImportDrafts(ctx context.Context) ([]ProgramImportDraftSummary, error)
 	GetProgramImportDraft(ctx context.Context, id string) (ProgramImportDraft, error)
+	// SaveProgramImportDraftProgram сохраняет program_json и счётчики отчёта
+	// после добавления KSA из второго документа (ОПОП/РПД).
+	SaveProgramImportDraftProgram(ctx context.Context, id string, program ingestion.EducationProgram, report ProgramImportReport) error
 	MarkProgramImportDraftPublished(ctx context.Context, id, decidedBy string, report ingestion.EducationReport) error
 	MarkProgramImportDraftRejected(ctx context.Context, id, decidedBy, reason string) error
 }

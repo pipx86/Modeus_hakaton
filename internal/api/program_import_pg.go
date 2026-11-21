@@ -98,6 +98,35 @@ FROM program_import_drafts WHERE id=$1`, id).Scan(
 	return draft, nil
 }
 
+// SaveProgramImportDraftProgram сохраняет обновлённую программу черновика и
+// пересчитанные счётчики отчёта. Статус и предупреждения импорта не меняются:
+// добавление KSA из ОПОП/РПД — уточнение черновика, а не новое решение по нему.
+func (p *PGStore) SaveProgramImportDraftProgram(ctx context.Context, id string, program ingestion.EducationProgram, report ProgramImportReport) error {
+	if !validUUID(id) {
+		return ErrNotFound
+	}
+	if p == nil || p.Pool == nil {
+		return ErrServiceUnavailable
+	}
+	programJSON, err := json.Marshal(program)
+	if err != nil {
+		return err
+	}
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	tag, err := p.Pool.Exec(ctx, `UPDATE program_import_drafts SET program_json=$2::jsonb,report_json=$3::jsonb WHERE id=$1`,
+		id, programJSON, reportJSON)
+	if err != nil {
+		return translate(err)
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	return ErrNotFound
+}
+
 func (p *PGStore) MarkProgramImportDraftPublished(ctx context.Context, id, decidedBy string, report ingestion.EducationReport) error {
 	if !validUUID(id) {
 		return ErrNotFound

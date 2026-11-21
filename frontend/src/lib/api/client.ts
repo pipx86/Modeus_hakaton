@@ -1177,6 +1177,20 @@ export interface ProgramDraftDetail {
   report?: ProgramImportReport
 }
 
+/**
+ * Ответ `POST /admin/programs/drafts/{id}/ksa` (200): сколько элементов KSA
+ * добавлено из файла, сколько уже было в черновике и какие коды компетенций
+ * из файла не нашлись в программе.
+ */
+export interface ProgramKsaResult {
+  draft_id: string
+  added: number
+  already_present: number
+  /** Коды компетенций из файла, которых нет в черновике (не технические id). */
+  unknown_codes: string[]
+  warnings: string[]
+}
+
 /** Ответ `POST /admin/programs/drafts/{id}/publish`. */
 export interface ProgramPublishResult {
   program_id: string
@@ -1212,6 +1226,49 @@ export async function listProgramDrafts(): Promise<ProgramDraftSummary[]> {
 /** Черновик программы с компетенциями и отчётом проверки. */
 export async function getProgramDraft(id: string): Promise<ProgramDraftDetail> {
   return requestApi<ProgramDraftDetail>(`/admin/programs/drafts/${encodeURIComponent(id)}`)
+}
+
+/**
+ * Приводит ответ добавления KSA к полной форме: старый бэкенд мог не прислать
+ * счётчики или списки. Пустые строки и нестроковые элементы отбрасываются.
+ */
+function normalizeKsaResult(data: Partial<ProgramKsaResult> | null | undefined, fallbackId: string): ProgramKsaResult {
+  const codes = Array.isArray(data?.unknown_codes) ? data.unknown_codes : []
+  const warnings = Array.isArray(data?.warnings) ? data.warnings : []
+  return {
+    draft_id: typeof data?.draft_id === "string" && data.draft_id.trim() ? data.draft_id : fallbackId,
+    added: typeof data?.added === "number" ? data.added : 0,
+    already_present: typeof data?.already_present === "number" ? data.already_present : 0,
+    unknown_codes: codes
+      .filter((code): code is string => typeof code === "string" && code.trim() !== "")
+      .map((code) => normalizeText(code)),
+    warnings: warnings
+      .filter((warning): warning is string => typeof warning === "string" && warning.trim() !== "")
+      .map((warning) => normalizeText(warning)),
+  }
+}
+
+/**
+ * Добавляет KSA в уже созданный черновик программы, извлекая их из файла
+ * (PDF, DOCX, TXT или MD). Повторная загрузка не создаёт дубликатов: сервер
+ * возвращает `already_present`, и экран обновляет карточку перечитыванием
+ * черновика.
+ *
+ * Ошибки приходят как {@link ApiRequestError}: 404 - черновик не найден,
+ * 422 - не удалось извлечь KSA, 503 - LLM недоступна, 501 - сервер без
+ * хранилища черновиков.
+ *
+ * @param id Id черновика.
+ * @param file Файл, из которого нужно извлечь KSA.
+ */
+export async function uploadProgramDraftKSA(id: string, file: File): Promise<ProgramKsaResult> {
+  const body = new FormData()
+  body.append("file", file)
+  const data = await requestApi<Partial<ProgramKsaResult> | null>(
+    `/admin/programs/drafts/${encodeURIComponent(id)}/ksa`,
+    { method: "POST", body },
+  )
+  return normalizeKsaResult(data, id)
 }
 
 /**

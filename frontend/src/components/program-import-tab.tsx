@@ -5,6 +5,7 @@
  *
  * Данные: `POST /admin/programs/import` (multipart: `file` и `key`),
  * `GET /admin/programs/drafts`, `GET /admin/programs/drafts/{id}`,
+ * `POST /admin/programs/drafts/{id}/ksa` (multipart: `file`),
  * `POST /admin/programs/drafts/{id}/publish`,
  * `POST /admin/programs/drafts/{id}/reject` и
  * `GET /admin/programs/drafts/{id}/export.docx` (скачивание файла черновика).
@@ -14,9 +15,13 @@
  * что сервер ещё не поддерживает импорт. Технические id черновика и программы
  * в интерфейсе не показываются: только код программы, название и организация.
  *
+ * KSA можно добавить в существующий черновик отдельным файлом (PDF, DOCX, TXT
+ * или MD): после загрузки карточка перечитывается через `getProgramDraft`, а
+ * счётчики из ответа (`added`, `already_present`) показываются в тосте.
+ *
  * Экспорт: {@link ProgramImportTab}.
  */
-import { Fragment, useEffect, useState, type FormEvent } from "react"
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -43,6 +48,7 @@ import {
   listProgramDrafts,
   publishProgramDraft,
   rejectProgramDraft,
+  uploadProgramDraftKSA,
   type ProgramDraftDetail,
   type ProgramDraftSummary,
   type ProgramImportResponse,
@@ -51,6 +57,9 @@ import {
 
 /** Форматы файлов программы, которые принимает импорт. */
 const IMPORT_ACCEPT = ".csv,.xlsx,.json,.txt,.pdf,.docx"
+
+/** Форматы файлов, из которых сервер извлекает KSA для черновика. */
+const KSA_ACCEPT = ".pdf,.docx,.txt,.md"
 
 const DRAFT_STATUS_LABELS: Record<string, string> = {
   draft: "Черновик",
@@ -156,6 +165,47 @@ function describeActionFailure(error: ApiRequestError, fallback: string): string
   return describeError(error, fallback)
 }
 
+/**
+ * Заголовок и пояснение для тоста об ошибке добавления KSA. 422, 503 и 501
+ * объясняются отдельно: это ожидаемые ответы сервера, а не сбой сети.
+ */
+function describeKsaFailure(error: ApiRequestError): { title: string; description: string } {
+  if (error.status === 422) {
+    return {
+      title: "Не удалось извлечь KSA",
+      description: "Файл не удалось разобрать. Проверьте формат и содержимое и повторите попытку.",
+    }
+  }
+  if (error.status === 503) {
+    return {
+      title: "LLM недоступна",
+      description: "Сервис извлечения KSA временно недоступен. Повторите попытку позже.",
+    }
+  }
+  if (error.status === 501) {
+    return {
+      title: "Добавление KSA не поддерживается",
+      description: "На этом сервере функция ещё не включена.",
+    }
+  }
+  if (error.status === 404) {
+    return {
+      title: "Черновик не найден",
+      description: "Возможно, его уже удалили. Обновите список черновиков.",
+    }
+  }
+  if (error.status === 403) {
+    return {
+      title: "Раздел доступен администратору",
+      description: "Добавлять KSA может только роль admin.",
+    }
+  }
+  return {
+    title: "Не удалось добавить KSA",
+    description: describeError(error, "Повторите попытку."),
+  }
+}
+
 /** Черновик, который нужно открыть по запросу снаружи; `seq` различает повторные клики. */
 export interface ProgramImportDraftRequest {
   id: string
@@ -185,6 +235,10 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
   const [programKey, setProgramKey] = useState("")
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<ImportFormError | null>(null)
+
+  const [ksaUploading, setKsaUploading] = useState(false)
+  const [ksaInputKey, setKsaInputKey] = useState(0)
+  const ksaInputRef = useRef<HTMLInputElement>(null)
 
   const [draft, setDraft] = useState<ProgramDraftDetail | null>(null)
   const [openingId, setOpeningId] = useState<string | null>(null)
@@ -341,6 +395,64 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
       })
     } finally {
       setUploading(false)
+    }
+  }
+
+  /**
+   * Добавляет KSA в открытый черновик из выбранного файла. После успешного
+   * ответа карточка перечитывается через `getProgramDraft`: таблица KSA
+   * обновляется данными сервера, поэтому повторная загрузка не дублирует
+   * элементы (их количество приходит в `already_present`).
+   */
+  const addKsaFromFile = async (selected: File | null) => {
+    if (!selected || !draft?.id || ksaUploading) return
+    const draftId = draft.id
+    setKsaUploading(true)
+    try {
+      const result = await uploadProgramDraftKSA(draftId, selected)
+      try {
+        const fresh = await getProgramDraft(draftId)
+        setDraft((previous) =>
+          previous?.id === draftId
+            ? {
+                ...fresh,
+                id: draftId,
+                program_key: fresh.program_key ?? previous.program_key,
+                source_name: fresh.source_name ?? previous.source_name,
+                status: fresh.status ?? previous.status,
+              }
+            : previous,
+        )
+      } catch (cause) {
+        toast.warning("Черновик не обновился", {
+          description: describeError(
+            cause,
+            "Обновите список черновиков и откройте карточку заново.",
+          ),
+        })
+      }
+      toast.success(`Добавлено KSA: ${result.added}, уже было: ${result.already_present}`)
+      if (result.unknown_codes.length > 0) {
+        toast.warning("Неизвестные коды компетенций", {
+          description: result.unknown_codes.join(", "),
+        })
+      }
+      if (result.warnings.length > 0) {
+        toast.warning("Предупреждения при извлечении KSA", {
+          description: result.warnings.join(" "),
+        })
+      }
+    } catch (cause) {
+      if (cause instanceof ApiRequestError) {
+        const { title, description } = describeKsaFailure(cause)
+        toast.error(title, { description })
+      } else {
+        toast.error("Не удалось добавить KSA", { description: "Повторите попытку." })
+      }
+    } finally {
+      setKsaUploading(false)
+      // Сбрасываем input, чтобы повторный выбор того же файла снова вызвал onChange.
+      setKsaInputKey((value) => value + 1)
     }
   }
 
@@ -538,10 +650,28 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
   const warnings = Array.isArray(draft?.report?.warnings) ? draft.report.warnings : []
   const draftStatus = draft?.status ?? "draft"
   const canDecide = draftStatus === "draft"
-  const draftBusy = publishing || rejecting || downloading
+  const draftBusy = publishing || rejecting || downloading || ksaUploading
   const unknownTaxonomyCodes = Array.isArray(publishResult?.unknown_taxonomy_codes)
     ? publishResult.unknown_taxonomy_codes
     : []
+
+  /** Вторичная кнопка добавления KSA из файла: спиннер на время загрузки. */
+  const addKsaButton = (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={draftBusy || !draft?.id}
+      aria-busy={ksaUploading}
+      onClick={() => ksaInputRef.current?.click()}
+    >
+      {ksaUploading ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <FileUpIcon className="size-4" />
+      )}
+      Добавить KSA
+    </Button>
+  )
 
   /** Вторичная кнопка выгрузки DOCX с иконкой и состоянием загрузки. */
   const downloadButton = (
@@ -657,6 +787,17 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
           <p className="text-xs text-muted-foreground">
             Компетенций: {competencyTotal} · KSA: {ksaTotal}
           </p>
+
+          <input
+            key={ksaInputKey}
+            ref={ksaInputRef}
+            type="file"
+            accept={KSA_ACCEPT}
+            className="hidden"
+            aria-label="Файл KSA"
+            disabled={draftBusy}
+            onChange={(event) => void addKsaFromFile(event.target.files?.[0] ?? null)}
+          />
 
           {publishResult && (
             <div
@@ -829,6 +970,7 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
                   {rejecting ? "Отклонение..." : "Отклонить"}
                 </Button>
                 {downloadButton}
+                {addKsaButton}
               </div>
             </form>
           ) : (
@@ -840,7 +982,10 @@ export function ProgramImportTab({ openDraftRequest }: ProgramImportTabProps) {
                     ? "Черновик отклонён."
                     : "Решение по черновику уже принято."}
               </p>
-              {downloadButton}
+              <div className="flex flex-wrap gap-2">
+                {downloadButton}
+                {addKsaButton}
+              </div>
             </div>
           )}
         </section>

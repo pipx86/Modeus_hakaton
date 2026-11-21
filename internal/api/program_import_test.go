@@ -106,6 +106,19 @@ func (f *fakeProgramDraftStore) GetProgramImportDraft(_ context.Context, id stri
 	return draft, nil
 }
 
+func (f *fakeProgramDraftStore) SaveProgramImportDraftProgram(_ context.Context, id string, program ingestion.EducationProgram, report ProgramImportReport) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	draft, ok := f.drafts[id]
+	if !ok {
+		return ErrNotFound
+	}
+	draft.Program = program
+	draft.Report = report
+	f.drafts[id] = draft
+	return nil
+}
+
 func (f *fakeProgramDraftStore) MarkProgramImportDraftPublished(_ context.Context, id, decidedBy string, report ingestion.EducationReport) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -495,6 +508,10 @@ func (s *draftOnlyStore) ListProgramImportDrafts(ctx context.Context) ([]Program
 
 func (s *draftOnlyStore) GetProgramImportDraft(ctx context.Context, id string) (ProgramImportDraft, error) {
 	return s.drafts.GetProgramImportDraft(ctx, id)
+}
+
+func (s *draftOnlyStore) SaveProgramImportDraftProgram(ctx context.Context, id string, program ingestion.EducationProgram, report ProgramImportReport) error {
+	return s.drafts.SaveProgramImportDraftProgram(ctx, id, program, report)
 }
 
 func (s *draftOnlyStore) MarkProgramImportDraftPublished(ctx context.Context, id, decidedBy string, report ingestion.EducationReport) error {
