@@ -136,6 +136,7 @@ describe("админка", () => {
     expect(screen.getByText("HTTP 4xx")).toBeInTheDocument()
     expect(screen.getByText("Токены по моделям")).toBeInTheDocument()
     expect(screen.getByText("Материалы для агентов")).toBeInTheDocument()
+    expect(screen.getByText("Импорт образовательной программы")).toBeInTheDocument()
     expect((await screen.findAllByText("Профстандарт аналитика")).length).toBeGreaterThan(0)
     expect(await screen.findByText("Средняя оценка")).toBeInTheDocument()
 

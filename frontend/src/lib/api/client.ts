@@ -207,13 +207,36 @@ export async function generateProgramLinks(runId:string):Promise<ProgramLink[]> 
 export class ApiRequestError extends Error {
   readonly status: number
   readonly code?: string
+  /** Предупреждения разбора из тела ошибки (например, 422 при импорте программы). */
+  readonly warnings: string[]
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, warnings: string[] = []) {
     super(message)
     this.name = "ApiRequestError"
     this.status = status
     this.code = code
+    this.warnings = warnings
   }
+}
+
+/** Тело ошибки API; `warnings` бэкенд может прислать рядом с `message` или в `report`. */
+interface ApiErrorBody {
+  code?: unknown
+  message?: unknown
+  warnings?: unknown
+  report?: { warnings?: unknown } | null
+}
+
+/** Достаёт строковые предупреждения из тела ошибки, отбрасывая пустые значения. */
+function parseErrorWarnings(body: ApiErrorBody | null): string[] {
+  const raw = Array.isArray(body?.warnings)
+    ? body.warnings
+    : Array.isArray(body?.report?.warnings)
+      ? body.report.warnings
+      : []
+  return raw
+    .filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    .map(normalizeText)
 }
 
 /**
@@ -238,17 +261,19 @@ async function requestApi<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     let code: string | undefined
+    let warnings: string[] = []
     let message = `Запрос завершился с HTTP ${response.status}`
     try {
-      const body = (await response.json()) as { code?: unknown; message?: unknown }
+      const body = (await response.json()) as ApiErrorBody
       if (typeof body?.code === "string") code = body.code
       if (typeof body?.message === "string" && body.message.trim()) message = normalizeText(body.message)
+      warnings = parseErrorWarnings(body)
     } catch {
       // Тело не JSON (например, HTML страницы ошибки прокси) - оставляем сообщение по статусу.
     }
     if (response.status >= 500) frontendLog.error("API 5xx", { path, status: response.status })
     else frontendLog.warn("API 4xx", { path, status: response.status })
-    throw new ApiRequestError(message, response.status, code)
+    throw new ApiRequestError(message, response.status, code, warnings)
   }
 
   if (response.status === 204) return undefined as T
@@ -1070,4 +1095,140 @@ export async function getProgramSuggestions(runId: string): Promise<ProgramSugge
     summary: typeof data?.summary === "string" ? data.summary : "",
     disclaimer: typeof data?.disclaimer === "string" ? data.disclaimer : "",
   }
+}
+
+// ---------------------------------------------------------------------------
+// Импорт образовательной программы: загрузка файла, черновик с проверкой,
+// публикация и отклонение. Эндпоинтов пока нет в сгенерированной OpenAPI-схеме,
+// формы фиксированы планом MVP, поэтому ниже ручные типы и те же raw-fetch
+// обёртки, что у остальных MVP-карточек. 422 при разборе приходит как
+// ApiRequestError с сообщением и предупреждениями в `warnings`.
+// ---------------------------------------------------------------------------
+
+/** Элемент KSA (знания, умения, навыки) внутри компетенции программы. */
+export interface ProgramKsa {
+  kind?: string
+  title: string
+  taxonomy_codes?: string[]
+}
+
+/** Компетенция импортированной программы вместе с элементами KSA. */
+export interface ProgramCompetency {
+  code?: string
+  /**
+   * Тип компетенции отдельным полем, а не частью кода: `universal` (УК),
+   * `general_professional` (ОПК), `professional` (ПК) или `other` (иное).
+   */
+  type?: string
+  title: string
+  taxonomy_codes?: string[]
+  ksa?: ProgramKsa[]
+}
+
+/** Программа в ответе импорта или черновика. */
+export interface ImportedProgram {
+  title: string
+  code?: string
+  organization?: string
+  competencies?: ProgramCompetency[]
+}
+
+/** Отчёт разбора файла: сколько компетенций и KSA найдено и что стоит проверить. */
+export interface ProgramImportReport {
+  competencies: number
+  ksa: number
+  warnings: string[]
+}
+
+/** Ответ `POST /admin/programs/import` (201). */
+export interface ProgramImportResponse {
+  draft_id: string
+  program: ImportedProgram
+  report: ProgramImportReport
+  status: string
+}
+
+/** Черновик в списке `GET /admin/programs/drafts`. */
+export interface ProgramDraftSummary {
+  id: string
+  program_key: string
+  source_name: string
+  status: string
+  created_at: string
+  competencies: number
+  ksa: number
+}
+
+/** Черновик с программой и отчётом (`GET /admin/programs/drafts/{id}`). */
+export interface ProgramDraftDetail {
+  id?: string
+  program_key?: string
+  source_name?: string
+  status?: string
+  created_at?: string
+  program: ImportedProgram
+  report?: ProgramImportReport
+}
+
+/** Ответ `POST /admin/programs/drafts/{id}/publish`. */
+export interface ProgramPublishResult {
+  program_id: string
+  unmatched_competencies: number
+  unmatched_ksa: number
+  unknown_taxonomy_codes: string[]
+}
+
+/**
+ * Загружает файл образовательной программы (CSV, XLSX, JSON или TXT) и создаёт
+ * черновик. Ошибка разбора приходит как {@link ApiRequestError} со статусом 422,
+ * `message` и массивом `warnings`.
+ *
+ * @param file Файл программы.
+ * @param key Код программы, обязательное поле формы импорта.
+ */
+export async function importProgram(file: File, key: string): Promise<ProgramImportResponse> {
+  const body = new FormData()
+  body.append("file", file)
+  body.append("key", key)
+  return requestApi<ProgramImportResponse>("/admin/programs/import", { method: "POST", body })
+}
+
+/** Последние черновики программ; форма `{items: [...]}`, старый бэкенд мог отдать массив. */
+export async function listProgramDrafts(): Promise<ProgramDraftSummary[]> {
+  const data = await requestApi<ProgramDraftSummary[] | { items?: ProgramDraftSummary[] }>(
+    "/admin/programs/drafts",
+  )
+  if (Array.isArray(data)) return data
+  return Array.isArray(data?.items) ? data.items : []
+}
+
+/** Черновик программы с компетенциями и отчётом проверки. */
+export async function getProgramDraft(id: string): Promise<ProgramDraftDetail> {
+  return requestApi<ProgramDraftDetail>(`/admin/programs/drafts/${encodeURIComponent(id)}`)
+}
+
+/**
+ * Публикует черновик программы.
+ *
+ * @param id Id черновика.
+ * @param taxonomy Необязательный код или название таксономии, к которой привязать
+ *   компетенции при публикации.
+ */
+export async function publishProgramDraft(
+  id: string,
+  taxonomy?: string,
+): Promise<ProgramPublishResult> {
+  return requestApi<ProgramPublishResult>(
+    `/admin/programs/drafts/${encodeURIComponent(id)}/publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(taxonomy ? { taxonomy } : {}),
+    },
+  )
+}
+
+/** Отклоняет черновик программы; сервер отвечает 204, повторное решение даёт 409. */
+export async function rejectProgramDraft(id: string): Promise<void> {
+  await requestApi(`/admin/programs/drafts/${encodeURIComponent(id)}/reject`, { method: "POST" })
 }

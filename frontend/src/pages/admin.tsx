@@ -10,6 +10,7 @@ import {
   ChevronDownIcon,
   DatabaseIcon,
   DownloadIcon,
+  FileUpIcon,
   RefreshCwIcon,
   ShieldAlertIcon,
   Trash2Icon,
@@ -23,6 +24,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
+import { ProgramImportTab } from "@/components/program-import-tab"
 import { apiBaseUrl, apiClient, apiToken, type Run } from "@/lib/api/client"
 import { getCurrentRole, getValidToken } from "@/lib/auth"
 import { normalizeDashes } from "@/lib/text"
@@ -1137,6 +1139,21 @@ export function Admin() {
           )}
         </CardContent>
         )}
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileUpIcon className="size-4 shrink-0" />
+            Импорт образовательной программы
+          </CardTitle>
+          <CardDescription>
+            Загрузка файла программы, проверка черновика и публикация компетенций с элементами
+            KSA. Черновик можно отклонить, а перед публикацией указать таксономию.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ProgramImportTab />
+        </CardContent>
       </Card>
       <Card>
         <CardHeader>
