@@ -596,15 +596,20 @@ func (p *PGStore) ClearRunTree(runID string) error {
 	return translate(tx.Commit(ctx))
 }
 
-// ListGlobalSources возвращает материалы, загруженные в админке (run_id IS NULL).
+// ListGlobalSources returns shared materials but leaves ungraded vacancies out
+// of the analysis context. Their source records remain stored for updates.
 func (p *PGStore) ListGlobalSources(limit int) ([]domain.Source, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 5
 	}
 	ctx, cancel := operation()
 	defer cancel()
-	rows, err := p.Pool.Query(ctx, `SELECT id::text,type,title,COALESCE(content,''),COALESCE(source_url,''),created_at
-FROM sources WHERE run_id IS NULL ORDER BY created_at DESC LIMIT $1`, limit)
+	rows, err := p.Pool.Query(ctx, `SELECT s.id::text,s.type,s.title,COALESCE(s.content,''),COALESCE(s.source_url,''),s.created_at
+FROM sources s
+LEFT JOIN vacancy_market_details d ON d.source_id = s.id
+WHERE s.run_id IS NULL
+  AND (s.type <> 'vacancy' OR derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
+ORDER BY s.created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, translate(err)
 	}

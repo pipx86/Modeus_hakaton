@@ -9,7 +9,6 @@ import (
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/domain"
-	"activity-descriptor/internal/store"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -23,8 +22,8 @@ type runSourceContentReader interface {
 var _ runSourceContentReader = (*PGStore)(nil)
 
 // ListRunSourceContents returns the sources linked to a run through run_sources,
-// including their content. It is used by the finalizer so the analyst can quote
-// standard/vacancy materials; unlike ListRunSources it is not cheap, so the
+// including their content. Ungraded vacancies stay stored, but are excluded
+// from analysis context; unlike ListRunSources this is not cheap, so the
 // metadata-only method stays the default for read/export paths.
 func (p *PGStore) ListRunSourceContents(ctx context.Context, runID string) ([]domain.Source, error) {
 	if p == nil || p.Pool == nil {
@@ -37,23 +36,35 @@ func (p *PGStore) ListRunSourceContents(ctx context.Context, runID string) ([]do
 	if err := runUUID.Scan(runID); err != nil || !runUUID.Valid {
 		return nil, ErrNotFound
 	}
-	items, err := store.New(p.Pool).ListSourcesByRun(ctx, runUUID)
+	rows, err := p.Pool.Query(ctx, `
+		SELECT s.id::text, s.type, s.title, COALESCE(s.content, ''), COALESCE(s.source_url, '')
+		FROM sources s
+		JOIN run_sources rs ON rs.source_id = s.id
+		LEFT JOIN vacancy_market_details d ON d.source_id = s.id
+		WHERE rs.run_id = $1
+		  AND (s.type <> 'vacancy' OR derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
+		ORDER BY s.created_at, s.id`, runUUID)
 	if err != nil {
 		return nil, translate(err)
 	}
-	out := make([]domain.Source, 0, len(items))
-	for _, item := range items {
-		sourceType := domain.SourceType(item.Type)
+	defer rows.Close()
+	out := make([]domain.Source, 0)
+	for rows.Next() {
+		var id, sourceTypeValue, title, content, sourceURL string
+		if err := rows.Scan(&id, &sourceTypeValue, &title, &content, &sourceURL); err != nil {
+			return nil, translate(err)
+		}
+		sourceType := domain.SourceType(sourceTypeValue)
 		out = append(out, domain.Source{
-			ID:        item.ID.String(),
+			ID:        id,
 			Type:      sourceType,
-			Title:     item.Title,
-			Content:   item.Content.String,
-			SourceURL: item.SourceUrl.String,
+			Title:     title,
+			Content:   content,
+			SourceURL: sourceURL,
 			Priority:  domain.SourcePriority(sourceType),
 		})
 	}
-	return out, nil
+	return out, translate(rows.Err())
 }
 
 // LinkRunSources attaches already existing sources to a run. Unknown or

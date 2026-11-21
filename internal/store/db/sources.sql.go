@@ -202,14 +202,16 @@ func (q *Queries) ListSourcesByRun(ctx context.Context, runID pgtype.UUID) ([]So
 
 const listVacancyPublicationTrend = `-- name: ListVacancyPublicationTrend :many
 SELECT COALESCE(to_char(vacancy_published_at AT TIME ZONE 'UTC', 'YYYY-MM'), '')::text AS month,
-       COALESCE(NULLIF(provider, ''), 'unknown')::text AS provider,
+       COALESCE(NULLIF(s.provider, ''), 'unknown')::text AS provider,
        count(*) AS vacancy_count
-FROM sources
-WHERE type = 'vacancy'
-  AND strpos(lower(title), lower($1::text)) > 0
-  AND (vacancy_published_at IS NULL OR
-       (vacancy_published_at >= $2::timestamptz AND
-        vacancy_published_at < $3::timestamptz))
+FROM sources s
+LEFT JOIN vacancy_market_details d ON d.source_id = s.id
+WHERE s.type = 'vacancy'
+  AND derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> ''
+  AND strpos(lower(s.title), lower($1::text)) > 0
+  AND (s.vacancy_published_at IS NULL OR
+       (s.vacancy_published_at >= $2::timestamptz AND
+        s.vacancy_published_at < $3::timestamptz))
 GROUP BY 1, 2
 ORDER BY 1, 2
 `
