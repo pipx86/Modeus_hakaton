@@ -11,7 +11,7 @@ import (
 // DefaultLease — срок lease-блокировки по умолчанию. Он заметно больше
 // таймаута HTTP-запроса и разбора документа, но достаточно мал, чтобы после
 // падения воркера источник снова стал доступен без ручного вмешательства.
-const DefaultLease = 10 * time.Minute
+const DefaultLease = 20 * time.Minute
 
 var ownerSequence atomic.Uint64
 
