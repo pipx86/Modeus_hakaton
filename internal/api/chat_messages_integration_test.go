@@ -146,9 +146,14 @@ func TestChatHistorySurvivesRestart(t *testing.T) {
 		t.Fatalf("user answer stored %d times, want 1", userRows)
 	}
 
-	// Five more answers exhaust the six-question plan and trigger the final
-	// courses message, which must also be persisted.
+	// Opt in after the four core questions, then finish the additional pair.
 	for answerIndex := 1; answerIndex < 6; answerIndex++ {
+		if answerIndex == 4 {
+			choice := do(t, handler, http.MethodPost, "/api/v1/runs/"+run.ID+"/interview-continuation", "user", `{"continue":true}`)
+			if choice.Code != http.StatusNoContent {
+				t.Fatalf("continue interview = %d: %s", choice.Code, choice.Body.String())
+			}
+		}
 		waitForChatMessages(t, handler, run.ID, 2*answerIndex+2)
 		rec := do(t, handler, http.MethodPost, path, "user", `{"content":"Конкретный ответ про аналитику данных."}`)
 		if rec.Code != http.StatusCreated {

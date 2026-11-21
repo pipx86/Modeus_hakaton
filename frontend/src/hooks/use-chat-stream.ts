@@ -28,6 +28,7 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
   const [thinking, setThinking] = useState(false)
+  const [progressRevision, setProgressRevision] = useState(0)
   const [streamState, setStreamState] = useState<StreamState>("open")
   const knownIds = useRef<Set<string>>(new Set())
   const previousStreamState = useRef<StreamState>("open")
@@ -122,6 +123,11 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
 
     const disconnect = connectRunEvents(runId, {
       onThinking: () => setThinking(true),
+      onInterviewProgress: () => {
+        setThinking(false)
+        setProgressRevision((value) => value + 1)
+        void loadHistory()
+      },
       onAgentMessage: (message) => {
         appendMessages([message])
         setThinking(false)
@@ -136,6 +142,7 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
         if (state === "open") {
           if (previous !== "open" && !interviewFinished) toast.success("Соединение восстановлено")
           void loadHistory()
+          setProgressRevision((value) => value + 1)
         }
         if (state === "reconnecting" && previous === "open" && !interviewFinished) {
           toast.warning("Соединение потеряно", {
@@ -157,6 +164,7 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
             if (!mounted.current || runIdRef.current !== runId) return
             if (data) {
               appendMessages(data)
+              setProgressRevision((value) => value + 1)
               return
             }
             // Прогон удалён или сессия исчезла: опрашивать дальше бессмысленно.
@@ -210,6 +218,7 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
     setDraft,
     sending,
     thinking,
+    progressRevision,
     streamState,
     chatClosed,
     interviewFinished,

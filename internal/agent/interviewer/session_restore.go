@@ -19,6 +19,7 @@ import (
 type Snapshot struct {
 	State        domain.InterviewSession `json:"state"`
 	Plan         []domain.QuestionLevel  `json:"plan"`
+	Extended     bool                    `json:"extended,omitempty"`
 	Last         agent.InterviewerOutput `json:"last,omitempty"`
 	LastError    string                  `json:"last_error,omitempty"`
 	ClarifiedFor int                     `json:"clarified_for"`
@@ -31,6 +32,7 @@ func (s *Session) Snapshot() Snapshot {
 	snapshot := Snapshot{
 		State:        cloneState(s.state),
 		Plan:         append([]domain.QuestionLevel(nil), s.plan...),
+		Extended:     s.extended,
 		Last:         s.last,
 		ClarifiedFor: s.clarifiedFor,
 		Fallbacks:    s.fallbacks,
@@ -57,6 +59,7 @@ func (s *Session) Restore(snapshot Snapshot) error {
 	}
 	s.state = cloneState(snapshot.State)
 	s.plan = append([]domain.QuestionLevel(nil), snapshot.Plan...)
+	s.extended = snapshot.Extended
 	s.last = snapshot.Last
 	s.clarifiedFor = snapshot.ClarifiedFor
 	s.fallbacks = snapshot.Fallbacks
@@ -112,6 +115,9 @@ func validateSnapshot(snapshot Snapshot) error {
 	}
 	if len(state.Answers) > len(state.Questions) {
 		return fmt.Errorf("interviewer: snapshot has %d answers for %d questions", len(state.Answers), len(state.Questions))
+	}
+	if snapshot.Extended && (len(snapshot.Plan) != CoreQuestionCount+2 || len(state.Answers) < CoreQuestionCount) {
+		return errors.New("interviewer: snapshot has invalid extended plan")
 	}
 	if snapshot.ClarifiedFor < -1 {
 		return fmt.Errorf("interviewer: snapshot has invalid clarification cursor %d", snapshot.ClarifiedFor)

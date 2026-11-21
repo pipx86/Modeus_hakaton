@@ -330,6 +330,9 @@ func TestServiceRestoresInterviewAfterRestart(t *testing.T) {
 			t.Fatalf("Post after restart %d: %v", index, err)
 		}
 	}
+	if err := restarted.DecideContinuation("run-restart", false); err != nil {
+		t.Fatalf("finish interview: %v", err)
+	}
 	final := waitForStoredMessages(t, restarted, "run-restart", 10)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !contains(last.Content, "Интервью завершено") {
@@ -421,6 +424,64 @@ func TestRestoredSessionAsksPendingQuestionOnSubscribe(t *testing.T) {
 	// The restored dialog continues normally.
 	if _, err := service.Post("run-pending", "Конкретный ответ про аналитику данных."); err != nil {
 		t.Fatalf("Post after resume: %v", err)
+	}
+}
+
+func TestOptionalQuestionsSurviveRestart(t *testing.T) {
+	const runID = "run-optional"
+	store := newFakeSessionStore()
+	store.seedRun(runID, domain.RunRunning)
+	first := NewService(fakeInterviewer{}, nil)
+	first.SetSessionStore(store)
+	if err := first.Start(runID, "Аналитик данных"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		waitForStoredMessages(t, first, runID, 2*i+2)
+		if _, err := first.Post(runID, "Готовлю отчёты."); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restarted := NewService(fakeInterviewer{}, nil)
+	restarted.SetSessionStore(store)
+	progress, err := restarted.Progress(runID)
+	if err != nil || !progress.AwaitingContinuation || progress.Finishing || progress.Total != 4 {
+		t.Fatalf("progress after restart = %+v, %v", progress, err)
+	}
+	if _, err := restarted.Post(runID, "Лишний ответ"); !errors.Is(err, ErrContinuationUnavailable) {
+		t.Fatalf("unexpected answer accepted during choice: %v", err)
+	}
+	if err := restarted.DecideContinuation(runID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.DecideContinuation(runID, false); !errors.Is(err, ErrContinuationUnavailable) {
+		t.Fatalf("second decision = %v", err)
+	}
+	waitForStoredMessages(t, restarted, runID, 10)
+	if _, err := restarted.Post(runID, "Проверяю входные данные."); err != nil {
+		t.Fatal(err)
+	}
+	waitForStoredMessages(t, restarted, runID, 12)
+
+	finalized := make(chan domain.InterviewSession, 1)
+	resumed := NewService(fakeInterviewer{}, nil)
+	resumed.SetSessionStore(store)
+	resumed.SetFinalizer(func(_ context.Context, _, _ string, state domain.InterviewSession) (domain.RunStatus, error) {
+		finalized <- state
+		return domain.RunDone, nil
+	})
+	if _, err := resumed.Post(runID, "Открываю выгрузку."); err != nil {
+		t.Fatalf("answer to the last question after restart: %v", err)
+	}
+	select {
+	case state := <-finalized:
+		if len(state.Answers) != 6 || len(state.Questions) != 6 ||
+			state.Questions[4].Level != domain.QuestionTask || state.Questions[5].Level != domain.QuestionAction {
+			t.Fatalf("unexpected final transcript: %+v", state)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("finalizer did not finish the extended interview")
 	}
 }
 

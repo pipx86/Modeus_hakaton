@@ -94,7 +94,7 @@ var ErrAnalysisUnavailable = errors.New("chat: AI analysis unavailable")
 // leaves the interviewer without extra context.
 type SourceContextLoader func(runID, profession string) string
 
-const welcomeMessage = "Здравствуйте! Я чат-интервьюер. Я задам вам несколько вопросов о вашей профессиональной деятельности, чтобы описать ваши функции, задачи и действия."
+const welcomeMessage = "Здравствуйте! Я задам четыре коротких вопроса о вашей работе. После них можно завершить интервью или ответить ещё на два."
 const learningWelcomeMessage = "Здравствуйте! Я помогу составить план обучения. Сначала задам несколько вопросов о вашем текущем опыте и знаниях, чтобы не повторять то, что вы уже умеете."
 
 // resumeMode records what the dialog still owes when a session was restored
@@ -141,17 +141,18 @@ type session struct {
 	profession    string
 	promptVersion string
 
-	mu          sync.Mutex
-	session     *interviewer.Session
-	messages    []Message
-	seq         int
-	version     int64
-	asking      bool
-	finalizing  bool
-	finished    bool
-	learning    bool
-	resume      resumeMode
-	subscribers map[chan Event]struct{}
+	mu                   sync.Mutex
+	session              *interviewer.Session
+	messages             []Message
+	seq                  int
+	version              int64
+	asking               bool
+	finalizing           bool
+	finished             bool
+	learning             bool
+	awaitingContinuation bool
+	resume               resumeMode
+	subscribers          map[chan Event]struct{}
 }
 
 // NewService creates a chat service. client may be nil, in which case fallback
@@ -405,14 +406,17 @@ func (s *Service) start(runID, profession string, learning bool) error {
 }
 
 // Progress returns live interview coverage and answer quality.
-func (s *Service) Progress(runID string) (interviewer.Progress, error) {
+func (s *Service) Progress(runID string) (InterviewProgress, error) {
 	sess, err := s.lookup(runID)
 	if err != nil {
-		return interviewer.Progress{}, err
+		return InterviewProgress{}, err
 	}
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	return sess.session.Progress(), nil
+	return InterviewProgress{
+		Progress: sess.session.Progress(), AwaitingContinuation: sess.awaitingContinuation,
+		Finishing: sess.finalizing || sess.finished || sess.resume == resumeComplete,
+	}, nil
 }
 
 // Messages returns a copy of the chat history. When the active session is not
@@ -480,6 +484,10 @@ func (s *Service) Post(runID, content string) (Message, error) {
 		sess.mu.Unlock()
 		return Message{}, ErrSessionFinished
 	}
+	if sess.awaitingContinuation {
+		sess.mu.Unlock()
+		return Message{}, ErrContinuationUnavailable
+	}
 	if sess.asking {
 		// The interviewer is generating the question. The interviewer state is
 		// only mutated while asking is true, so answering now would race with it.
@@ -512,14 +520,17 @@ func (s *Service) Post(runID, content string) (Message, error) {
 		return Message{}, fmt.Errorf("chat: answer: %w", err)
 	}
 	done := sess.session.Done()
+	awaitingContinuation := done && sess.session.CanExtend()
 	status := SessionActive
-	if done {
+	if done && !awaitingContinuation {
 		// Close before the snapshot so the persisted session has the final
 		// interviewer status; the pipeline itself runs asynchronously.
 		sess.session.Close()
 		status = SessionFinalizing
 	}
-	if err := s.persistStep(sess, s.snapshotLocked(sess, status, ""), []Message{message}); err != nil {
+	snapshot := s.snapshotLocked(sess, status, "")
+	snapshot.AwaitingContinuation = awaitingContinuation
+	if err := s.persistStep(sess, snapshot, []Message{message}); err != nil {
 		if restoreErr := sess.session.Restore(snapshotBefore); restoreErr != nil {
 			log.Printf("chat: rollback session state for run %s: %v", runID, restoreErr)
 		}
@@ -534,6 +545,12 @@ func (s *Service) Post(runID, content string) (Message, error) {
 	sess.messages = append(sess.messages, message)
 	sess.seq = message.Sequence
 
+	if awaitingContinuation {
+		sess.awaitingContinuation = true
+		sess.mu.Unlock()
+		s.publish(runID, Event{Type: "interview_progress"})
+		return message, nil
+	}
 	if done {
 		sess.finalizing = true
 		sess.mu.Unlock()
@@ -678,27 +695,30 @@ func (s *Service) restore(runID string, store SessionStore) (*session, error) {
 	learning := snapshot.Learning || (len(messages) > 0 && messages[0].Role == "agent" && messages[0].Content == learningWelcomeMessage)
 	interview.SetLearning(learning)
 	sess := &session{
-		learning:      learning,
-		runID:         runID,
-		profession:    snapshot.Profession,
-		promptVersion: snapshot.PromptVersion,
-		session:       interview,
-		messages:      messages,
-		seq:           lastSequence(messages),
-		version:       snapshot.Version,
-		subscribers:   make(map[chan Event]struct{}),
+		learning:             learning,
+		awaitingContinuation: snapshot.AwaitingContinuation && interview.CanExtend(),
+		runID:                runID,
+		profession:           snapshot.Profession,
+		promptVersion:        snapshot.PromptVersion,
+		session:              interview,
+		messages:             messages,
+		seq:                  lastSequence(messages),
+		version:              snapshot.Version,
+		subscribers:          make(map[chan Event]struct{}),
 	}
 	switch {
 	case snapshot.Status == SessionFinalizing:
 		// The pipeline was interrupted after the last answer: finish it.
 		interview.Close()
 		sess.resume = resumeComplete
+	case sess.awaitingContinuation:
+		// The respondent still needs to choose whether to continue.
+	case interview.PendingAnswer():
+		// Even the last question still needs an answer before analysis can start.
 	case interview.Done():
 		// Compatibility with snapshots written before the finalizing status.
 		interview.Close()
 		sess.resume = resumeComplete
-	case interview.PendingAnswer():
-		sess.resume = resumeNone
 	default:
 		// The answer is already stored but the next question was never written
 		// (the process died mid-LLM call): ask it once.
@@ -840,9 +860,12 @@ func (s *Service) askNext(sess *session) {
 		sess.mu.Unlock()
 		return
 	}
+	// Generate on a copy so Progress can read the current state while the
+	// question is in flight. Next only appends to the question history.
+	next := *sess.session
 	sess.mu.Unlock()
 
-	question, err := sess.session.Next(ctx)
+	question, err := next.Next(ctx)
 	if err != nil {
 		sess.mu.Lock()
 		sess.asking = false
@@ -855,6 +878,7 @@ func (s *Service) askNext(sess *session) {
 	}
 
 	sess.mu.Lock()
+	sess.session = &next
 	message := newMessage(sess.runID, sess.seq+1, "agent", question.Text)
 	persistErr := s.persistStep(sess, s.snapshotLocked(sess, SessionActive, ""), []Message{message})
 	sess.messages = append(sess.messages, message)
@@ -1024,14 +1048,15 @@ func newMessage(runID string, seq int, role, content string) Message {
 // sess.mu held.
 func (s *Service) snapshotLocked(sess *session, status SessionStatus, finalStatus domain.RunStatus) SessionSnapshot {
 	return SessionSnapshot{
-		SchemaVersion: SessionSchemaVersion,
-		Profession:    sess.profession,
-		PromptVersion: sess.promptVersion,
-		Status:        status,
-		FinalStatus:   finalStatus,
-		Learning:      sess.learning,
-		Interviewer:   sess.session.Snapshot(),
-		Version:       sess.version,
+		SchemaVersion:        SessionSchemaVersion,
+		Profession:           sess.profession,
+		PromptVersion:        sess.promptVersion,
+		Status:               status,
+		FinalStatus:          finalStatus,
+		Learning:             sess.learning,
+		AwaitingContinuation: sess.awaitingContinuation,
+		Interviewer:          sess.session.Snapshot(),
+		Version:              sess.version,
 	}
 }
 

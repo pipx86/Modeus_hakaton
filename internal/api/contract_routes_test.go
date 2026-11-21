@@ -39,6 +39,8 @@ var demoContractRoutes = []contractRoute{
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/tree"},
 	{http.MethodPut, "/api/v1/runs/" + contractID + "/tree"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/answers"},
+	{http.MethodGet, "/api/v1/runs/" + contractID + "/interview-progress"},
+	{http.MethodPost, "/api/v1/runs/" + contractID + "/interview-continuation"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/export"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/events"},
 	{http.MethodGet, "/api/v1/runs/" + contractID + "/search"},

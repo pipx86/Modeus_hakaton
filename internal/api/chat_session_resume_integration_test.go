@@ -399,12 +399,16 @@ func TestChatSessionResumesInterruptedFinalization(t *testing.T) {
 	if err := first.Start(runID, "Аналитик данных"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	for answerIndex := 0; answerIndex < 6; answerIndex++ {
+	for answerIndex := 0; answerIndex < 4; answerIndex++ {
 		waitForChatMessages(t, firstHandler, runID, 2*answerIndex+2)
 		rec := do(t, firstHandler, http.MethodPost, path, "teacher", `{"content":"Конкретный ответ про аналитику данных."}`)
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("POST %d = %d: %s", answerIndex, rec.Code, rec.Body.String())
 		}
+	}
+	choice := do(t, firstHandler, http.MethodPost, "/api/v1/runs/"+runID+"/interview-continuation", "teacher", `{"continue":false}`)
+	if choice.Code != http.StatusNoContent {
+		t.Fatalf("finish interview = %d: %s", choice.Code, choice.Body.String())
 	}
 	waitForChatSessionStatus(t, pool, runID, chat.SessionFinalizing)
 	t.Cleanup(func() { close(blockFinalizer) })
@@ -425,7 +429,7 @@ func TestChatSessionResumesInterruptedFinalization(t *testing.T) {
 		t.Fatal("finalizer was not resumed after restart")
 	}
 	restartedHandler := NewServerWithChat(pg, restarted).Routes()
-	final := waitForChatMessages(t, restartedHandler, runID, 14)
+	final := waitForChatMessages(t, restartedHandler, runID, 10)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !strings.Contains(last.Content, "«Дерево»") {
 		t.Fatalf("final Stepik message was not persisted after resumed finalization: %+v", last)

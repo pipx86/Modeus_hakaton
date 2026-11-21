@@ -343,11 +343,21 @@ export interface InterviewProgress {
   covered_topics: string[]
   uncovered_topics: string[]
   contradictions?: string[]
+  awaiting_continuation?: boolean
+  finishing?: boolean
 }
 
 /** Возвращает живой прогресс активного интервью. */
 export async function getInterviewProgress(runId: string): Promise<InterviewProgress> {
   return requestApi<InterviewProgress>(`/runs/${encodeURIComponent(runId)}/interview-progress`)
+}
+
+export async function decideInterviewContinuation(runId: string, continueInterview: boolean): Promise<void> {
+  return requestApi<void>(`/runs/${encodeURIComponent(runId)}/interview-continuation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ continue: continueInterview }),
+  })
 }
 
 /** Пояснение к результату с ограничениями или резервному сценарию. */

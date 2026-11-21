@@ -224,6 +224,9 @@ func TestServicePersistsResearchResultMessage(t *testing.T) {
 			t.Fatalf("Post %d: %v", i, err)
 		}
 	}
+	if err := service.DecideContinuation("run-final", false); err != nil {
+		t.Fatalf("finish interview: %v", err)
+	}
 	waitFor(t, 3*time.Second, func() bool {
 		stored, err := store.ListMessages(context.Background(), "run-final")
 		if err != nil || len(stored) == 0 {

@@ -92,6 +92,32 @@ function renderTab() {
 }
 
 describe("ChatTab", () => {
+  it.each([
+    ["Завершить интервью", false],
+    ["Ответить ещё на два вопроса", true],
+  ] as const)("показывает сохранённый выбор и отправляет действие «%s»", async (label, continueInterview) => {
+    let awaiting = true
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/interview-progress")) {
+        return { status: 200, body: { asked: 4, total: 4, awaiting_continuation: awaiting } }
+      }
+      if (url.endsWith("/interview-continuation") && init.method === "POST") {
+        awaiting = false
+        return { status: 204 }
+      }
+      return { status: 200, body: [] }
+    })
+    renderTab()
+
+    const choice = await screen.findByRole("button", { name: label })
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    fireEvent.click(choice)
+
+    await waitFor(() => expect(choice).not.toBeInTheDocument())
+    const post = fetchCalls().find((call) => call.url.endsWith("/interview-continuation"))
+    expect(JSON.parse(String(post?.init.body))).toEqual({ continue: continueInterview })
+  })
+
   it("показывает историю сообщений запуска", async () => {
     stubChat()
     renderTab()

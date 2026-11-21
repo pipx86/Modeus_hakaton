@@ -75,6 +75,8 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		// The restored session is generating the next question; the client should
 		// retry after the agent_message event arrives.
 		writeErr(w, http.StatusConflict, "CHAT_CONFLICT", "интервьюер готовит следующий вопрос; повторите отправку после его появления")
+	case errors.Is(err, chat.ErrContinuationUnavailable):
+		writeErr(w, http.StatusConflict, "CHAT_CONFLICT", "выберите, завершить интервью или ответить ещё на два вопроса")
 	case err != nil:
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось сохранить ответ")
 	default:
