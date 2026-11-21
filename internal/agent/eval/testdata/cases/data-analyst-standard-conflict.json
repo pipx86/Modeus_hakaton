@@ -116,7 +116,7 @@
   },
   "expect": {
     "status": "done",
-    "questions": 6,
+    "questions": 4,
     "fallbacks": 0,
     "tree_nodes": 5,
     "node_types": ["role", "function", "task", "action"],
@@ -125,6 +125,6 @@
     "conflicts": 1,
     "conflict_winners": ["standard"],
     "conflict_values": [2],
-    "model_calls": 7
+    "model_calls": 5
   }
 }

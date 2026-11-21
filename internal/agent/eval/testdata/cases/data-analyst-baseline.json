@@ -85,7 +85,7 @@
   },
   "expect": {
     "status": "done",
-    "questions": 6,
+    "questions": 4,
     "clarifications": 0,
     "fallbacks": 0,
     "tree_nodes": 4,
@@ -93,6 +93,6 @@
     "min_evidence_per_node": 1,
     "evidence": 4,
     "conflicts": 0,
-    "model_calls": 7
+    "model_calls": 5
   }
 }

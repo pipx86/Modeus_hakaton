@@ -54,7 +54,7 @@ func TestServiceAttachesRunIDToLLMCalls(t *testing.T) {
 		return err == nil && len(messages) >= 2
 	})
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 4; i++ {
 		waitFor(t, 3*time.Second, func() bool {
 			messages, err := service.Messages(runID)
 			return err == nil && len(messages) >= 2*i+2

@@ -10,14 +10,11 @@ import (
 )
 
 // defaultPlan is the level sequence of a standard interview: ground the role,
-// then its functions, then tasks and concrete actions. A clarification question
-// replaces the next planned level when an answer is too vague.
+// then its functions, one recurring task and one concrete action.
 func defaultPlan() []domain.QuestionLevel {
 	return []domain.QuestionLevel{
 		domain.QuestionRole,
 		domain.QuestionFunction,
-		domain.QuestionTask,
-		domain.QuestionAction,
 		domain.QuestionTask,
 		domain.QuestionAction,
 	}
@@ -63,14 +60,13 @@ func FallbackQuestion(level domain.QuestionLevel, profession string) domain.Ques
 	text := ""
 	switch level {
 	case domain.QuestionRole:
-		text = "Опишите, пожалуйста, чем вы занимаетесь в роли «" + target +
-			"» и за что отвечаете."
+		text = "Чем вы обычно занимаетесь в роли «" + target + "»?"
 	case domain.QuestionFunction:
-		text = "Назовите, пожалуйста, крупные направления работы, которые входят в вашу роль."
+		text = "Какое направление вашей работы занимает больше всего времени?"
 	case domain.QuestionTask:
-		text = "Какие конкретные задачи вы выполняете регулярно в рамках этой работы?"
+		text = "Какую задачу в этой работе вы выполняете регулярно?"
 	case domain.QuestionAction:
-		text = "Какие конкретные действия и инструменты вы используете, выполняя эту задачу?"
+		text = "Что вы обычно делаете первым при выполнении этой задачи?"
 	default:
 		text = "Опишите, пожалуйста, одну конкретную задачу, которую вы выполняли на прошлой неделе."
 	}

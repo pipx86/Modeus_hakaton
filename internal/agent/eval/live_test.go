@@ -208,8 +208,8 @@ func TestRunLiveCaseWithFakeClients(t *testing.T) {
 	if !metrics.ContractValid {
 		t.Error("contract_valid = false, want true")
 	}
-	if metrics.Questions != 6 || metrics.Clarifications != 0 {
-		t.Errorf("questions/clarifications = %d/%d, want 6/0", metrics.Questions, metrics.Clarifications)
+	if metrics.Questions != 4 || metrics.Clarifications != 0 {
+		t.Errorf("questions/clarifications = %d/%d, want 4/0", metrics.Questions, metrics.Clarifications)
 	}
 	for _, nodeType := range []string{"role", "function", "task", "action"} {
 		if metrics.NodeTypes[nodeType] == 0 {
@@ -222,8 +222,8 @@ func TestRunLiveCaseWithFakeClients(t *testing.T) {
 	if metrics.Evidence < 4 {
 		t.Errorf("evidence = %d, want at least 4", metrics.Evidence)
 	}
-	if metrics.ModelCalls != 7 {
-		t.Errorf("model_calls = %d, want 7 (six questions + one analyst call)", metrics.ModelCalls)
+	if metrics.ModelCalls != 5 {
+		t.Errorf("model_calls = %d, want 5 (four questions + one analyst call)", metrics.ModelCalls)
 	}
 	if metrics.ModelErrors != 0 || metrics.FallbackCalls != 0 {
 		t.Errorf("model_errors/fallback_calls = %d/%d, want 0/0", metrics.ModelErrors, metrics.FallbackCalls)
@@ -231,8 +231,8 @@ func TestRunLiveCaseWithFakeClients(t *testing.T) {
 	if got, want := strings.Join(metrics.Models, ","), "fake-analyst,fake-interviewer"; got != want {
 		t.Errorf("models = %q, want %q", got, want)
 	}
-	if metrics.CallsByAgent["interviewer"] != 6 || metrics.CallsByAgent["analyst"] != 1 {
-		t.Errorf("calls_by_agent = %v, want interviewer 6 and analyst 1", metrics.CallsByAgent)
+	if metrics.CallsByAgent["interviewer"] != 4 || metrics.CallsByAgent["analyst"] != 1 {
+		t.Errorf("calls_by_agent = %v, want interviewer 4 and analyst 1", metrics.CallsByAgent)
 	}
 }
 
@@ -286,11 +286,11 @@ func TestRunLiveCaseFallbackIsMeasured(t *testing.T) {
 	if metrics.Status != "done" {
 		t.Errorf("status = %q, want done (the fallback answered every call)", metrics.Status)
 	}
-	if metrics.ModelCalls != 14 {
-		t.Errorf("model_calls = %d, want 14 (7 failed primary + 7 fallback)", metrics.ModelCalls)
+	if metrics.ModelCalls != 10 {
+		t.Errorf("model_calls = %d, want 10 (5 failed primary + 5 fallback)", metrics.ModelCalls)
 	}
-	if metrics.ModelErrors != 7 || metrics.FallbackCalls != 7 || metrics.FallbackServed != 7 {
-		t.Errorf("errors/fallback/fallback-served = %d/%d/%d, want 7/7/7",
+	if metrics.ModelErrors != 5 || metrics.FallbackCalls != 5 || metrics.FallbackServed != 5 {
+		t.Errorf("errors/fallback/fallback-served = %d/%d/%d, want 5/5/5",
 			metrics.ModelErrors, metrics.FallbackCalls, metrics.FallbackServed)
 	}
 	if got, want := strings.Join(metrics.Models, ","), "fake-fallback,fake-primary"; got != want {

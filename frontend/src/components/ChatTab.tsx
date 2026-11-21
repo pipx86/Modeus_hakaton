@@ -221,19 +221,7 @@ export function ChatTab({ runId, active, runStatus, stage, focus, readOnly = fal
       )}
       {progress && (
         <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="font-medium">
-              Вопросы: {progress.asked} из {progress.total}
-            </span>
-            {progress.average_quality > 0 && (
-              <span className="text-muted-foreground">Качество ответов: {progress.average_quality}/100</span>
-            )}
-          </div>
-          {progress.contradictions && progress.contradictions.length > 0 && (
-            <p className="mt-1 text-warning">
-              Расхождение с GitHub: {progress.contradictions.join(", ")}. Агент уточнит это в следующем вопросе.
-            </p>
-          )}
+          <span className="font-medium">Вопросы: {progress.asked} из {progress.total}</span>
         </div>
       )}
       {loadError && messages.length > 0 && (

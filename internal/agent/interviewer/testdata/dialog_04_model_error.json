@@ -28,11 +28,12 @@
     "levels": [
       "role",
       "function",
-      "task"
+      "task",
+      "action"
     ],
-    "questions": 3,
+    "questions": 4,
     "clarifications": 0,
-    "fallbacks": 3,
-    "model_errors": 3
+    "fallbacks": 4,
+    "model_errors": 4
   }
 }

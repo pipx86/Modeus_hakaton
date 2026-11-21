@@ -42,8 +42,6 @@ func TestSessionSnapshotRoundTripKeepsCursor(t *testing.T) {
 		domain.QuestionFunction,
 		domain.QuestionTask,
 		domain.QuestionAction,
-		domain.QuestionTask,
-		domain.QuestionAction,
 	}
 	session, _ := newRestoreTestSession(t, "Аналитик данных", levels)
 
@@ -151,8 +149,39 @@ func TestSessionSnapshotKeepsFallbacksAndError(t *testing.T) {
 	if _, err := restored.Next(context.Background()); err != nil {
 		t.Fatalf("Next after restore: %v", err)
 	}
+	if restored.Done() {
+		t.Fatal("session must still ask the fourth question")
+	}
+	if _, err := restored.Next(context.Background()); err != nil {
+		t.Fatalf("fourth Next after restore: %v", err)
+	}
 	if !restored.Done() {
-		t.Fatal("session must stop after the third fallback question")
+		t.Fatal("session must stop after the fourth fallback question")
+	}
+}
+
+func TestRestoreSessionKeepsLegacySixQuestionPlan(t *testing.T) {
+	levels := []domain.QuestionLevel{
+		domain.QuestionRole, domain.QuestionFunction, domain.QuestionTask,
+		domain.QuestionAction, domain.QuestionTask, domain.QuestionAction,
+	}
+	session, _ := newRestoreTestSession(t, "Аналитик данных", levels)
+	snapshot := session.Snapshot()
+	snapshot.Plan = levels
+	restored, err := RestoreSession(session.agent, snapshot)
+	if err != nil {
+		t.Fatalf("RestoreSession: %v", err)
+	}
+	for range levels {
+		if _, err := restored.Next(context.Background()); err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if err := restored.Answer("Готовлю отчёты и проверяю данные каждый день."); err != nil {
+			t.Fatalf("Answer: %v", err)
+		}
+	}
+	if !restored.Done() || len(restored.State().Questions) != 6 {
+		t.Fatalf("legacy plan finished with %d questions", len(restored.State().Questions))
 	}
 }
 

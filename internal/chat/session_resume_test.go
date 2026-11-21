@@ -323,14 +323,14 @@ func TestServiceRestoresInterviewAfterRestart(t *testing.T) {
 		t.Fatalf("after restart %d messages, want 4", len(afterRestart))
 	}
 
-	// Five answers remain: the restored session keeps its cursor and finishes.
-	for index := 0; index < 5; index++ {
+	// Three answers remain: the restored session keeps its cursor and finishes.
+	for index := 0; index < 3; index++ {
 		waitForStoredMessages(t, restarted, "run-restart", 4+2*index)
 		if _, err := restarted.Post("run-restart", "Конкретный ответ про аналитику данных."); err != nil {
 			t.Fatalf("Post after restart %d: %v", index, err)
 		}
 	}
-	final := waitForStoredMessages(t, restarted, "run-restart", 14)
+	final := waitForStoredMessages(t, restarted, "run-restart", 10)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !contains(last.Content, "Интервью завершено") {
 		t.Fatalf("final research message was not persisted: %+v", last)
@@ -351,9 +351,9 @@ func TestServiceRestoresInterviewAfterRestart(t *testing.T) {
 	// Another restart serves the same complete dialog and refuses new answers.
 	third := NewService(fakeInterviewer{}, nil)
 	third.SetSessionStore(store)
-	messages := waitForStoredMessages(t, third, "run-restart", 14)
-	if len(messages) != 14 {
-		t.Fatalf("after second restart %d messages, want 14", len(messages))
+	messages := waitForStoredMessages(t, third, "run-restart", 10)
+	if len(messages) != 10 {
+		t.Fatalf("after second restart %d messages, want 10", len(messages))
 	}
 	before := store.messageCount("run-restart")
 	if _, err := third.Post("run-restart", "Ещё один ответ."); !errors.Is(err, ErrSessionFinished) {
@@ -429,7 +429,7 @@ func TestRestoredSessionAsksPendingQuestionOnSubscribe(t *testing.T) {
 func TestRecoverSessionsCompletesFinalizingSession(t *testing.T) {
 	store := newFakeSessionStore()
 	store.seedRun("run-finalizing", domain.RunRunning)
-	seedDialog(t, store, "run-finalizing", "Аналитик данных", 6, 6, true, SessionFinalizing)
+	seedDialog(t, store, "run-finalizing", "Аналитик данных", 4, 4, true, SessionFinalizing)
 
 	finalizerCalls := make(chan struct{}, 1)
 	finished := make(chan domain.RunStatus, 1)
@@ -448,7 +448,7 @@ func TestRecoverSessionsCompletesFinalizingSession(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("finalizer was not resumed after restart")
 	}
-	final := waitForStoredMessages(t, service, "run-finalizing", 14)
+	final := waitForStoredMessages(t, service, "run-finalizing", 10)
 	last := final[len(final)-1]
 	if last.Role != "agent" || !contains(last.Content, "«Дерево»") {
 		t.Fatalf("final message missing after resumed finalization: %+v", last)
@@ -472,16 +472,16 @@ func TestRecoverSessionsCompletesFinalizingSession(t *testing.T) {
 func TestCompletedRunIsReadOnlyAfterRestart(t *testing.T) {
 	store := newFakeSessionStore()
 	store.seedRun("run-done", domain.RunRunning)
-	seedDialog(t, store, "run-done", "Аналитик данных", 6, 6, true, SessionCompleted)
+	seedDialog(t, store, "run-done", "Аналитик данных", 4, 4, true, SessionCompleted)
 
 	finished := make(chan domain.RunStatus, 1)
 	service := NewService(fakeInterviewer{}, func(_ string, status domain.RunStatus) {
 		finished <- status
 	})
 	service.SetSessionStore(store)
-	messages := waitForStoredMessages(t, service, "run-done", 14)
-	if len(messages) != 14 {
-		t.Fatalf("messages = %d, want 14", len(messages))
+	messages := waitForStoredMessages(t, service, "run-done", 10)
+	if len(messages) != 10 {
+		t.Fatalf("messages = %d, want 10", len(messages))
 	}
 	select {
 	case status := <-finished:

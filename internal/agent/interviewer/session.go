@@ -18,7 +18,7 @@ var ErrNoOpenQuestion = errors.New("interviewer: no open question")
 
 // maxFallbackQuestions stops the interview early when the provider keeps
 // failing, instead of showing the respondent an endless run of templates.
-const maxFallbackQuestions = 3
+const maxFallbackQuestions = 4
 
 // Session drives one interview dialog. It never aborts because of a model
 // failure: the failure is recorded in LastError, the run degrades to fallback
@@ -119,15 +119,6 @@ func (s *Session) Done() bool {
 	if len(s.state.Questions) >= len(s.plan) || s.fallbacks >= maxFallbackQuestions {
 		return true
 	}
-	// Adaptive finish: once all profession topics are grounded by answers,
-	// extra questions would only repeat evidence. Keep a small minimum so the
-	// tree still has role/function/task/action context.
-	if len(s.state.Questions) >= 4 && len(s.state.Answers) >= 4 {
-		progress := s.Progress()
-		if len(progress.UncoveredTopics) == 0 {
-			return true
-		}
-	}
 	return false
 }
 
@@ -143,7 +134,10 @@ func (s *Session) Next(ctx context.Context) (domain.Question, error) {
 	}
 
 	level := s.plan[len(s.state.Questions)]
-	clarify := s.needsClarification()
+	// Existing six-question snapshots retain their clarification behavior.
+	// The four-question interview follows its four levels without spending one
+	// of the respondent's turns on a follow-up.
+	clarify := len(s.plan) > 4 && s.needsClarification()
 	progress := s.Progress()
 	in := agent.InterviewerInput{
 		SessionID:         s.state.ID,
@@ -228,9 +222,8 @@ func (s *Session) Close() domain.InterviewSession {
 func (s *Session) normalize(out *agent.InterviewerOutput, level domain.QuestionLevel, clarify bool) {
 	s.seq++
 	out.Question.ID = fmt.Sprintf("q-%d", s.seq)
-	if !out.Question.Level.Valid() {
+	if !out.Question.Level.Valid() || len(s.plan) == 4 {
 		out.Question.Level = level
-		out.Question.Fallback = true
 	}
 	if strings.TrimSpace(out.Question.Text) == "" {
 		fallback := FallbackQuestion(level, s.state.Profession)

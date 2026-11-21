@@ -230,8 +230,8 @@ func TestRunEstimateGlobalFallback(t *testing.T) {
 		t.Fatalf("status = %d (%s)", recorder.Code, recorder.Body.String())
 	}
 	body := decodeEstimateBody(t, recorder)
-	// 250 000 / 100 = 2500 tokens per call * 7 expected chat calls.
-	if body.SampleSize != 3 || body.EstimatedDurationSeconds != 60 || body.EstimatedTokens != 17_500 {
+	// 250 000 / 100 = 2500 tokens per call * 5 expected chat calls.
+	if body.SampleSize != 3 || body.EstimatedDurationSeconds != 60 || body.EstimatedTokens != 12_500 {
 		t.Fatalf("global fallback = %+v", body)
 	}
 	if body.Method != estimateMethodGlobal || body.Confidence != estimateConfidenceMedium {

@@ -24,8 +24,8 @@
     "Настраиваю фильтры и проверяю корректность показателей"
   ],
   "expect": {
-    "levels": ["role", "function", "task", "action", "task", "action"],
-    "questions": 6,
+    "levels": ["role", "function", "task", "action"],
+    "questions": 4,
     "clarifications": 0,
     "fallbacks": 0,
     "model_errors": 0

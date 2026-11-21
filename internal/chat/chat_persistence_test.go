@@ -215,7 +215,7 @@ func TestServiceDoesNotAcknowledgeUnpersistedAnswer(t *testing.T) {
 func TestServicePersistsResearchResultMessage(t *testing.T) {
 	store := newFakeMessageStore()
 	service := startPersistentService(t, store, "run-final", "Аналитик данных")
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 4; i++ {
 		waitFor(t, 3*time.Second, func() bool {
 			messages, err := service.Messages("run-final")
 			return err == nil && len(messages) >= 2*i+2

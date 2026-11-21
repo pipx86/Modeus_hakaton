@@ -62,8 +62,6 @@ func TestInterviewerSupportsThreeRoles(t *testing.T) {
 		domain.QuestionFunction,
 		domain.QuestionTask,
 		domain.QuestionAction,
-		domain.QuestionTask,
-		domain.QuestionAction,
 	}
 	for _, role := range roles {
 		role := role

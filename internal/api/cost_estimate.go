@@ -20,7 +20,7 @@ package api
 // only over runs whose LLM usage is attributed to them (see below). When no
 // such run exists, the estimate is the global mean tokens of one stored LLM
 // request multiplied by the expected number of provider calls of the run type
-// (batch: 1 analyst call; chat: 6 planned interview questions + 1 analyst
+// (batch: 1 analyst call; chat: 4 planned interview questions + 1 analyst
 // finalize). Only when the llm_usage table is empty are the constants from
 // README.md used.
 //
@@ -85,11 +85,9 @@ const (
 	// the interviewer step in a batch is a no-op, the synthesizer is
 	// deterministic and only the analyst calls the model (see steps.AISteps).
 	expectedBatchLLMCalls = 1
-	// expectedChatLLMCalls is 6 planned interview questions
-	// (interviewer.defaultPlan) plus one analyst finalize call. The live eval
-	// observed exactly 7 model calls for a chat-like baseline run
-	// (README.md).
-	expectedChatLLMCalls = 7
+	// expectedChatLLMCalls is 4 planned interview questions
+	// (interviewer.defaultPlan) plus one analyst finalize call.
+	expectedChatLLMCalls = 5
 
 	// Last-resort constants, used only when no history exists at all. They are
 	// grounded in observed live runs, not in precise accounting:

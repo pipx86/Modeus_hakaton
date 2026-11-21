@@ -120,7 +120,7 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 		messages, err := service.Messages("run-3")
 		return err == nil && len(messages) >= 2
 	})
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 4; i++ {
 		waitFor(t, 3*time.Second, func() bool {
 			messages, err := service.Messages("run-3")
 			return err == nil && len(messages) >= 2*i+2
@@ -128,7 +128,7 @@ func TestServiceFinishesAfterPlan(t *testing.T) {
 		if _, err := service.Post("run-3", "Конкретный ответ с достаточным количеством слов."); err != nil {
 			t.Fatalf("Post %d: %v", i, err)
 		}
-		if i < 5 {
+		if i < 3 {
 			next := 2*i + 4
 			waitFor(t, 3*time.Second, func() bool {
 				messages, err := service.Messages("run-3")
@@ -203,7 +203,7 @@ func TestServiceCallsFinalizerAfterInterview(t *testing.T) {
 	if err := service.Start("run-6", "Аналитик"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 4; i++ {
 		waitFor(t, time.Second, func() bool {
 			messages, err := service.Messages("run-6")
 			return err == nil && len(messages) >= 2*i+2
@@ -233,7 +233,7 @@ func TestServicePostsResearchResult(t *testing.T) {
 	if err := service.Start("run-7", "Аналитик данных"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 4; i++ {
 		waitFor(t, 3*time.Second, func() bool {
 			messages, err := service.Messages("run-7")
 			return err == nil && len(messages) >= 2*i+2

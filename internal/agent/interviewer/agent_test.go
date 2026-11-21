@@ -205,13 +205,10 @@ func TestModelErrorDoesNotBreakDialog(t *testing.T) {
 	if state.Status != domain.SessionDegraded {
 		t.Fatalf("status = %q, want degraded", state.Status)
 	}
-	for _, level := range []domain.QuestionLevel{domain.QuestionRole, domain.QuestionFunction, domain.QuestionTask} {
+	for _, level := range []domain.QuestionLevel{domain.QuestionRole, domain.QuestionFunction, domain.QuestionTask, domain.QuestionAction} {
 		if !seen[level] {
 			t.Fatalf("fallback plan misses level %q", level)
 		}
-	}
-	if seen[domain.QuestionAction] {
-		t.Fatal("fallback limit must stop before action")
 	}
 }
 
