@@ -128,6 +128,12 @@ type Service struct {
 	// restoreMu serializes lazy restores so two requests for the same run never
 	// build two in-memory sessions; the map check under mu is repeated inside.
 	restoreMu sync.Mutex
+	// retryMu guards retrying: the run ids this process is repeating the
+	// post-interview pipeline for right now. A second retry would duplicate the
+	// analyst calls, and a lazy restore would start a competing finalization
+	// from the same history.
+	retryMu  sync.Mutex
+	retrying map[string]bool
 }
 
 type session struct {
@@ -591,6 +597,14 @@ func (s *Service) lookup(runID string) (*session, error) {
 func (s *Service) restore(runID string, store SessionStore) (*session, error) {
 	s.restoreMu.Lock()
 	defer s.restoreMu.Unlock()
+
+	// A run whose finalization is being repeated must not be rebuilt into a live
+	// interviewer session: the background pipeline already owns its transcript,
+	// and a lazy restore would start a second finalization. Its history stays
+	// readable through the persisted messages.
+	if s.retryFinalizeInFlight(runID) {
+		return nil, ErrSessionFinished
+	}
 
 	s.mu.Lock()
 	if sess, ok := s.sessions[runID]; ok {

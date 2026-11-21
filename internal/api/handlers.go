@@ -59,6 +59,9 @@ type Server struct {
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
 	// или явно отключённая настройка SOURCE_AUTO_INDEX).
 	indexSource sourceIndexFunc
+	// retryLocks — in-memory защита от двух одновременных ретраев финализации
+	// одного прогона в рамках этого процесса.
+	retryLocks retryLocks
 }
 
 func NewServer(store Store) *Server {
@@ -161,6 +164,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{id}/events", s.handleSSE)
 	mux.HandleFunc("GET /api/v1/runs/{id}/messages", s.handleGetMessages)
 	mux.HandleFunc("POST /api/v1/runs/{id}/messages", s.handlePostMessage)
+	// Повторная финализация упавшего интервью по сохранённому транскрипту.
+	mux.HandleFunc("POST /api/v1/runs/{id}/retry", s.handleRetryRun)
 	// Проверка результата методистом: узлы, связи с программой и сводка
 	// (карточки 18, 23 и 26 плана MVP).
 	mux.HandleFunc("POST /api/v1/nodes/{id}/review", s.handleReviewNode)

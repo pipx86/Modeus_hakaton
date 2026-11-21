@@ -3278,6 +3278,94 @@ paths:
               example:
                 code: CHAT_DISABLED
                 message: chat is not configured
+  /runs/{id}/retry:
+    post:
+      tags: [runs]
+      summary: Повторить финализацию интервью
+      description: >-
+        Повторно запускает построение дерева (аналитик, синтезатор, сохранение)
+        по сохранённому диалогу интервью, когда прогон завершился `failed` или
+        дерево так и не было построено. Транскрипт восстанавливается из
+        сохранённых сообщений (`GET /runs/{id}/messages`), терминальное состояние
+        durable-сессии сбрасывается в `active`, поэтому после каждой неудачи
+        повтор остаётся возможным: отдельного «уже перезапускали» флага нет.
+        Доступ есть у владельца прогона и администратора (роли admin, user,
+        specialist). Ответ `202` означает, что анализ уже идёт в фоне: итоговый
+        статус прогона публикуется в `GET /runs/{id}/events` и доступен в
+        `GET /runs/{id}`. Если LLM недоступен, прогон снова станет `failed` —
+        это ожидаемый результат, и повтор разрешён после восстановления
+        провайдера.
+      operationId: retryRunFinalization
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "202":
+          description: Повторная финализация запущена в фоне.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetryRunResult"
+              example:
+                run_id: "11111111-1111-1111-1111-111111111111"
+                status: running
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Прогон принадлежит другому пользователю; доступ есть у владельца и администратора.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: FORBIDDEN
+                message: доступ к интервью есть у владельца и администратора
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            Повтор невозможен: дерево уже построено, в прогоне нет сохранённых
+            сообщений, интервью или другой повтор ещё выполняется, либо
+            состояние сессии изменилось параллельным писателем.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                treeAlreadyExists:
+                  summary: Дерево уже построено
+                  value:
+                    code: TREE_ALREADY_EXISTS
+                    message: "дерево уже построено: повторный анализ не требуется"
+                nothingToRetry:
+                  summary: Нет сохранённого транскрипта
+                  value:
+                    code: NOTHING_TO_RETRY
+                    message: в прогоне нет сохранённых сообщений интервью
+                retryInProgress:
+                  summary: Повтор уже выполняется
+                  value:
+                    code: RETRY_IN_PROGRESS
+                    message: повторный анализ уже выполняется
+                conflict:
+                  summary: Состояние сессии изменилось
+                  value:
+                    code: CONFLICT
+                    message: состояние интервью изменилось; повторите запрос
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          description: >-
+            Чат-сервис не настроен на этом сервере или у сервиса нет
+            финализатора (не настроен LLM-аналитик), поэтому повтор невозможен.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: NOT_IMPLEMENTED
+                message: "повторная финализация недоступна: не настроен LLM-аналитик"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
   /runs/{id}/interviews:
     get:
       tags: [interviews]
@@ -5822,6 +5910,22 @@ components:
           type: string
         quote:
           type: string
+    RetryRunResult:
+      type: object
+      description: >-
+        Результат запуска повторной финализации. Описывает фоновую операцию, а не
+        строку прогона: итоговый статус прогона (done, degraded или снова failed)
+        публикуется событиями прогона и в GET /runs/{id}.
+      required: [run_id, status]
+      additionalProperties: false
+      properties:
+        run_id:
+          type: string
+          description: Идентификатор прогона, финализация которого запущена повторно.
+        status:
+          type: string
+          enum: [running]
+          description: Состояние фоновой операции повтора.
     RunEvent:
       type: object
       description: Payload of one server-sent event of a run stream.
