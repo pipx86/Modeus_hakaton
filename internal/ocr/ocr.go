@@ -51,7 +51,7 @@ const (
 )
 
 // DocsPath — документация по установке и настройке OCR.
-const DocsPath = "docs/mvp/14-ocr.md"
+const DocsPath = "docs/ocr-setup.txt"
 
 // Ошибки пакета. Вызывающий код матчит их через errors.Is, чтобы выбрать
 // HTTP-код и подсказку (422 для выключенного OCR, 503 для недоступных

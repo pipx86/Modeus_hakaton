@@ -4544,7 +4544,7 @@ paths:
             PROGRAM_IMPORT_LLM_TIMEOUT, PROGRAM_IMPORT_LLM_UNAVAILABLE,
             PROGRAM_IMPORT_OCR_TIMEOUT или PROGRAM_IMPORT_OCR_UNAVAILABLE;
             details для OCR содержит инструкцию по установке tesseract/poppler
-            (OCR_TESSERACT/OCR_PDFTOPPM) и ссылку на docs/mvp/12-ocr.md.
+            (OCR_TESSERACT/OCR_PDFTOPPM) и ссылку на docs/ocr-setup.txt.
           content:
             application/json:
               schema:
