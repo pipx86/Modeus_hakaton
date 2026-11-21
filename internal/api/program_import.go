@@ -165,15 +165,18 @@ func (s *Server) handleProgramImport(w http.ResponseWriter, r *http.Request) {
 		defer r.MultipartForm.RemoveAll()
 	}
 
-	key := strings.TrimSpace(r.FormValue("key"))
-	if key == "" {
+	rawKey := strings.TrimSpace(r.FormValue("key"))
+	if rawKey == "" {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "нужно непустое поле key - постоянный код программы")
 		return
 	}
-	if len([]rune(key)) > 200 {
+	if len([]rune(rawKey)) > 200 {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "key длиннее 200 символов")
 		return
 	}
+	// Импорт не ломает старые ключи без «/», но предупреждает администратора в
+	// отчёте: реестр источников такие ключи уже не принимает.
+	key, keyWarning, _ := ingestion.NormalizeProgramKeyLenient(rawKey)
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -209,6 +212,9 @@ func (s *Server) handleProgramImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	warnings = nonNilStrings(warnings)
+	if keyWarning != "" {
+		warnings = append([]string{keyWarning}, warnings...)
+	}
 	// В форматах без колонки code (TXT/MD и часть JSON) постоянный key импорта
 	// становится кодом программы, чтобы черновик был самодостаточным.
 	if strings.TrimSpace(program.Code) == "" {

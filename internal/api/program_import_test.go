@@ -239,8 +239,11 @@ func TestProgramImportCreatesDraft(t *testing.T) {
 	if result.DraftID == "" || result.Status != programDraftStatusDraft {
 		t.Fatalf("ответ: %+v", result)
 	}
-	if result.Report.Competencies != 1 || result.Report.KSA != 1 || len(result.Report.Warnings) != 0 {
+	if result.Report.Competencies != 1 || result.Report.KSA != 1 || len(result.Report.Warnings) != 1 {
 		t.Fatalf("отчёт: %+v", result.Report)
+	}
+	if !strings.Contains(result.Report.Warnings[0], "старом формате") {
+		t.Fatalf("ожидали предупреждение о старом ключе, получили %+v", result.Report.Warnings)
 	}
 	if len(result.Program.Competencies) != 1 || result.Program.Competencies[0].Type != "professional" {
 		t.Fatalf("программа: %+v", result.Program)
@@ -248,6 +251,25 @@ func TestProgramImportCreatesDraft(t *testing.T) {
 	draft := fake.drafts[result.DraftID]
 	if draft.Key != "prog-key" || draft.SourceName != "program.csv" || draft.SourceFormat != "csv" {
 		t.Fatalf("черновик: %+v", draft)
+	}
+}
+
+func TestProgramImportCanonicalKeyHasNoWarning(t *testing.T) {
+	_, fake, handler := newProgramImportTestServer(t)
+	const key = "mirea/09.03.01/2024/full-time"
+	recorder := doProgramImport(t, handler, "admin", key, "program.csv", validProgramCSV)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("ожидали 201, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var result programImportResult
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if len(result.Report.Warnings) != 0 {
+		t.Fatalf("канонический ключ не должен давать предупреждений: %+v", result.Report.Warnings)
+	}
+	if draft := fake.drafts[result.DraftID]; draft.Key != key {
+		t.Fatalf("ключ черновика: %q", draft.Key)
 	}
 }
 

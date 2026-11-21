@@ -214,8 +214,11 @@ func TestEducationImportLinksOnlyResolvedCodes(t *testing.T) {
 	pool.ExpectExec("pg_advisory_xact_lock").WithArgs("education:course").WillReturnResult(pgxmock.NewResult("SELECT", 1))
 	pool.ExpectQuery("INSERT INTO sources").WithArgs(program.Title, "education:course").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("source"))
-	pool.ExpectQuery("FROM education_programs").WithArgs("source").WillReturnRows(pgxmock.NewRows([]string{"id"}))
-	pool.ExpectQuery("INSERT INTO education_programs").WithArgs(program.Title, "Колледж", "01").
+	pool.ExpectQuery("FROM education_programs WHERE program_key").WithArgs("course").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("FROM education_programs p JOIN program_sources").WithArgs("source").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("INSERT INTO education_programs").WithArgs(program.Title, "Колледж", "01", "course").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("program"))
 	pool.ExpectExec("INSERT INTO program_sources").WithArgs("program", "source").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	pool.ExpectQuery("INSERT INTO program_competencies").WithArgs("program", "PC1", "Проверять оборудование", "").
@@ -247,8 +250,11 @@ func TestEducationImportLinksOnlyResolvedCodes(t *testing.T) {
 	pool.ExpectExec("pg_advisory_xact_lock").WithArgs("education:course").WillReturnResult(pgxmock.NewResult("SELECT", 1))
 	pool.ExpectQuery("INSERT INTO sources").WithArgs(program.Title, "education:course").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("source"))
-	pool.ExpectQuery("FROM education_programs").WithArgs("source").
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("program").AddRow("other"))
+	pool.ExpectQuery("FROM education_programs WHERE program_key").WithArgs("course").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("FROM education_programs p JOIN program_sources").WithArgs("source").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}).
+			AddRow("program", "", 1).AddRow("other", "", 1))
 	pool.ExpectRollback()
 	if report, err := ingestion.SaveEducation(ctx, pool, "course", "taxonomy", program); err == nil || report.ProgramID != "" {
 		t.Fatalf("неоднозначный источник не должен обновляться: %+v, %v", report, err)

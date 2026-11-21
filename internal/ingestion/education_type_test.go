@@ -23,9 +23,11 @@ func TestSaveEducationPersistsCompetencyType(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("SELECT", 0))
 	pool.ExpectQuery("INSERT INTO sources").WithArgs("Программа", "education:key").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("source-1"))
-	pool.ExpectQuery("SELECT p.id::text FROM education_programs").WithArgs("source-1").
-		WillReturnRows(pgxmock.NewRows([]string{"id"}))
-	pool.ExpectQuery("INSERT INTO education_programs").WithArgs("Программа", "", "P1").
+	pool.ExpectQuery("FROM education_programs WHERE program_key").WithArgs("key").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("FROM education_programs p JOIN program_sources").WithArgs("source-1").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("INSERT INTO education_programs").WithArgs("Программа", "", "P1", "key").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("program-1"))
 	pool.ExpectExec("INSERT INTO program_sources").WithArgs("program-1", "source-1").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -67,9 +69,11 @@ func TestSaveEducationRejectsUnknownCompetencyType(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("SELECT", 0))
 	pool.ExpectQuery("INSERT INTO sources").WithArgs("Программа", "education:key").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("source-1"))
-	pool.ExpectQuery("SELECT p.id::text FROM education_programs").WithArgs("source-1").
-		WillReturnRows(pgxmock.NewRows([]string{"id"}))
-	pool.ExpectQuery("INSERT INTO education_programs").WithArgs("Программа", "", "").
+	pool.ExpectQuery("FROM education_programs WHERE program_key").WithArgs("key").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("FROM education_programs p JOIN program_sources").WithArgs("source-1").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "program_key", "version"}))
+	pool.ExpectQuery("INSERT INTO education_programs").WithArgs("Программа", "", "", "key").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("program-1"))
 	pool.ExpectExec("INSERT INTO program_sources").WithArgs("program-1", "source-1").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))

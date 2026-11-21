@@ -4641,6 +4641,149 @@ paths:
           $ref: "#/components/responses/InternalError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+  /admin/program-sources:
+    post:
+      tags: [academic]
+      summary: Добавить источник образовательной программы
+      description: >-
+        Только admin. Регистрирует URL, который воркер cmd/program-watcher
+        проверяет по расписанию. program_key обязан быть каноническим
+        org/code/year/form (например mirea/09.03.01/2024/full-time); старые
+        ключи без «/» здесь отклоняются с 400. Разрешены только http/https URL.
+        Пара program_key+url уникальна.
+      operationId: createProgramSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramWatchSourceCreate"
+      responses:
+        "201":
+          description: Источник добавлен.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramWatchSource"
+        "400":
+          $ref: "#/components/responses/ProgramSourceBadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/ProgramSourceConflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+    get:
+      tags: [academic]
+      summary: Список источников образовательных программ
+      description: Только admin. Возвращает реестр URL и состояние последней проверки.
+      operationId: listProgramSources
+      responses:
+        "200":
+          description: Реестр источников.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramWatchSource"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/program-sources/{id}:
+    patch:
+      tags: [academic]
+      summary: Обновить источник образовательной программы
+      description: >-
+        Только admin. Меняет enabled и/или interval_hours. URL, program_key и
+        doc_format задаются при создании и не меняются.
+      operationId: updateProgramSource
+      parameters:
+        - $ref: "#/components/parameters/ProgramSourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramWatchSourceUpdate"
+      responses:
+        "200":
+          description: Источник обновлён.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramWatchSource"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+    delete:
+      tags: [academic]
+      summary: Удалить источник образовательной программы
+      description: Только admin. Удаляет URL из реестра; созданные черновики не затрагиваются.
+      operationId: deleteProgramSource
+      parameters:
+        - $ref: "#/components/parameters/ProgramSourceId"
+      responses:
+        "204":
+          description: Источник удалён.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+  /admin/program-sources/{id}/check:
+    post:
+      tags: [academic]
+      summary: Проверить источник образовательной программы синхронно
+      description: >-
+        Только admin. Скачивает URL с If-None-Match/If-Modified-Since, сравнивает
+        sha256 тела, при изменении разбирает документ и создаёт черновик импорта.
+        HTML-страница должна содержать ссылку на .xlsx/.csv/.json/.txt. PDF и
+        DOCX возвращают needs_parser. Результат сохраняется в реестре и
+        возвращается в теле ответа; сетевые ошибки — это status=error с HTTP 200.
+      operationId: checkProgramSource
+      parameters:
+        - $ref: "#/components/parameters/ProgramSourceId"
+      responses:
+        "200":
+          description: Результат проверки.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramWatchCheckResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
 
 components:
   securitySchemes:
@@ -4703,6 +4846,14 @@ components:
       schema:
         type: string
         format: uuid
+    ProgramSourceId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор источника программы в реестре (UUID).
+      schema:
+        type: string
+        format: uuid
 
   responses:
     Conflict:
@@ -4737,6 +4888,27 @@ components:
           example:
             code: BAD_REQUEST
             message: invalid JSON body
+    ProgramSourceBadRequest:
+      description: >-
+        Некорректный program_key или URL. Ключ обязан иметь канонический формат
+        org/code/year/form; допускаются только абсолютные http/https URL и
+        interval_hours от 1 до 720.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: BAD_REQUEST
+            message: "некорректный program_key: ключ \"prog-key\" должен иметь формат org/code/year/form, например mirea/09.03.01/2024/full-time"
+    ProgramSourceConflict:
+      description: Источник с такой парой program_key+url уже зарегистрирован.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: PROGRAM_SOURCE_ALREADY_EXISTS
+            message: источник с таким program_key и url уже существует
     Unauthorized:
       description: Missing or invalid bearer token.
       content:
@@ -7287,3 +7459,111 @@ components:
           type: array
           items:
             type: string
+    ProgramWatchSource:
+      type: object
+      description: URL образовательной программы, который проверяется по расписанию.
+      required: [id, program_key, url, interval_hours, enabled, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        program_key:
+          type: string
+          description: Канонический ключ org/code/year/form.
+          example: mirea/09.03.01/2024/full-time
+        url:
+          type: string
+          format: uri
+        doc_format:
+          type: string
+          enum: [csv, xlsx, json, txt, md, pdf, docx, html, other]
+          description: Необязательное переопределение формата; по умолчанию — расширение URL.
+        interval_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+        enabled:
+          type: boolean
+        etag:
+          type: string
+          description: Сохранённый ETag последней успешной проверки.
+        last_modified:
+          type: string
+          description: Сохранённый Last-Modified последней успешной проверки.
+        last_hash:
+          type: string
+          description: sha256 тела последнего успешного ответа.
+        last_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_status:
+          type: string
+          enum: [unchanged, changed, needs_parser, needs_attention, error]
+        last_error:
+          type: string
+        draft_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Последний созданный черновик; null, если изменений ещё не было.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProgramWatchSourceCreate:
+      type: object
+      required: [program_key, url]
+      additionalProperties: false
+      properties:
+        program_key:
+          type: string
+          minLength: 1
+          description: Канонический ключ org/code/year/form.
+          example: mirea/09.03.01/2024/full-time
+        url:
+          type: string
+          format: uri
+          description: Только абсолютный http/https URL.
+        interval_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 24
+        doc_format:
+          type: string
+          enum: [csv, xlsx, json, txt, md, pdf, docx, html, other]
+          description: Необязательное переопределение формата документа.
+    ProgramWatchSourceUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        enabled:
+          type: boolean
+        interval_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+    ProgramWatchCheckResult:
+      type: object
+      description: >-
+        Результат одной проверки. changed означает, что создан новый черновик;
+        unchanged — 304 или тот же sha256; needs_parser — PDF/DOCX;
+        needs_attention — HTML без ссылки на документ; error — сеть/разбор.
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [unchanged, changed, needs_parser, needs_attention, error]
+        draft_id:
+          type: string
+          format: uuid
+          description: Черновик, созданный при status=changed.
+        error:
+          type: string
+          description: Причина для needs_parser, needs_attention и error.
