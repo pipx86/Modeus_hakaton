@@ -34,7 +34,7 @@ func TestFetchTrudvsemUsesOpenDataFieldsWithoutContacts(t *testing.T) {
 	if items[0].title() != "[Работа России] Backend developer" {
 		t.Fatalf("title=%q", items[0].title())
 	}
-	if content := items[0].content(); content != "Требования:\nGo, PostgreSQL\n\nОбязанности:\nРазрабатывать API" {
+	if content := items[0].content(); content != "Требования работодателя (ожидания, не подтверждение действий респондента):\nGo, PostgreSQL\n\nОбязанности в вакансии (описание работодателя):\nРазрабатывать API" {
 		t.Fatalf("content=%q", content)
 	}
 	if got := items[0].Company.Name; got != "" {
