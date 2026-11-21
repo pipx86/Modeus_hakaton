@@ -97,7 +97,11 @@ type evidenceDetails struct {
 	Approved bool `json:"approved"`
 }
 
-// UpdateEvidenceQuote сохраняет исправленный текст цитаты без изменения статуса проверки.
+// UpdateEvidenceQuote сохраняет исправленный текст цитаты и возвращает её в
+// очередь проверки: правка текста делает прежнее решение (approved/rejected)
+// недействительным, поэтому status сбрасывается в pending, а approved — в false
+// синхронизирующим триггером. Так одобренная цитата не может остаться
+// одобренной после изменения и перестать совпадать с источником.
 func (p *PGStore) UpdateEvidenceQuote(id, quote string) (*domain.Evidence, error) {
 	if !validUUID(id) {
 		return nil, ErrNotFound
@@ -105,8 +109,8 @@ func (p *PGStore) UpdateEvidenceQuote(id, quote string) (*domain.Evidence, error
 	ctx, cancel := operation()
 	defer cancel()
 	var item domain.Evidence
-	var status string
-	err := p.Pool.QueryRow(ctx, `UPDATE evidence SET quote=$2 WHERE id=$1
+var status string
+	err := p.Pool.QueryRow(ctx, `UPDATE evidence SET quote=$2, status='pending' WHERE id=$1
 RETURNING id::text, COALESCE(node_id::text,''), source_id::text, COALESCE(ref_id,''), quote, COALESCE(status,'pending'), claim_origin, COALESCE(interview_id::text,'')`,
 		id, quote).Scan(&item.ID, &item.NodeID, &item.SourceID, &item.RefID, &item.Quote, &status, &item.ClaimOrigin, &item.InterviewID)
 	if err != nil {
@@ -238,7 +242,8 @@ func (s *Server) handleCreateEvidence(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, item)
 }
 
-// handleUpdateEvidence правит текст цитаты, сохраняя её статус и привязку к узлу.
+// handleUpdateEvidence правит текст цитаты, сохраняя привязку к узлу. Правка
+// возвращает цитату в очередь проверки (status -> pending).
 func (s *Server) handleUpdateEvidence(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin) {
 		return

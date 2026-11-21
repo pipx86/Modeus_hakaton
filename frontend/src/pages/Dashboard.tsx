@@ -80,7 +80,7 @@ export function Dashboard() {
   const [deleting, setDeleting] = useState(false)
   const canCreate = true
   const currentUserID = getCurrentUserID()
-  const isAdmin = getCurrentRole() === null || getCurrentRole() === "admin"
+  const isAdmin = getCurrentRole() === "admin"
   const canDeleteRun = (run: Run) =>
     isAdmin || !run.created_by || run.created_by === currentUserID
 

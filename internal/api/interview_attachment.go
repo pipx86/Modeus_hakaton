@@ -17,6 +17,10 @@ func (s *Server) handleInterviewAttachment(w http.ResponseWriter, r *http.Reques
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist, auth.RoleUser) {
 		return
 	}
+	runID := r.PathValue("id")
+	if !s.allowInterviewAccess(w, r, runID) {
+		return
+	}
 	if s.chat == nil {
 		writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "чат недоступен")
 		return
@@ -25,6 +29,9 @@ func (s *Server) handleInterviewAttachment(w http.ResponseWriter, r *http.Reques
 	if err := r.ParseMultipartForm(ingestion.MaxDocumentSize + (1 << 20)); err != nil {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "не удалось прочитать форму или файл больше 20 МБ")
 		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -55,7 +62,7 @@ func (s *Server) handleInterviewAttachment(w http.ResponseWriter, r *http.Reques
 	if title == "" {
 		title = "доказательство"
 	}
-	message, err := s.chat.Post(r.PathValue("id"), "Прикрепляю доказательство «"+title+"»:\n\n"+truncateProfileText(text, 12000))
+	message, err := s.chat.Post(runID, "Прикрепляю доказательство «"+title+"»:\n\n"+truncateProfileText(text, 12000))
 	if err != nil {
 		writeErr(w, http.StatusConflict, "CHAT_UNAVAILABLE", "не удалось добавить доказательство в интервью")
 		return

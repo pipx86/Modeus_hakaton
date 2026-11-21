@@ -285,7 +285,12 @@ func run(ctx context.Context, c config) error {
 	rootMux.Handle("/", rawHandler)
 	handler := logging.RequestLogger(metricsRegistry.Middleware(rootMux)) // === NEW: Оборачиваем в логгер ===
 
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(listener) }()
 

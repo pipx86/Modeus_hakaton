@@ -343,6 +343,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 
 	var req createRunRequest
 
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logging.Logger.Warn("create_run_bad_request", "error", err)
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")

@@ -168,11 +168,15 @@ def check_dockerfile() -> None:
             raise SystemExit(f"FAIL: Dockerfile must include {marker!r}")
     # Full-stack web target: the SPA is built inside the image and served by
     # nginx with the same-origin proxy config.
-    for marker in ("node:22.20", "npm ci", "npm run build", "nginx:1.27-alpine", "deploy/nginx/server.conf"):
+    for marker in ("node:22.22.3", "npm ci", "npm run build", "nginx:1.27-alpine", "deploy/nginx/server.conf"):
         if marker not in dockerfile:
             raise SystemExit(f"FAIL: Dockerfile web target must include {marker!r}")
+    # The standalone frontend image pins the same Node toolchain.
+    frontend_dockerfile = read("frontend/Dockerfile")
+    if "node:22.22.3-alpine" not in frontend_dockerfile:
+        raise SystemExit("FAIL: frontend/Dockerfile must pin the Node builder to node:22.22.3-alpine")
     print(
-        "dockerfile ok: multi-stage, pinned Go 1.26.10/Node 22.20, distroless server/migrate, "
+        "dockerfile ok: multi-stage, pinned Go 1.26.10/Node 22.22.3, distroless server/migrate, "
         "nginx web target, non-root, healthchecks"
     )
 

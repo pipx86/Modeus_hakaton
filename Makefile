@@ -67,7 +67,7 @@ fmt-check:
 	@out="$$(gofmt -l cmd internal)"; \
 	if [ -n "$$out" ]; then echo "gofmt required for:"; echo "$$out"; exit 1; fi
 
-## lint: run golangci-lint (install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2)
+## lint: run golangci-lint (install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.15.0)
 lint:
 	golangci-lint run ./...
 

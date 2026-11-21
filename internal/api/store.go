@@ -201,9 +201,10 @@ func (m *memStore) UpdateEvidenceQuote(id, quote string) (*domain.Evidence, erro
 		return nil, ErrNotFound
 	}
 	item.Quote = quote
-	if status := m.status[id]; status != "" {
-		item.Status = status
-	}
+	// Правка цитаты делает прежнее решение недействительным: возвращаем в очередь.
+	item.Status = domain.EvidencePending
+	m.status[id] = domain.EvidencePending
+	m.approved[id] = false
 	m.evidences[id] = item
 	return &item, nil
 }

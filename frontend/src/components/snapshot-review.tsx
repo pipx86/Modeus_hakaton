@@ -846,7 +846,7 @@ function SnapshotDiffSection({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="snapshot-base">Базовая версия</Label>
-                <Select value={baseId ?? undefined} onValueChange={changeBase}>
+                <Select value={baseId ?? ""} onValueChange={changeBase}>
                   <SelectTrigger id="snapshot-base" aria-label="Базовая версия">
                     <SelectValue placeholder="Выберите снимок" />
                   </SelectTrigger>
@@ -861,7 +861,7 @@ function SnapshotDiffSection({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="snapshot-head">Новая версия</Label>
-                <Select value={headId ?? undefined} onValueChange={changeHead}>
+                <Select value={headId ?? ""} onValueChange={changeHead}>
                   <SelectTrigger id="snapshot-head" aria-label="Новая версия">
                     <SelectValue placeholder="Выберите снимок" />
                   </SelectTrigger>

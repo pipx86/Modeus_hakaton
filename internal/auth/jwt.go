@@ -92,7 +92,7 @@ func Parse(tokenStr string) (*Claims, error) {
 			return nil, errors.New("unexpected signing method")
 		}
 		return signingKey, nil
-	})
+	}, jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, err
 	}
