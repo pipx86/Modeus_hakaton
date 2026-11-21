@@ -22,8 +22,8 @@ type runSourceContentReader interface {
 var _ runSourceContentReader = (*PGStore)(nil)
 
 // ListRunSourceContents returns the sources linked to a run through run_sources,
-// including their content. Ungraded vacancies stay stored, but are excluded
-// from analysis context; unlike ListRunSources this is not cheap, so the
+// including their content. Ungraded DevOps and data analyst vacancies remain
+// in the analysis context; unlike ListRunSources this is not cheap, so the
 // metadata-only method stays the default for read/export paths.
 func (p *PGStore) ListRunSourceContents(ctx context.Context, runID string) ([]domain.Source, error) {
 	if p == nil || p.Pool == nil {
@@ -42,7 +42,8 @@ func (p *PGStore) ListRunSourceContents(ctx context.Context, runID string) ([]do
 		JOIN run_sources rs ON rs.source_id = s.id
 		LEFT JOIN vacancy_market_details d ON d.source_id = s.id
 		WHERE rs.run_id = $1
-		  AND (s.type <> 'vacancy' OR derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
+		  AND (s.type <> 'vacancy' OR vacancy_allows_ungraded(s.title) OR
+		       derive_vacancy_grade(COALESCE(d.details->>'experience',''), s.title) <> '')
 		ORDER BY s.created_at, s.id`, runUUID)
 	if err != nil {
 		return nil, translate(err)
