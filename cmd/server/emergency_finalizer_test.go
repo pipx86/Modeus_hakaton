@@ -36,6 +36,31 @@ func (s *emergencyStore) SetDegradedReason(_ string, reason string) error {
 	return nil
 }
 
+func TestEmergencyFinalizerRetriesAnalystOnce(t *testing.T) {
+	t.Setenv("EMERGENCY_ANALYST_FAILURES", "2")
+	t.Setenv("EMERGENCY_RETRY_DELAY_MS", "0")
+	store := &emergencyStore{}
+	calls := 0
+	primary := func(context.Context, string, string, domain.InterviewSession) (domain.RunStatus, error) {
+		calls++
+		if calls == 1 {
+			return domain.RunFailed, errors.New("first analyst error")
+		}
+		return domain.RunDone, nil
+	}
+	finalizer := newEmergencyFinalizer(chat.Finalizer(primary), store)
+	status, err := finalizer(context.Background(), "run-retry", "Аналитик данных", domain.InterviewSession{})
+	if err != nil {
+		t.Fatalf("finalizer: %v", err)
+	}
+	if calls != 2 || status != domain.RunDone {
+		t.Fatalf("calls=%d status=%s", calls, status)
+	}
+	if len(store.nodes) != 0 || store.reason != "" {
+		t.Fatalf("fallback was used unexpectedly: nodes=%d reason=%q", len(store.nodes), store.reason)
+	}
+}
+
 func TestEmergencyFinalizerSavesDeterministicTree(t *testing.T) {
 	store := &emergencyStore{}
 	primary := func(context.Context, string, string, domain.InterviewSession) (domain.RunStatus, error) {
