@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -103,10 +104,92 @@ func extractPDFPages(ctx context.Context, data []byte, ocr OCRExtractor) ([]Page
 	return finalizePages(pages, "PDF", MinPageTextRunes)
 }
 
+// popplerBinary возвращает путь к pdftotext. Переменная FGOS_PDFTOTEXT задаёт
+// явный путь, "off"/"false" отключают poppler, пустое значение — поиск в PATH.
+func popplerBinary() string {
+	configured := strings.TrimSpace(os.Getenv("FGOS_PDFTOTEXT"))
+	if strings.EqualFold(configured, "off") || strings.EqualFold(configured, "false") {
+		return ""
+	}
+	candidate := configured
+	if candidate == "" {
+		candidate = "pdftotext"
+	}
+	if path, err := exec.LookPath(candidate); err == nil {
+		return path
+	}
+	if configured != "" {
+		if info, err := os.Stat(configured); err == nil && !info.IsDir() {
+			return configured
+		}
+	}
+	return ""
+}
+
+// extractPDFPagesWithPoppler читает текст через pdftotext. Встроенная
+// библиотека на части современных PDF отдаёт нечитаемый текст (CID-шрифты),
+// из-за чего модель не находит компетенции; poppler сохраняет порядок строк
+// и кириллицу. ok=false означает «не получилось, используй прежний путь».
+func extractPDFPagesWithPoppler(data []byte) ([]Page, bool) {
+	binary := popplerBinary()
+	if binary == "" || len(data) == 0 {
+		return nil, false
+	}
+	directory, err := tempdir.Create("fgos-pdf-*")
+	if err != nil {
+		return nil, false
+	}
+	defer os.RemoveAll(directory)
+	path := filepath.Join(directory, "document.pdf")
+	if err = os.WriteFile(path, data, 0o600); err != nil {
+		return nil, false
+	}
+	command := exec.Command(binary, "-layout", "-enc", "UTF-8", path, "-")
+	output, err := command.Output()
+	if err != nil {
+		return nil, false
+	}
+	pages := splitPopplerPages(string(output))
+	if len(pages) == 0 {
+		return nil, false
+	}
+	hasText := false
+	for _, page := range pages {
+		if strings.TrimSpace(page.Text) != "" {
+			hasText = true
+			break
+		}
+	}
+	if !hasText {
+		return nil, false
+	}
+	return pages, true
+}
+
+// splitPopplerPages режет вывод pdftotext по разделителю страниц (form feed).
+// Пустые страницы сохраняются, чтобы номера совпадали с PDF.
+func splitPopplerPages(raw string) []Page {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, "\f")
+	for len(parts) > 0 && strings.TrimSpace(parts[len(parts)-1]) == "" {
+		parts = parts[:len(parts)-1]
+	}
+	pages := make([]Page, 0, len(parts))
+	for index, part := range parts {
+		pages = append(pages, Page{Number: index + 1, Text: cleanPageText(part)})
+	}
+	return pages
+}
+
 // ExtractPDFPageTexts возвращает по одной странице на каждую страницу PDF,
 // включая страницы без текстового слоя (Text пустой). Ошибка ErrNoTextLayer
 // здесь не возвращается: решение об OCR принимает вызывающий код.
 func ExtractPDFPageTexts(data []byte) (pages []Page, err error) {
+	if popplerPages, ok := extractPDFPagesWithPoppler(data); ok {
+		return popplerPages, nil
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			pages = nil
