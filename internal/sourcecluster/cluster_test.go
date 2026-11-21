@@ -34,6 +34,20 @@ func TestSelectGroupsByProfession(t *testing.T) {
 	}
 }
 
+func TestSelectRejectsContentOnlyCoincidence(t *testing.T) {
+	sources := []domain.Source{
+		{ID: "backend-vacancy", Type: domain.SourceVacancy, Title: "Backend-разработчик", Content: "Работа с данными и API"},
+		{ID: "analyst-standard", Type: domain.SourceStandard, Title: "Профстандарт аналитика данных", Content: "SQL и дашборды"},
+	}
+	result := Select("Аналитик данных", sources, nil)
+	if len(result.Sources) != 1 || result.Sources[0].ID != "analyst-standard" {
+		t.Fatalf("sources = %+v", result.Sources)
+	}
+	if result.Excluded != 1 {
+		t.Fatalf("excluded = %d, want 1", result.Excluded)
+	}
+}
+
 func TestSelectKeepsEmptyProfessionPermissive(t *testing.T) {
 	sources := []domain.Source{{ID: "s1", Title: "Anything", Content: "Text"}}
 	result := Select("", sources, nil)
