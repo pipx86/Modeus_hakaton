@@ -169,6 +169,11 @@ type rawCitation struct {
 
 // Extract извлекает компетенции и KSA из страниц документа.
 //
+// Если включён SectionOnly (по умолчанию; env FGOS_SECTION_ONLY), сначала
+// отбираются только страницы раздела компетенций с окном SectionWindow
+// (env FGOS_SECTION_WINDOW). MaxPages проверяется по отобранным страницам:
+// общие положения не должны упираться в лимит, если модель их не увидит.
+//
 // Возвращаются программа (без title — его заполняет вызывающий), предупреждения
 // о каждом отброшенном пункте и ошибка. Если ни одного валидного пункта не
 // осталось, ошибка оборачивает ErrNoCompetencies и содержит причину последней
@@ -205,10 +210,33 @@ func (e *Extractor) Extract(ctx context.Context, pages []Page) (ingestion.Educat
 			state.addWarning(OCRPageWarning(page.Number))
 		}
 	}
-	if limit := e.maxPages(); len(filled) > limit {
+
+	// Отбор раздела компетенций выполняется до чанкования и до проверки
+	// MaxPages: страницы общих положений не должны упираться в лимит, если
+	// модель их всё равно не увидит.
+	selected := filled
+	sectionOnly := e.sectionOnly()
+	window := e.sectionWindow()
+	if sectionOnly {
+		selectionWarnings := []string{}
+		selected, selectionWarnings = SelectCompetencyPagesWithOptions(filled, SelectOptions{Window: window})
+		for _, warning := range selectionWarnings {
+			state.addWarning(warning)
+		}
+		if len(selected) < len(filled) {
+			state.addWarning(SectionProcessedWarning(len(selected), len(filled)))
+		}
+	}
+	e.logger().Info("fgos_section_selected",
+		"pages_total", len(filled),
+		"pages_selected", len(selected),
+		"window", window,
+		"section_only", sectionOnly)
+
+	if limit := e.maxPages(); len(selected) > limit {
 		return program, state.warnings, fmt.Errorf(
 			"fgos: документ содержит %d страниц, лимит %d: разделите документ или увеличьте MaxPages",
-			len(filled), limit)
+			len(selected), limit)
 	}
 	system, err := SystemPrompt()
 	if err != nil {
@@ -221,13 +249,14 @@ func (e *Extractor) Extract(ctx context.Context, pages []Page) (ingestion.Educat
 
 	e.applyResponseTokenLimit()
 
-	chunks := chunkPages(filled, e.maxCharsPerChunk())
+	chunks := chunkPages(selected, e.maxCharsPerChunk())
 	concurrency := e.concurrency()
 	if concurrency > len(chunks) {
 		concurrency = len(chunks)
 	}
 	e.logger().Info("fgos_extract_cycle",
-		"pages", len(filled),
+		"pages", len(selected),
+		"pages_total", len(filled),
 		"chunks", len(chunks),
 		"concurrency", concurrency,
 		"max_chars_per_chunk", e.maxCharsPerChunk())

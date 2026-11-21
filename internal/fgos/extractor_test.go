@@ -1,6 +1,7 @@
 package fgos
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -397,7 +398,13 @@ func TestSystemPromptEmbedded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SystemPrompt: %v", err)
 	}
-	for _, marker := range []string{"competencies", "citations", "page", "УК"} {
+	for _, marker := range []string{
+		"competencies", "citations", "page", "УК",
+		"только компетенции и их KSA",
+		"Что игнорировать",
+		"материально-техническое",
+		"Не выдумывай компетенции",
+	} {
 		if !strings.Contains(prompt, marker) {
 			t.Errorf("в промпте нет %q", marker)
 		}
@@ -576,6 +583,8 @@ func TestExtractAppliesResponseTokenLimit(t *testing.T) {
 // провайдер с небольшим контекстом не отвечал 413 на первый же запрос.
 func TestNewExtractorDefaults(t *testing.T) {
 	t.Setenv("FGOS_CONCURRENCY", "")
+	t.Setenv("FGOS_SECTION_ONLY", "")
+	t.Setenv("FGOS_SECTION_WINDOW", "")
 	extractor := NewExtractor(&fakeLLM{})
 	if extractor.MaxCharsPerChunk != 6000 {
 		t.Fatalf("MaxCharsPerChunk = %d, ожидали 6000", extractor.MaxCharsPerChunk)
@@ -588,6 +597,12 @@ func TestNewExtractorDefaults(t *testing.T) {
 	}
 	if extractor.Timeout != DefaultTimeout {
 		t.Fatalf("Timeout = %s", extractor.Timeout)
+	}
+	if !extractor.SectionOnly {
+		t.Fatal("SectionOnly по умолчанию должен быть true")
+	}
+	if extractor.SectionWindow != DefaultSectionWindow {
+		t.Fatalf("SectionWindow = %d, ожидали %d", extractor.SectionWindow, DefaultSectionWindow)
 	}
 }
 
@@ -738,6 +753,9 @@ func TestConcurrencyFromEnv(t *testing.T) {
 // TestExtractProcessesAllChunksConcurrently — пул обрабатывает все чанки, а
 // результаты собираются в порядке страниц, а не в порядке завершения запросов.
 func TestExtractProcessesAllChunksConcurrently(t *testing.T) {
+	// Тест про пул воркеров, а не про отбор раздела: страницы без маркеров
+	// компетенций иначе получили бы предупреждение об обработке всего документа.
+	t.Setenv("FGOS_SECTION_ONLY", "false")
 	client := &fakeLLM{}
 	client.reply = answerForPromptPage
 	extractor := NewExtractor(client)
@@ -854,5 +872,215 @@ func TestExtractConcurrencyOneMatchesParallel(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sequentialWarnings, parallelWarnings) {
 		t.Fatalf("предупреждения недетерминированы:\nsequential=%v\nparallel=%v", sequentialWarnings, parallelWarnings)
+	}
+}
+
+// sectionDocumentPages — документ из 10 страниц, где раздел компетенций
+// занимает страницы 4–5, а остальные — общие положения и структура программы.
+func sectionDocumentPages() []Page {
+	pages := make([]Page, 0, 10)
+	for number := 1; number <= 10; number++ {
+		pages = append(pages, neutralPage(number))
+	}
+	pages[3] = competencyPage(4, "УК-1")
+	pages[4] = continuationPage(5, "ПК-2")
+	return pages
+}
+
+// TestExtractSelectsOnlyCompetencySectionPages — модель получает только раздел
+// компетенций с окном соседних страниц, а в предупреждениях есть количество
+// обработанных страниц.
+func TestExtractSelectsOnlyCompetencySectionPages(t *testing.T) {
+	t.Setenv("FGOS_SECTION_ONLY", "true")
+	t.Setenv("FGOS_SECTION_WINDOW", "1")
+	pages := sectionDocumentPages()
+	client := &fakeLLM{}
+	client.reply = answerForPromptPage
+	extractor := NewExtractor(client)
+	extractor.MaxCharsPerChunk = 60
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	program, warnings, err := extractor.Extract(context.Background(), pages)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	calls := client.calls()
+	if len(calls) != 4 {
+		t.Fatalf("ожидали 4 страницы раздела (3–6), модель вызвана %d раз", len(calls))
+	}
+	got := make([]int, 0, len(calls))
+	for _, prompt := range calls {
+		number, _, ok := promptPage(prompt)
+		if !ok {
+			t.Fatalf("в запросе нет страницы: %s", prompt)
+		}
+		got = append(got, number)
+	}
+	if want := []int{3, 4, 5, 6}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("модель получила страницы %v, ожидали %v", got, want)
+	}
+	if len(program.Competencies) != 4 {
+		t.Fatalf("компетенции: %+v", program.Competencies)
+	}
+	if len(warnings) != 1 || warnings[0] != SectionProcessedWarning(4, 10) {
+		t.Fatalf("ожидали предупреждение %q, получили %v", SectionProcessedWarning(4, 10), warnings)
+	}
+}
+
+// TestExtractSectionOnlyDisabledProcessesAllPages — FGOS_SECTION_ONLY=false
+// отключает отбор: модель получает весь документ, предупреждения об отборе нет.
+func TestExtractSectionOnlyDisabledProcessesAllPages(t *testing.T) {
+	t.Setenv("FGOS_SECTION_ONLY", "false")
+	t.Setenv("FGOS_SECTION_WINDOW", "1")
+	pages := sectionDocumentPages()
+	client := &fakeLLM{}
+	client.reply = answerForPromptPage
+	extractor := NewExtractor(client)
+	if extractor.SectionOnly {
+		t.Fatal("FGOS_SECTION_ONLY=false должен отключать отбор")
+	}
+	extractor.MaxCharsPerChunk = 60
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	_, warnings, err := extractor.Extract(context.Background(), pages)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if got := len(client.calls()); got != 10 {
+		t.Fatalf("без отбора модель должна получить 10 страниц, вызовов: %d", got)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("при отключённом отборе предупреждений быть не должно: %v", warnings)
+	}
+}
+
+// TestExtractNoSectionMarkersProcessesAllPages — если маркеров нет, документ
+// обрабатывается целиком, а в черновик попадает предупреждение.
+func TestExtractNoSectionMarkersProcessesAllPages(t *testing.T) {
+	t.Setenv("FGOS_SECTION_ONLY", "true")
+	pages := make([]Page, 0, 5)
+	for number := 1; number <= 5; number++ {
+		pages = append(pages, neutralPage(number))
+	}
+	client := &fakeLLM{}
+	client.reply = answerForPromptPage
+	extractor := NewExtractor(client)
+	extractor.MaxCharsPerChunk = 60
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	_, warnings, err := extractor.Extract(context.Background(), pages)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if got := len(client.calls()); got != 5 {
+		t.Fatalf("без маркеров модель должна получить все 5 страниц, вызовов: %d", got)
+	}
+	if !hasWarning(warnings, SectionNotFoundWarning) {
+		t.Fatalf("нет предупреждения %q: %v", SectionNotFoundWarning, warnings)
+	}
+	if hasWarning(warnings, SectionProcessedWarning(5, 5)) {
+		t.Fatalf("нечего отбирать: предупреждения об отборе быть не должно: %v", warnings)
+	}
+}
+
+// TestExtractMaxPagesChecksSelectedPagesOnly — MaxPages проверяется после
+// отбора: 10 страниц вне раздела не упираются в лимит, если модель получает 1.
+func TestExtractMaxPagesChecksSelectedPagesOnly(t *testing.T) {
+	t.Setenv("FGOS_SECTION_ONLY", "true")
+	t.Setenv("FGOS_SECTION_WINDOW", "0")
+	pages := make([]Page, 0, 10)
+	for number := 1; number <= 10; number++ {
+		pages = append(pages, neutralPage(number))
+	}
+	pages[4] = competencyPage(5, "УК-1")
+	client := &fakeLLM{}
+	client.reply = answerForPromptPage
+	extractor := NewExtractor(client)
+	extractor.MaxPages = 3
+	extractor.MaxCharsPerChunk = 60
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	program, warnings, err := extractor.Extract(context.Background(), pages)
+	if err != nil {
+		t.Fatalf("страницы вне раздела не должны упираться в MaxPages: %v", err)
+	}
+	if got := len(client.calls()); got != 1 {
+		t.Fatalf("window=0 должен оставить одну страницу, вызовов: %d", got)
+	}
+	if len(program.Competencies) != 1 {
+		t.Fatalf("компетенции: %+v", program.Competencies)
+	}
+	if len(warnings) != 1 || warnings[0] != SectionProcessedWarning(1, 10) {
+		t.Fatalf("ожидали предупреждение %q, получили %v", SectionProcessedWarning(1, 10), warnings)
+	}
+}
+
+// TestExtractLogsSectionSelection — событие fgos_section_selected содержит
+// общее число страниц, число отобранных, окно и флаг отбора.
+func TestExtractLogsSectionSelection(t *testing.T) {
+	t.Setenv("FGOS_SECTION_ONLY", "true")
+	t.Setenv("FGOS_SECTION_WINDOW", "1")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	client := &fakeLLM{}
+	client.reply = answerForPromptPage
+	extractor := NewExtractor(client)
+	extractor.MaxCharsPerChunk = 60
+	extractor.Concurrency = 1
+	extractor.Logger = logger
+
+	if _, _, err := extractor.Extract(context.Background(), sectionDocumentPages()); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	output := logs.String()
+	for _, marker := range []string{
+		"msg=fgos_section_selected",
+		"pages_total=10",
+		"pages_selected=4",
+		"window=1",
+		"section_only=true",
+	} {
+		if !strings.Contains(output, marker) {
+			t.Errorf("в логе нет %q:\n%s", marker, output)
+		}
+	}
+}
+
+// TestSectionConfigFromEnv — FGOS_SECTION_ONLY и FGOS_SECTION_WINDOW:
+// значения по умолчанию, false/0, явное окно и некорректные значения.
+func TestSectionConfigFromEnv(t *testing.T) {
+	cases := []struct {
+		name       string
+		only       string
+		window     string
+		wantOnly   bool
+		wantWindow int
+	}{
+		{"defaults", "", "", true, DefaultSectionWindow},
+		{"disabled", "false", "", false, DefaultSectionWindow},
+		{"zero window", "true", "0", true, 0},
+		{"window two", "true", "2", true, 2},
+		{"invalid", "maybe", "abc", true, DefaultSectionWindow},
+		{"negative window", "true", "-2", true, DefaultSectionWindow},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("FGOS_SECTION_ONLY", testCase.only)
+			t.Setenv("FGOS_SECTION_WINDOW", testCase.window)
+			extractor := NewExtractor(&fakeLLM{})
+			if extractor.SectionOnly != testCase.wantOnly {
+				t.Fatalf("SectionOnly = %v, ожидали %v", extractor.SectionOnly, testCase.wantOnly)
+			}
+			if extractor.SectionWindow != testCase.wantWindow {
+				t.Fatalf("SectionWindow = %d, ожидали %d", extractor.SectionWindow, testCase.wantWindow)
+			}
+			if got := extractor.sectionWindow(); got != testCase.wantWindow {
+				t.Fatalf("sectionWindow() = %d, ожидали %d", got, testCase.wantWindow)
+			}
+		})
 	}
 }

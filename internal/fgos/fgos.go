@@ -6,15 +6,19 @@
 // Пайплайн:
 //
 //  1. ExtractPages режет PDF/DOCX на страницы с текстом;
-//  2. Extract режет страницы на чанки, не разрывая страницу, и просит модель
-//     вернуть JSON с компетенциями и дословными цитатами; чанки обрабатываются
-//     пулом воркеров (Concurrency), результаты собираются в порядке страниц;
-//  3. при отказе модели (413, context length, таймаут) или невалидном/пустом
+//  2. Extract отбирает страницы раздела компетенций (SelectCompetencyPages):
+//     общие положения, структура программы и требования к условиям реализации
+//     не уходят модели, если включён FGOS_SECTION_ONLY (по умолчанию);
+//  3. Extract режет отобранные страницы на чанки, не разрывая страницу, и
+//     просит модель вернуть JSON с компетенциями и дословными цитатами; чанки
+//     обрабатываются пулом воркеров (Concurrency), результаты собираются в
+//     порядке страниц;
+//  4. при отказе модели (413, context length, таймаут) или невалидном/пустом
 //     JSON чанк делится пополам (до 1500 символов, не более четырёх уровней),
 //     результаты подзапросов объединяются;
-//  4. каждый пункт валидируется (код, тип, цитата на указанной странице);
+//  5. каждый пункт валидируется (код, тип, цитата на указанной странице);
 //     невалидные пункты отбрасываются с предупреждением;
-//  5. результаты чанков дедуплицируются по коду компетенции с объединением KSA.
+//  6. результаты чанков дедуплицируются по коду компетенции с объединением KSA.
 package fgos
 
 import (
@@ -132,13 +136,27 @@ type Extractor struct {
 	Concurrency int
 	// Timeout — бюджет времени на весь разбор документа.
 	Timeout time.Duration
+	// SectionOnly — отправлять модели только страницы раздела компетенций.
+	// NewExtractor читает FGOS_SECTION_ONLY (по умолчанию true). Поле можно
+	// менять после создания адаптера.
+	SectionOnly bool
+	// SectionWindow — сколько соседних страниц добавлять к найденным страницам
+	// раздела. NewExtractor читает FGOS_SECTION_WINDOW (по умолчанию 1).
+	SectionWindow int
 	// Logger — необязательный логгер; по умолчанию slog.Default().
 	Logger *slog.Logger
+
+	// sectionConfigured показывает, что NewExtractor уже разрешил env-значения.
+	// Для Extractor, созданного литералом, значения по-прежнему читаются из env,
+	// поэтому по умолчанию отбор включён.
+	sectionConfigured bool
 }
 
 // NewExtractor создаёт адаптер с боевыми настройками по умолчанию.
 // Параллельность читается из FGOS_CONCURRENCY (1 — последовательно, по
-// умолчанию 3, не больше 6).
+// умолчанию 3, не больше 6). Отбор страниц раздела компетенций включается
+// FGOS_SECTION_ONLY (по умолчанию true), окно соседних страниц задаёт
+// FGOS_SECTION_WINDOW (по умолчанию 1).
 func NewExtractor(client llm.ChatClient) *Extractor {
 	return &Extractor{
 		Client:            client,
@@ -147,7 +165,60 @@ func NewExtractor(client llm.ChatClient) *Extractor {
 		MaxResponseTokens: DefaultMaxResponseTokens,
 		Concurrency:       concurrencyFromEnv(),
 		Timeout:           DefaultTimeout,
+		SectionOnly:       sectionOnlyFromEnv(),
+		SectionWindow:     sectionWindowFromEnv(),
+		sectionConfigured: true,
 	}
+}
+
+// sectionOnlyFromEnv читает FGOS_SECTION_ONLY. Пустое или некорректное
+// значение означает true: по умолчанию модель получает только раздел
+// компетенций, а весь документ отправляется лишь при явном false.
+func sectionOnlyFromEnv() bool {
+	raw := strings.TrimSpace(os.Getenv("FGOS_SECTION_ONLY"))
+	if raw == "" {
+		return true
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return true
+	}
+	return value
+}
+
+// sectionWindowFromEnv читает FGOS_SECTION_WINDOW. 0 отключает соседние
+// страницы, отрицательное или некорректное значение даёт
+// DefaultSectionWindow.
+func sectionWindowFromEnv() int {
+	raw := strings.TrimSpace(os.Getenv("FGOS_SECTION_WINDOW"))
+	if raw == "" {
+		return DefaultSectionWindow
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return DefaultSectionWindow
+	}
+	return value
+}
+
+// sectionOnly — фактическое решение об отборе: поле адаптера, если оно задано
+// NewExtractor, иначе значение FGOS_SECTION_ONLY.
+func (e *Extractor) sectionOnly() bool {
+	if e == nil || !e.sectionConfigured {
+		return sectionOnlyFromEnv()
+	}
+	return e.SectionOnly
+}
+
+// sectionWindow — фактическое окно соседних страниц.
+func (e *Extractor) sectionWindow() int {
+	if e == nil || !e.sectionConfigured {
+		return sectionWindowFromEnv()
+	}
+	if e.SectionWindow < 0 {
+		return DefaultSectionWindow
+	}
+	return e.SectionWindow
 }
 
 // concurrencyFromEnv читает FGOS_CONCURRENCY. Некорректное значение даёт
