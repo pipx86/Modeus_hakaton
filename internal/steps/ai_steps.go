@@ -146,7 +146,7 @@ func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID, professi
 	sources := make([]domain.Source, 0, len(vacancies)+8)
 	explicit := make(map[string]bool)
 	if s.GlobalSources != nil {
-		if global, err := s.GlobalSources.ListGlobalSources(5); err == nil {
+		if global, err := s.GlobalSources.ListGlobalSources(50); err == nil {
 			sources = append(sources, global...)
 		}
 	}
@@ -178,7 +178,7 @@ func (s *AgentAnalysisStep) analysisSources(ctx context.Context, runID, professi
 		})
 	}
 
-	clustered := sourcecluster.Select(profession, sources, explicit)
+	clustered := sourcecluster.Select("", sources, explicit)
 	if clustered.Excluded > 0 {
 		log.Printf("steps: excluded %d sources outside profession %q for run %s", clustered.Excluded, profession, runID)
 	}

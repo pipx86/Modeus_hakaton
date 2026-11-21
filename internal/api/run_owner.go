@@ -49,6 +49,17 @@ func (s *Server) allowInterviewAccess(w http.ResponseWriter, r *http.Request, ru
 	}
 	if auth.RoleFromCtx(r.Context()) != auth.RoleAdmin &&
 		!ownerlessRunAllowed(run) && run.CreatedBy != auth.Subject(r.Context()) {
+		if r.Method == http.MethodGet && auth.RoleFromCtx(r.Context()) == auth.RoleSpecialist {
+			if p, ok := s.store.(*PGStore); ok && validUUID(auth.Subject(r.Context())) {
+				var granted bool
+				if err := p.Pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM run_review_access WHERE run_id=$1 AND user_id=$2)`, runID, auth.Subject(r.Context())).Scan(&granted); err != nil {
+					writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось проверить доступ")
+					return false
+				} else if granted {
+					return true
+				}
+			}
+		}
 		writeErr(w, http.StatusForbidden, "FORBIDDEN", "доступ к интервью есть у владельца и администратора")
 		return false
 	}

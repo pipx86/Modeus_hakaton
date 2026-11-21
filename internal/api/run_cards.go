@@ -158,6 +158,7 @@ const programCoverageLinksQuery = `SELECT l.id::text, l.node_id::text, l.compete
 FROM activity_program_links l
 JOIN program_competencies c ON c.id = l.competency_id
 WHERE l.run_id = $1
+AND l.snapshot_id IS NOT DISTINCT FROM (SELECT id FROM snapshots WHERE run_id=$1 ORDER BY version DESC LIMIT 1)
 ORDER BY l.created_at, l.id`
 
 // ListRunSourceCards читает материалы прогона вместе с числом обоснований,

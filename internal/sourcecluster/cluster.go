@@ -31,10 +31,6 @@ type Result struct {
 func Select(profession string, sources []domain.Source, explicitIDs map[string]bool) Result {
 	targetTokens := tokens(profession)
 	result := Result{Profession: strings.TrimSpace(profession)}
-	if len(targetTokens) == 0 {
-		result.Sources = append([]domain.Source(nil), sources...)
-		return result
-	}
 
 	selected := make([]domain.Source, 0, len(sources))
 	seen := make(map[string]bool, len(sources))
@@ -58,7 +54,7 @@ func Select(profession string, sources []domain.Source, explicitIDs map[string]b
 			}
 			continue
 		}
-		if scoreSource(targetTokens, source) == 0 {
+		if len(targetTokens) > 0 && scoreSource(targetTokens, source) == 0 {
 			result.Excluded++
 			continue
 		}

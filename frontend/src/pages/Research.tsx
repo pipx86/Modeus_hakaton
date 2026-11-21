@@ -41,6 +41,7 @@ import { RunStageStepper } from "@/components/run-stage"
 import { ProgramLinksTab } from "@/components/program-links-tab"
 import { InterviewsTab } from "@/components/interviews-tab"
 import { RunSourcesPanel } from "@/components/run-sources-panel"
+import { ReviewAccess } from "@/components/review-access"
 import { SourceChanges } from "@/components/source-changes"
 import { ProgramCoverageReport } from "@/components/program-coverage-report"
 import { ProgramSuggestions } from "@/components/program-suggestions"
@@ -1675,7 +1676,7 @@ export function Research() {
               Программа
             </TabsTrigger>
           )}
-          {adminView && (
+          {reviewerView && (
             <TabsTrigger value="conflicts" className={TAB_TRIGGER_CLASS}>
               Конфликты
             </TabsTrigger>
@@ -1689,6 +1690,7 @@ export function Research() {
         </TabsList>
         <TabsContent value="sources">
           <div className="space-y-4">
+            {!guestView && run && (role === "admin" || role === "user") && <ReviewAccess runId={id} />}
             <SourceChanges runId={id} onFocusNode={focusNode} />
             <RunSourcesPanel runId={id} onFocusNode={focusNode} />
             <SourcesTab runId={id} readOnly={treeReadOnly} />
@@ -1731,10 +1733,10 @@ export function Research() {
           )}
         </TabsContent>
         <TabsContent value="conflicts">
-          {adminView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
+          {reviewerView && <ConflictsTab runId={id} onFocusNode={focusNode} />}
         </TabsContent>
         <TabsContent value="interviews">
-          <InterviewsTab runId={id} onFocusNode={focusNode} />
+          <InterviewsTab runId={id} onFocusNode={focusNode} canStart={!chatReadOnly && run?.type === "chat" && (run.status === "running" || run.status === "pending")} onStarted={() => { setChatFocus(null); setTab("chat") }} />
         </TabsContent>
         <TabsContent value="chat">
           <ChatTab

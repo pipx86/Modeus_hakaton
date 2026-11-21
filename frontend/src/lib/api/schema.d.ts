@@ -960,6 +960,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{id}/review-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grant a specialist access to a research run */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                    id: components["parameters"]["RunId"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Access granted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        /** Revoke a specialist's access to a research run */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                    id: components["parameters"]["RunId"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Access revoked */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{id}/source-changes": {
         parameters: {
             query?: never;
@@ -1161,6 +1239,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Повторить финализацию интервью
+         * @description Повторно запускает построение дерева (аналитик, синтезатор, сохранение) по сохранённому диалогу интервью, когда прогон завершился `failed` или дерево так и не было построено. Транскрипт восстанавливается из сохранённых сообщений (`GET /runs/{id}/messages`), терминальное состояние durable-сессии сбрасывается в `active`, поэтому после каждой неудачи повтор остаётся возможным: отдельного «уже перезапускали» флага нет. Доступ есть у владельца прогона и администратора (роли admin, user, specialist). Ответ `202` означает, что анализ уже идёт в фоне: итоговый статус прогона публикуется в `GET /runs/{id}/events` и доступен в `GET /runs/{id}`. Если LLM недоступен, прогон снова станет `failed` — это ожидаемый результат, и повтор разрешён после восстановления провайдера.
+         */
+        post: operations["retryRunFinalization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{id}/interviews": {
         parameters: {
             query?: never;
@@ -1337,6 +1435,46 @@ export interface paths {
          * @description Groups every tree node of the run by program coverage: `confirmed` when at least one link to a program competency is approved, `proposed` when there are only proposals from the core, `none` when there are no links or all of them are rejected (rejected links stay visible in `links`). `competencies` contains approved links only, grouped per competency with their `links_count`. When the run has no selected program (`result_kind` is not `program`) or no links at all, the response is still 200 with `counts.none` equal to `counts.total` and empty `competencies`, so the UI can show its empty state. Read-only card 24 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).
          */
         get: operations["getProgramCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/activity-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Changes of professional activity between two research runs
+         * @description Compares the current activity trees of two runs owned by the same user. Nodes are matched semantically by type, normalized title and normalized ancestor path, because independent runs never share node ids. Returns added, removed and changed nodes with parent title, evidence count and the new sources that confirm the node; summary reports counts per category and the number of unique sources added or removed. A different profession is not an error: same_profession=false marks the report. A run without a tree returns 409 TREE_MISSING. Read-only card 31 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).
+         */
+        get: operations["getActivityChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{id}/program-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Program-related suggestions based on activity mapping
+         * @description Builds read-only proposals from saved activity-to-program links: `unmapped_activity` for a task or action without an approved link, `unconfirmed_competency` for a competency with proposed links but no approval, `uncovered_competency` for a competency without any activity link, and `conflicting_links` for a node with approved and rejected links to different competencies. Priorities are high for task-level unmapped, medium for other unmapped and unconfirmed, and low for uncovered and conflicting. Every proposal has status `proposal`; the system never approves or rewrites the program. When the run is not in program mode or has no links yet, the response is still 200 with an empty `proposals` array and an explanatory `summary`. Read-only card 32 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).
+         */
+        get: operations["getProgramSuggestions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2120,6 +2258,90 @@ export interface components {
             competencies: components["schemas"]["ProgramCoverageCompetency"][];
             counts: components["schemas"]["ProgramCoverageCounts"];
         };
+        /** @description Material that confirms a report node and does not appear anywhere in the tree of the compared run. */
+        ActivityChangeSource: {
+            source_id: string;
+            source_title: string;
+            source_type: components["schemas"]["SourceType"];
+        };
+        /** @description One node of the activity change report (card 31 of the MVP plan). The changed_fields array is present only on nodes of the `changed` array. */
+        ActivityChangeNode: {
+            node_id: string;
+            node_title: string;
+            node_type: components["schemas"]["NodeType"];
+            /** @description Title of the parent node in the same tree; null for a root node. */
+            parent_title: string | null;
+            /** @description Number of evidence items attached to the node in its own run. */
+            evidence_count: number;
+            /** @description Materials of this node that are not used anywhere in the compared run, sorted by title and id. Always an array; removed nodes report an empty array because nothing new confirms a disappeared node. */
+            new_sources: components["schemas"]["ActivityChangeSource"][];
+            /** @description Present only for changed nodes: fields whose raw values differ, in the fixed contract order title, description, type. A change that is only case/punctuation in the title keeps the semantic match and is reported here. */
+            changed_fields?: ("title" | "description" | "type")[];
+        };
+        /** @description Counts of the activity change report. sources_added and sources_removed count unique materials of the whole tree, not node-source pairs. */
+        ActivityChangeSummary: {
+            added: number;
+            removed: number;
+            changed: number;
+            sources_added: number;
+            sources_removed: number;
+        };
+        /** @description JSON body of GET /runs/{id}/activity-changes?against={run_id} (card 31). */
+        ActivityChangeReport: {
+            run_id: string;
+            against_run_id: string;
+            /** @description True when both runs describe the same profession after normalization. False is not an error; it only marks that changes may be caused by a different profession. */
+            same_profession: boolean;
+            /** @description Nodes that exist only in the current run, in tree order. */
+            added: components["schemas"]["ActivityChangeNode"][];
+            /** @description Nodes that exist only in the compared run, in tree order. */
+            removed: components["schemas"]["ActivityChangeNode"][];
+            /** @description Semantically matched nodes whose fields changed, in tree order. */
+            changed: components["schemas"]["ActivityChangeNode"][];
+            summary: components["schemas"]["ActivityChangeSummary"];
+        };
+        /** @description What a proposal points at: node_id for activity proposals, competency_id plus competency_title for competency proposals. Omitted fields are absent from JSON. */
+        ProgramSuggestionTarget: {
+            node_id?: string;
+            competency_id?: string;
+            competency_title?: string;
+        };
+        /** @description One suggestion of card 32 of the MVP plan. */
+        ProgramProposal: {
+            /** @description Stable id built from the kind and the target id. */
+            id: string;
+            /** @enum {string} */
+            kind: "unmapped_activity" | "unconfirmed_competency" | "uncovered_competency" | "conflicting_links";
+            target: components["schemas"]["ProgramSuggestionTarget"];
+            /** @description Short neutral Russian explanation of why the candidate is worth checking. */
+            rationale: string;
+            /** @enum {string} */
+            priority: "high" | "medium" | "low";
+            /**
+             * @description The system only proposes; it never approves or rewrites the program.
+             * @enum {string}
+             */
+            status: "proposal";
+        };
+        /** @description JSON body of GET /runs/{id}/program-suggestions (card 32 of the MVP plan). */
+        ProgramSuggestions: {
+            run_id: string;
+            /** @description Selected program; null when the run result kind is not program. */
+            program_id: string | null;
+            /** @description Title of the selected program; null together with program_id. */
+            program_title: string | null;
+            /**
+             * Format: date-time
+             * @description Time the report was built, UTC.
+             */
+            generated_at: string;
+            /** @description Suggestions ordered by priority, kind and id. Empty when the run has no program mapping or no open candidates; the summary explains why. */
+            proposals: components["schemas"]["ProgramProposal"][];
+            /** @description Human-readable neutral summary with priority counts, or the reason the list is empty. */
+            summary: string;
+            /** @description Fixed notice that the system only proposes and the methodologist makes the decision. */
+            disclaimer: string;
+        };
         ChatMessage: {
             id: string;
             /** @enum {string} */
@@ -2133,6 +2355,16 @@ export interface components {
         ChatCitation: {
             title: string;
             quote: string;
+        };
+        /** @description Результат запуска повторной финализации. Описывает фоновую операцию, а не строку прогона: итоговый статус прогона (done, degraded или снова failed) публикуется событиями прогона и в GET /runs/{id}. */
+        RetryRunResult: {
+            /** @description Идентификатор прогона, финализация которого запущена повторно. */
+            run_id: string;
+            /**
+             * @description Состояние фоновой операции повтора.
+             * @enum {string}
+             */
+            status: "running";
         };
         /** @description Payload of one server-sent event of a run stream. */
         RunEvent: {
@@ -6379,6 +6611,78 @@ export interface operations {
             };
         };
     };
+    retryRunFinalization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Повторная финализация запущена в фоне. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run_id": "11111111-1111-1111-1111-111111111111",
+                     *       "status": "running"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RetryRunResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Прогон принадлежит другому пользователю; доступ есть у владельца и администратора. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "FORBIDDEN",
+                     *       "message": "доступ к интервью есть у владельца и администратора"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Повтор невозможен: дерево уже построено, в прогоне нет сохранённых сообщений, интервью или другой повтор ещё выполняется, либо состояние сессии изменилось параллельным писателем. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            /** @description Чат-сервис не настроен на этом сервере или у сервиса нет финализатора (не настроен LLM-аналитик), поэтому повтор невозможен. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "NOT_IMPLEMENTED",
+                     *       "message": "повторная финализация недоступна: не настроен LLM-аналитик"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
     listRunInterviews: {
         parameters: {
             query?: never;
@@ -6760,6 +7064,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgramCoverage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getActivityChanges: {
+        parameters: {
+            query: {
+                /** @description Run id to compare with. */
+                against: string;
+            };
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Activity change report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityChangeReport"];
+                };
+            };
+            /** @description The against parameter is missing or not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "BAD_REQUEST",
+                     *       "message": "against должен быть UUID исследования"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description One of the runs has no activity tree yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "TREE_MISSING",
+                     *       "message": "у исследования ещё нет дерева деятельности — сравнивать пока нечего"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getProgramSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run identifier (UUID with PostgreSQL; `run-<n>` with the in-memory demo store). */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Program suggestions; an empty proposals array is a valid answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramSuggestions"];
                 };
             };
             401: components["responses"]["Unauthorized"];

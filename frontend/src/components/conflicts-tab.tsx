@@ -119,7 +119,7 @@ export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Найдено конфликтов: {items.length}. Победитель выбран по приоритету источника:
+        Найдено конфликтов: {items.length}. Предварительный вариант выбран по приоритету источника и требует проверки:
         интервью → профстандарт → вакансия → документ.
       </p>
       {items.map((conflict) => (
@@ -156,7 +156,7 @@ export function ConflictsTab({ runId, onFocusNode }: ConflictsTabProps) {
                   </Badge>
                   <span className="min-w-0 flex-1 break-words">{value.value}</span>
                   <span className="text-xs text-muted-foreground">приоритет {value.priority}</span>
-                  {winner && <span className="text-xs font-medium text-success">Выбрано</span>}
+                  {winner && <span className="text-xs font-medium text-warning">Предварительно выбрано — требуется проверка</span>}
                 </li>
               )
             })}

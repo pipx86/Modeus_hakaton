@@ -74,6 +74,7 @@ func (p *PGStore) ListProgramLinks(runID, statusFilter string) ([]domain.Program
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, programLinksQuery+`
 WHERE l.run_id = $1 AND ($2::text = '' OR l.status = $2::text)
+AND l.snapshot_id IS NOT DISTINCT FROM (SELECT id FROM snapshots WHERE run_id=$1 ORDER BY version DESC LIMIT 1)
 ORDER BY l.created_at, l.id`, runID, strings.TrimSpace(statusFilter))
 	if err != nil {
 		return nil, translate(err)
@@ -186,7 +187,7 @@ FROM evidence e JOIN nodes n ON n.id = e.node_id WHERE n.run_id = $1`, runID).
        count(*) FILTER (WHERE status = 'proposed'),
        count(*) FILTER (WHERE status = 'approved'),
        count(*) FILTER (WHERE status = 'rejected')
-FROM activity_program_links WHERE run_id = $1`, runID).
+FROM activity_program_links WHERE run_id = $1 AND snapshot_id IS NOT DISTINCT FROM (SELECT id FROM snapshots WHERE run_id=$1 ORDER BY version DESC LIMIT 1)`, runID).
 		Scan(&summary.Links.Total, &summary.Links.Proposed, &summary.Links.Approved, &summary.Links.Rejected); err != nil {
 		return nil, translate(err)
 	}

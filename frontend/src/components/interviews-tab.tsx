@@ -25,6 +25,7 @@ import {
   listInterviewEvidence,
   listInterviewMessages,
   listRunInterviews,
+  startRunInterview,
   type EvidenceStatus,
   type InterviewEvidence,
   type InterviewMessage,
@@ -94,10 +95,19 @@ function respondentLabel(interview: RunInterview): string {
 export function InterviewsTab({
   runId,
   onFocusNode,
+  canStart = false,
+  onStarted,
 }: {
   runId: string
   onFocusNode?: (nodeId: string) => void
+  canStart?: boolean
+  onStarted?: () => void
 }) {
+  const [showStart, setShowStart] = useState(false)
+  const [name, setName] = useState("")
+  const [role, setRole] = useState("")
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
   const [interviews, setInterviews] = useState<RunInterview[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -237,6 +247,27 @@ export function InterviewsTab({
             <RefreshCwIcon className="size-4" />
           </Button>
         </div>
+
+        {canStart && (showStart ? (
+          <form className="space-y-2 rounded-lg border p-3" onSubmit={(event) => {
+            event.preventDefault()
+            setStarting(true)
+            setStartError(null)
+            void startRunInterview(runId, name.trim(), role.trim()).then(() => {
+              setShowStart(false)
+              setName("")
+              setRole("")
+              onStarted?.()
+            }).catch((cause: unknown) => setStartError(describeInterviewsError(cause))).finally(() => setStarting(false))
+          }}>
+            <p className="text-xs text-muted-foreground">Начало нового интервью завершит текущий диалог. История сохранится.</p>
+            <label className="block text-sm">Имя респондента<input className="mt-1 w-full rounded border p-2" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label>
+            <label className="block text-sm">Роль респондента<input className="mt-1 w-full rounded border p-2" value={role} maxLength={120} onChange={(event) => setRole(event.target.value)} /></label>
+            {startError && <p role="alert" className="text-sm text-destructive">{startError}</p>}
+            <Button type="submit" size="sm" disabled={starting}>Начать интервью</Button>{" "}
+            <Button type="button" size="sm" variant="outline" disabled={starting} onClick={() => setShowStart(false)}>Отмена</Button>
+          </form>
+        ) : <Button size="sm" onClick={() => setShowStart(true)}>Новый респондент</Button>)}
 
         {loading ? (
           <div className="space-y-2">
