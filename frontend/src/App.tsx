@@ -9,7 +9,6 @@ import { RequireAuth } from "@/components/require-auth"
 import { Layout } from "@/components/Layout"
 import { Dashboard } from "@/pages/Dashboard"
 import { Admin } from "@/pages/admin"
-import { Consent } from "@/pages/consent"
 import { Login } from "@/pages/login"
 import { NewResearch } from "@/pages/NewResearch"
 import { NotFound } from "@/pages/not-found"
@@ -56,14 +55,6 @@ function App() {
               element={
                 <ErrorBoundary key="login" variant="inline">
                   <Login />
-                </ErrorBoundary>
-              }
-            />
-            <Route
-              path="consent"
-              element={
-                <ErrorBoundary key="consent" variant="inline">
-                  <Consent />
                 </ErrorBoundary>
               }
             />

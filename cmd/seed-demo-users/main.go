@@ -46,52 +46,6 @@ func demoUsers() []demoUser {
 	}
 }
 
-// seedDemoUser создаёт или обновляет демо-учётку вместе с согласием на
-// обработку персональных данных. Демо-согласие помечается как унаследованное
-// (v1-legacy): пользователь его не давал, оно нужно, чтобы демо-сценарии
-// работали без отдельного экрана согласия.
-func seedDemoUser(ctx context.Context, pool *pgxpool.Pool, user demoUser) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("пароль %s: %w", user.Email, err)
-	}
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("транзакция для %s: %w", user.Email, err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	tag, err := tx.Exec(ctx, `INSERT INTO users(email, display_name, role_id, password_hash, consent_version, consent_at)
-SELECT $1, $2, r.id, $3, 'v1', now() FROM roles r WHERE r.code = $4
-ON CONFLICT (email) DO UPDATE
-SET display_name = EXCLUDED.display_name,
-    role_id = EXCLUDED.role_id,
-    password_hash = EXCLUDED.password_hash,
-    consent_version = 'v1',
-    consent_at = COALESCE(users.consent_at, EXCLUDED.consent_at),
-    updated_at = now()`,
-		user.Email, user.DisplayName, string(hash), string(user.Role))
-	if err != nil {
-		return fmt.Errorf("сохранить %s: %w", user.Email, err)
-	}
-	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("роль %q не найдена в таблице roles", user.Role)
-	}
-	if _, err = tx.Exec(ctx, `INSERT INTO user_consents (user_id, document_version, accepted_at)
-SELECT u.id, 'v1-legacy', u.consent_at
-FROM users u
-WHERE u.email = $1
-  AND NOT EXISTS (
-      SELECT 1 FROM user_consents c
-      WHERE c.user_id = u.id AND c.document_version = 'v1-legacy'
-  )`, user.Email); err != nil {
-		return fmt.Errorf("согласие %s: %w", user.Email, err)
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return fmt.Errorf("сохранить %s: %w", user.Email, err)
-	}
-	return nil
-}
-
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -132,8 +86,22 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	rows := make([]reportRow, 0, len(demoUsers()))
 	for _, user := range demoUsers() {
-		if err := seedDemoUser(ctx, pool, user); err != nil {
-			return err
+		hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("пароль %s: %w", user.Email, err)
+		}
+		tag, err := pool.Exec(ctx, `INSERT INTO users(email, display_name, role_id, password_hash)
+SELECT $1, $2, r.id, $3 FROM roles r WHERE r.code = $4
+ON CONFLICT (email) DO UPDATE
+SET display_name = EXCLUDED.display_name,
+    role_id = EXCLUDED.role_id,
+    password_hash = EXCLUDED.password_hash`,
+			user.Email, user.DisplayName, string(hash), string(user.Role))
+		if err != nil {
+			return fmt.Errorf("сохранить %s: %w", user.Email, err)
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("роль %q не найдена в таблице roles", user.Role)
 		}
 		rows = append(rows, reportRow{Email: user.Email, DisplayName: user.DisplayName, Role: string(user.Role)})
 	}

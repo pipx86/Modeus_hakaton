@@ -35,12 +35,6 @@ type registerRequest struct {
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
-	// Consent — обязательное подтверждение согласия на обработку персональных
-	// данных (152-ФЗ). Значение false или отсутствие поля даёт 422.
-	Consent bool `json:"consent"`
-	// ConsentVersion — необязательная версия документа. Пустая или неизвестная
-	// версия сводится к текущей ConsentVersion.
-	ConsentVersion string `json:"consent_version,omitempty"`
 }
 
 type loginRequest struct {
@@ -89,7 +83,7 @@ func validRegistration(req *registerRequest) string {
 
 // handleRegister godoc
 // @Summary      Register a user
-// @Description  Creates a user with email and password. The first registered user becomes admin, all following users get the user role. Consent to personal data processing is required.
+// @Description  Creates a user with email and password. The first registered user becomes admin, all following users get the user role.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
@@ -97,7 +91,6 @@ func validRegistration(req *registerRequest) string {
 // @Success      201   {object}  authResponse
 // @Failure      400   {object}  errorBody
 // @Failure      409   {object}  errorBody
-// @Failure      422   {object}  consentRequiredError
 // @Failure      500   {object}  errorBody
 // @Router       /api/v1/auth/register [post]
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -111,10 +104,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	if !req.Consent {
-		writeConsentRequired(w, http.StatusUnprocessableEntity)
-		return
-	}
 	if message := validRegistration(&req); message != "" {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", message)
 		return
@@ -124,12 +113,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось создать пароль")
 		return
 	}
-	consent := ConsentAcceptance{
-		Version:   normalizeConsentVersion(req.ConsentVersion),
-		IP:        remoteIP(r),
-		UserAgent: clipConsentValue(r.UserAgent(), consentUserAgentLimit),
-	}
-	user, err := store.RegisterUserWithConsent(r.Context(), req.Email, req.DisplayName, string(hash), consent)
+	user, err := store.RegisterUser(r.Context(), req.Email, req.DisplayName, string(hash))
 	if errors.Is(err, ErrEmailTaken) {
 		writeErr(w, http.StatusConflict, "EMAIL_TAKEN", "пользователь с таким email уже зарегистрирован")
 		return

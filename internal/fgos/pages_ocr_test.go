@@ -127,6 +127,7 @@ func TestExtractPagesWithOCRKeepsTextLayerPDF(t *testing.T) {
 }
 
 func TestExtractPagesWithOCRRecognizesMixedDocument(t *testing.T) {
+	t.Setenv("FGOS_PDFTOTEXT", "off") // тест проверяет встроенный извлекатель, не poppler
 	ocr := &fakeOCRExtractor{pages: []Page{
 		{Number: 1, Text: "Первая страница с текстовым слоем" + strings.Repeat(" ", 20)},
 		{Number: 2, Text: "ОПК-2. Способен разрабатывать программное обеспечение.", OCR: true},

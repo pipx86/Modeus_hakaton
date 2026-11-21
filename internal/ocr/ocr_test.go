@@ -14,6 +14,8 @@ import (
 // TestMain обслуживает Tesseract-тесты без внешнего бинаря: тестовый бинарь
 // запускается как «tesseract» и по OCR_TEST_HELPER печатает заданный ответ.
 func TestMain(m *testing.M) {
+	// Синтетические PDF проверяют встроенный извлекатель и OCR, а не pdftotext.
+	_ = os.Setenv("FGOS_PDFTOTEXT", "off")
 	if mode := os.Getenv("OCR_TEST_HELPER"); mode != "" {
 		runOCRTestHelper(mode)
 	}

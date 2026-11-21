@@ -143,6 +143,7 @@ func (f *fakeRenderer) callCount() int {
 }
 
 func TestPagesFromPDFRecognizesOnlyPageWithoutText(t *testing.T) {
+	t.Setenv("FGOS_PDFTOTEXT", "off") // тест проверяет встроенный извлекатель, не poppler
 	renderer := &fakeRenderer{images: map[string][]string{"2-2": {"page-2.png"}}}
 	engine := &fakeEngine{texts: map[string]string{
 		"page-2.png": "ОПК-2. Способен разрабатывать программное обеспечение.",

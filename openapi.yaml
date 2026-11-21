@@ -6,7 +6,7 @@ info:
     Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20).
     This file is the source of truth; the copies served by the API from `docs/`
     (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it.
-    All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register`, `POST /auth/login` and `GET /consent/document`,
+    All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`,
     require a JWT bearer token. Successful responses are JSON, except the run export
     which serves Markdown by default (`?format=md`) and JSON on request
     (`?format=json`), the program draft export
@@ -41,10 +41,6 @@ tags:
     description: Interview chat messages of a run.
   - name: users
     description: Demo users and their roles.
-  - name: consent
-    description: >-
-      Согласие на обработку персональных данных (152-ФЗ): статус, принятие и
-      публичный текст документа.
 security:
   - bearerAuth: []
 paths:
@@ -2073,7 +2069,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          $ref: "#/components/responses/ForbiddenOrConsentRequired"
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
         "502":
@@ -3717,14 +3713,14 @@ paths:
                 reason:
                   type: string
                   maxLength: 2000
-                competency_id:
-                  type: string
-                  format: uuid
-                  description: Optional corrected competency target.
-                ksa_id:
-                  type: string
-                  format: uuid
-                  description: Optional corrected KSA belonging to competency_id.
+        competency_id:
+          type: string
+          format: uuid
+          description: Optional corrected competency target.
+        ksa_id:
+          type: string
+          format: uuid
+          description: Optional corrected KSA belonging to competency_id.
       responses:
         "200":
           description: The updated link.
@@ -4393,9 +4389,7 @@ paths:
       description: >-
         Creates an account with email and password. The first registered user
         becomes admin, all following users get the user role. Returns a
-        24-hour JWT. Consent to personal data processing is mandatory: without
-        `consent=true` the endpoint answers 422 CONSENT_REQUIRED and creates no
-        account. Passwords must contain at least 8 characters and occupy
+        24-hour JWT. Passwords must contain at least 8 characters and occupy
         at most 72 UTF-8 bytes.
       operationId: registerUser
       requestBody:
@@ -4419,8 +4413,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "422":
-          $ref: "#/components/responses/ConsentRequired"
         "500":
           $ref: "#/components/responses/InternalError"
         "503":
@@ -4452,74 +4444,6 @@ paths:
           $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-  /consent/status:
-    get:
-      tags: [consent]
-      summary: Статус согласия на обработку персональных данных
-      description: >-
-        Возвращает текущую версию документа и признак того, что
-        авторизованный пользователь её принял. Если согласия нет,
-        `accepted=false`, а `accepted_at` отсутствует.
-      operationId: getConsentStatus
-      responses:
-        "200":
-          description: Текущее согласие пользователя.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConsentStatus"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-  /consent:
-    post:
-      tags: [consent]
-      summary: Зафиксировать согласие на обработку персональных данных
-      description: >-
-        Сохраняет согласие уже зарегистрированного пользователя (например,
-        созданного до внедрения согласия) и возвращает статус. Повторный вызов
-        с той же версией идемпотентен: новая строка не создаётся, возвращается
-        исходное `accepted_at`. Неизвестная или пустая версия заменяется текущей
-        (`v1`).
-      operationId: acceptConsent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AcceptConsentRequest"
-      responses:
-        "200":
-          description: Согласие сохранено или уже было сохранено ранее.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConsentStatus"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-  /consent/document:
-    get:
-      tags: [consent]
-      summary: Текст политики обработки персональных данных
-      description: >-
-        Публичный документ для экрана согласия. Не требует токена, чтобы
-        фронтенд мог показать политику до регистрации.
-      operationId: getConsentDocument
-      security: []
-      responses:
-        "200":
-          description: Версия, заголовок и текст политики на русском языке.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConsentDocument"
   /users:
     get:
       tags: [users]
@@ -5188,45 +5112,6 @@ components:
           example:
             code: FORBIDDEN
             message: insufficient permissions for this action
-    ForbiddenOrConsentRequired:
-      description: >-
-        Роль не допускает операцию (`code=FORBIDDEN`) либо у пользователя нет
-        согласия на обработку персональных данных (`code=CONSENT_REQUIRED`).
-        В случае согласия `details.document_url` ссылается на документ
-        `GET /consent/document`, а не на технический идентификатор.
-      content:
-        application/json:
-          schema:
-            oneOf:
-              - $ref: "#/components/schemas/Error"
-              - $ref: "#/components/schemas/ConsentRequiredError"
-          examples:
-            forbidden:
-              value:
-                code: FORBIDDEN
-                message: insufficient permissions for this action
-            consentRequired:
-              value:
-                code: CONSENT_REQUIRED
-                message: нужно согласие на обработку персональных данных
-                details:
-                  document_version: v1
-                  document_url: /api/v1/consent/document
-    ConsentRequired:
-      description: >-
-        Регистрация без согласия на обработку персональных данных. `details`
-        содержит версию документа и ссылку на него; учётная запись не
-        создаётся.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ConsentRequiredError"
-          example:
-            code: CONSENT_REQUIRED
-            message: нужно согласие на обработку персональных данных
-            details:
-              document_version: v1
-              document_url: /api/v1/consent/document
     NotFound:
       description: The requested run, snapshot, source, node or evidence does not exist.
       content:
@@ -6654,7 +6539,7 @@ components:
           $ref: "#/components/schemas/RunStatus"
     RegisterRequest:
       type: object
-      required: [email, display_name, password, consent]
+      required: [email, display_name, password]
       additionalProperties: false
       properties:
         email:
@@ -6669,17 +6554,6 @@ components:
           minLength: 8
           maxLength: 72
           description: At most 72 UTF-8 bytes, including multibyte characters.
-        consent:
-          type: boolean
-          description: >-
-            Подтверждение согласия на обработку персональных данных по 152-ФЗ.
-            Принимается только `true`; иначе ответ 422 CONSENT_REQUIRED.
-        consent_version:
-          type: string
-          default: v1
-          description: >-
-            Версия документа, с которой согласен пользователь. Пустая или
-            неизвестная версия заменяется текущей (`v1`).
     LoginRequest:
       type: object
       required: [email, password]
@@ -6715,73 +6589,6 @@ components:
           type: string
         user:
           $ref: "#/components/schemas/AuthUser"
-    ConsentStatus:
-      type: object
-      required: [document_version, accepted]
-      additionalProperties: false
-      properties:
-        document_version:
-          type: string
-          description: Текущая версия документа согласия.
-          example: v1
-        accepted:
-          type: boolean
-          description: Пользователь принял текущую версию документа.
-        accepted_at:
-          type: string
-          format: date-time
-          description: >-
-            Время принятия текущей версии. Присутствует только при
-            `accepted=true`.
-    AcceptConsentRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        document_version:
-          type: string
-          default: v1
-          description: >-
-            Версия документа. Пустая или неизвестная версия заменяется
-            текущей (`v1`).
-    ConsentDocument:
-      type: object
-      required: [version, title, text]
-      additionalProperties: false
-      properties:
-        version:
-          type: string
-          example: v1
-        title:
-          type: string
-          example: Политика обработки персональных данных
-        text:
-          type: string
-          description: Краткий текст политики на русском языке (Markdown).
-    ConsentRequiredError:
-      type: object
-      required: [code, message, details]
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-          enum: [CONSENT_REQUIRED]
-        message:
-          type: string
-          description: Человекочитаемое объяснение требования согласия.
-        details:
-          type: object
-          required: [document_version, document_url]
-          additionalProperties: false
-          properties:
-            document_version:
-              type: string
-              example: v1
-            document_url:
-              type: string
-              description: >-
-                Ссылка на документ согласия, который может отрисовать
-                фронтенд (не технический идентификатор).
-              example: /api/v1/consent/document
     CorrelationMetric:
       type: object
       required: [key, label]
