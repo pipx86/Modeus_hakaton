@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 
 	"activity-descriptor/internal/auth"
@@ -95,6 +96,19 @@ func (s *Server) handleRetryRun(w http.ResponseWriter, r *http.Request) {
 	if !s.retryLocks.begin(runID) {
 		writeErr(w, http.StatusConflict, "RETRY_IN_PROGRESS", "повторный анализ уже выполняется")
 		return
+	}
+	// A deterministic emergency tree is replaceable: remove it before the real
+	// retry, otherwise CheckRetryFinalize would reject the run forever.
+	if pgStore, ok := s.store.(*PGStore); ok {
+		if reason, reasonErr := pgStore.DegradedReason(runID); reasonErr == nil &&
+			strings.Contains(strings.ToLower(reason), "демонстрационный") {
+			if clearErr := pgStore.ClearRunTree(runID); clearErr != nil {
+				s.retryLocks.end(runID)
+				logging.Logger.Error("retry_clear_fallback_failed", "run_id", runID, "error", clearErr)
+				writeErr(w, http.StatusInternalServerError, "INTERNAL", "не удалось подготовить повторный анализ")
+				return
+			}
+		}
 	}
 	// Check before the 202: a retry that can never start must be a real error,
 	// not a background task that fails silently.

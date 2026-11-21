@@ -115,7 +115,7 @@ type ClaimOrigin string
 const (
 	ClaimSourceStatement     ClaimOrigin = "source_statement"
 	ClaimModelInterpretation ClaimOrigin = "model_interpretation"
-	ClaimUnclassified       ClaimOrigin = "unclassified"
+	ClaimUnclassified        ClaimOrigin = "unclassified"
 )
 
 func (o ClaimOrigin) Valid() bool {
@@ -221,19 +221,22 @@ const (
 )
 
 type Run struct {
-	ID               string             `json:"id"`
-	Status           RunStatus          `json:"status"`
-	Profession       string             `json:"profession"`
-	Type             RunType            `json:"type,omitempty"`
-	RootNodeID       *string            `json:"root_node_id,omitempty"`
-	StartedAt        *time.Time         `json:"started_at,omitempty"`
-	FinishedAt       *time.Time         `json:"finished_at,omitempty"`
-	Stage            Stage              `json:"stage,omitempty"`
-	CreatedBy        string             `json:"created_by,omitempty"`
+	ID         string     `json:"id"`
+	Status     RunStatus  `json:"status"`
+	Profession string     `json:"profession"`
+	Type       RunType    `json:"type,omitempty"`
+	RootNodeID *string    `json:"root_node_id,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	Stage      Stage      `json:"stage,omitempty"`
+	CreatedBy  string     `json:"created_by,omitempty"`
+	// DegradedReason explains why a degraded run is incomplete. It is set for
+	// deterministic fallback results so the UI never presents them as live AI.
+	DegradedReason string `json:"degraded_reason,omitempty"`
 	// Ожидаемый результат исследования (карточка 25): только описание
 	// деятельности или ещё и сопоставление с образовательной программой.
-	ResultKind string  `json:"result_kind,omitempty"`
-	ProgramID  *string `json:"program_id,omitempty"`
+	ResultKind       string             `json:"result_kind,omitempty"`
+	ProgramID        *string            `json:"program_id,omitempty"`
 	SkillFreq        map[string]int     `json:"skill_freq,omitempty"`
 	HybridWeightsRaw map[string]float64 `json:"hybrid_weights_raw,omitempty"`
 	PerVacancySkills [][]string         `json:"-"`

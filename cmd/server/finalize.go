@@ -615,7 +615,7 @@ func saveInterviewTree(ctx context.Context, store finalizeStore, runID, professi
 		return fmt.Errorf("repair tree: %w", err)
 	}
 	converted, ids := assignUUIDsPreservingSourcesWithIDs(repaired, sourceID, keepSources)
-	for _, extra := range interviewData[2:] {
+	for _, extra := range interviewData[min(2, len(interviewData)):] {
 		if out, ok := extra.(*map[string]string); ok && out != nil {
 			*out = ids
 		}

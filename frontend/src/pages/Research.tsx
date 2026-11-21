@@ -51,6 +51,7 @@ import { NODE_TYPE_LABELS, type TreeNode } from "@/components/activity-tree-mode
 import {
   apiClient,
   ApiRequestError,
+  getDegradedReason,
   retryRun,
   type ActivityNode,
   type ChatMessage,
@@ -1482,9 +1483,29 @@ export function Research() {
   })
 
   const [retrying, setRetrying] = useState(false)
+  const [degradedReason, setDegradedReason] = useState("")
   /** Идёт окно поллинга после retry (backend может ещё отдавать `failed`). */
   const [retryPolling, setRetryPolling] = useState(false)
   const retryPollStartedAt = useRef(0)
+
+  useEffect(() => {
+    if (!id || run?.status !== "degraded") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDegradedReason("")
+      return
+    }
+    let cancelled = false
+    void getDegradedReason(id)
+      .then((reason) => {
+        if (!cancelled) setDegradedReason(reason)
+      })
+      .catch(() => {
+        if (!cancelled) setDegradedReason("")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, run?.status])
   /**
    * Повтор анализа упавшего интервью: backend принимает ответы и запускает
    * пайплайн заново, поэтому после 202 достаточно перечитать статус - если он
@@ -1581,9 +1602,21 @@ export function Research() {
           </div>
         )}
         {run?.status === "degraded" && (
-          <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-            Результат неполный: агенты работали с ограничениями.
-          </p>
+          <div className="mt-3 space-y-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <p>Результат неполный: агенты работали с ограничениями.</p>
+            {degradedReason && <p className="text-foreground">{degradedReason}</p>}
+            {degradedReason && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void retryAnalysis()}
+                disabled={retrying}
+              >
+                {retrying ? <Loader2Icon className="size-3.5 animate-spin" /> : <RotateCcwIcon className="size-3.5" />}
+                Повторить реальный анализ
+              </Button>
+            )}
+          </div>
         )}
         {run?.status === "failed" && (
           <div className="mt-3 flex flex-col gap-3 rounded-xl border border-destructive/50 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
