@@ -18,6 +18,7 @@ var ErrEmailTaken = errors.New("EMAIL_TAKEN")
 // Store не расширяем, чтобы не ломать существующие in-memory фейки.
 type authUserStore interface {
 	RegisterUser(ctx context.Context, email, displayName, passwordHash string) (*domain.User, error)
+	RegisterUserWithConsent(ctx context.Context, email, displayName, passwordHash string, consent ConsentAcceptance) (*domain.User, error)
 	UserByEmail(ctx context.Context, email string) (*domain.User, error)
 	ListUsers(ctx context.Context) ([]domain.User, error)
 	UpdateUserRole(ctx context.Context, id, role string) error
@@ -26,7 +27,21 @@ type authUserStore interface {
 var _ authUserStore = (*PGStore)(nil)
 var _ authUserStore = (*memStore)(nil)
 
+// RegisterUser создаёт учётную запись без согласия. Метод сохранён для
+// совместимости с внешними инструментами; API регистрации использует
+// RegisterUserWithConsent.
 func (p *PGStore) RegisterUser(ctx context.Context, email, displayName, passwordHash string) (*domain.User, error) {
+	return p.registerUser(ctx, email, displayName, passwordHash, ConsentAcceptance{})
+}
+
+// RegisterUserWithConsent создаёт пользователя и фиксирует согласие в одной
+// транзакции: строка users и строка user_consents либо сохраняются вместе,
+// либо не сохраняются вовсе.
+func (p *PGStore) RegisterUserWithConsent(ctx context.Context, email, displayName, passwordHash string, consent ConsentAcceptance) (*domain.User, error) {
+	return p.registerUser(ctx, email, displayName, passwordHash, consent)
+}
+
+func (p *PGStore) registerUser(ctx context.Context, email, displayName, passwordHash string, consent ConsentAcceptance) (*domain.User, error) {
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -61,6 +76,20 @@ func (p *PGStore) RegisterUser(ctx context.Context, email, displayName, password
 			return nil, ErrEmailTaken
 		}
 		return nil, translate(err)
+	}
+	if consent.Version != "" {
+		if _, err = tx.Exec(ctx, `
+			UPDATE users
+			SET consent_version = $2, consent_at = now(), updated_at = now()
+			WHERE id = $1`, user.ID, consent.Version); err != nil {
+			return nil, translate(err)
+		}
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO user_consents (user_id, document_version, ip, user_agent)
+			VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''))`,
+			user.ID, consent.Version, consent.IP, consent.UserAgent); err != nil {
+			return nil, translate(err)
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
@@ -198,13 +227,28 @@ func (m *memStore) UpdateUserRole(_ context.Context, id, role string) error {
 }
 
 func (m *memStore) RegisterUser(_ context.Context, email, displayName, passwordHash string) (*domain.User, error) {
+	return m.registerUser(email, displayName, passwordHash, ConsentAcceptance{})
+}
+
+func (m *memStore) RegisterUserWithConsent(_ context.Context, email, displayName, passwordHash string, consent ConsentAcceptance) (*domain.User, error) {
+	return m.registerUser(email, displayName, passwordHash, consent)
+}
+
+func (m *memStore) registerUser(email, displayName, passwordHash string, consent ConsentAcceptance) (*domain.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	role := string(auth.RoleUser)
 	if len(m.users) == 0 {
 		role = string(auth.RoleAdmin)
 	}
-	return m.createUserLocked(email, displayName, passwordHash, role)
+	user, err := m.createUserLocked(email, displayName, passwordHash, role)
+	if err != nil {
+		return nil, err
+	}
+	if consent.Version != "" {
+		m.appendConsentLocked(user.ID, consent)
+	}
+	return user, nil
 }
 
 func (m *memStore) CreateUser(_ context.Context, email, displayName, passwordHash, role string) (*domain.User, error) {

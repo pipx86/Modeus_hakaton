@@ -4,14 +4,14 @@
  */
 
 import { useState, type FormEvent } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { KeyRoundIcon, LogOutIcon, ShieldCheckIcon, UserPlusIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { apiBaseUrl } from "@/lib/api/client"
+import { ApiRequestError, apiBaseUrl, registerUser } from "@/lib/api/client"
 import { normalizeText } from "@/lib/text"
 import {
   clearToken,
@@ -66,6 +66,17 @@ async function postAuth(path: string, body: Record<string, string>): Promise<Aut
   return payload
 }
 
+/** Понятная ошибка входа или регистрации, включая обязательное согласие. */
+function describeAuthError(cause: unknown): string {
+  if (cause instanceof ApiRequestError) {
+    if (cause.code === "CONSENT_REQUIRED" || (cause.status === 422 && /соглас/i.test(cause.message))) {
+      return "Нужно согласие на обработку персональных данных. Отметьте чекбокс согласия и попробуйте снова."
+    }
+    return cause.message
+  }
+  return cause instanceof Error ? cause.message : "Не удалось выполнить вход"
+}
+
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -76,6 +87,7 @@ export function Login() {
   const [password, setPassword] = useState("")
   const [displayName, setDisplayName] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [consentChecked, setConsentChecked] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<AuthResponseUser | null>(() => readStoredUser())
   const [submitting, setSubmitting] = useState(false)
@@ -101,14 +113,20 @@ export function Login() {
       setError("Пароль должен занимать не более 72 байт")
       return
     }
+    if (mode === "register" && !consentChecked) {
+      setError("Отметьте согласие на обработку персональных данных")
+      return
+    }
     setSubmitting(true)
     try {
-      const result = await postAuth(
-        mode === "login" ? "/auth/login" : "/auth/register",
+      const result =
         mode === "login"
-          ? { email: email.trim(), password }
-          : { email: email.trim(), password, display_name: displayName.trim() },
-      )
+          ? await postAuth("/auth/login", { email: email.trim(), password })
+          : await registerUser({
+              email: email.trim(),
+              password,
+              display_name: displayName.trim(),
+            })
       storeToken(result.token)
       if (result.user) {
         const profile = {
@@ -126,7 +144,7 @@ export function Login() {
       toast.success(mode === "login" ? "Вход выполнен" : "Аккаунт создан")
       navigate(from, { replace: true })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось выполнить вход")
+      setError(describeAuthError(cause))
     } finally {
       setSubmitting(false)
     }
@@ -278,8 +296,40 @@ export function Login() {
                     />
                   </div>
                 )}
+                {mode === "register" && (
+                  <div className="flex items-start gap-2">
+                    <input
+                      id="consent"
+                      type="checkbox"
+                      checked={consentChecked}
+                      onChange={(event) => setConsentChecked(event.target.checked)}
+                      disabled={submitting}
+                      className="mt-0.5 size-4 shrink-0 accent-primary"
+                    />
+                    <div className="space-y-1 text-sm">
+                      <label htmlFor="consent" className="cursor-pointer font-medium">
+                        Я согласен на обработку персональных данных
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        <Link
+                          to="/consent"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline underline-offset-4"
+                        >
+                          Открыть текст согласия
+                        </Link>{" "}
+                        в новой вкладке
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {error && <p className="text-center text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" disabled={submitting}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={submitting || (mode === "register" && !consentChecked)}
+                >
                   {submitting
                     ? mode === "login"
                       ? "Входим…"

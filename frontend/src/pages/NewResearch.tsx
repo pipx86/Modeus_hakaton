@@ -216,6 +216,17 @@ export function NewResearch() {
       toast.success("Исследование запущено")
       navigate(run?.id ? `/research/${run.id}` : "/")
     } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.status === 403 &&
+        error.code === "CONSENT_REQUIRED"
+      ) {
+        toast.error("Нужно согласие на обработку персональных данных", {
+          description: "Откройте страницу согласия и подтвердите его, чтобы запустить исследование.",
+        })
+        navigate("/consent")
+        return
+      }
       const description =
         error instanceof ApiRequestError
           ? error.status === 0

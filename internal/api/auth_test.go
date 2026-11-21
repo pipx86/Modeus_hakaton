@@ -25,7 +25,7 @@ func TestRegisterLoginFlow(t *testing.T) {
 	handler := server.Routes()
 
 	admin := authRequest(t, handler, "/api/v1/auth/register",
-		`{"email":"admin@example.com","display_name":"Админ","password":"password123"}`)
+		`{"email":"admin@example.com","display_name":"Админ","password":"password123","consent":true}`)
 	if admin.Code != http.StatusCreated {
 		t.Fatalf("первый register: %d %s", admin.Code, admin.Body.String())
 	}
@@ -38,7 +38,7 @@ func TestRegisterLoginFlow(t *testing.T) {
 	}
 
 	user := authRequest(t, handler, "/api/v1/auth/register",
-		`{"email":"user@example.com","display_name":"Пользователь","password":"password123"}`)
+		`{"email":"user@example.com","display_name":"Пользователь","password":"password123","consent":true}`)
 	if user.Code != http.StatusCreated {
 		t.Fatalf("второй register: %d %s", user.Code, user.Body.String())
 	}
@@ -76,18 +76,18 @@ func TestRegisterValidationAndDuplicate(t *testing.T) {
 	handler := server.Routes()
 
 	bad := authRequest(t, handler, "/api/v1/auth/register",
-		`{"email":"not-an-email","display_name":"A","password":"short"}`)
+		`{"email":"not-an-email","display_name":"A","password":"short","consent":true}`)
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("validation: %d %s", bad.Code, bad.Body.String())
 	}
 
 	first := authRequest(t, handler, "/api/v1/auth/register",
-		`{"email":"dup@example.com","display_name":"Первый","password":"password123"}`)
+		`{"email":"dup@example.com","display_name":"Первый","password":"password123","consent":true}`)
 	if first.Code != http.StatusCreated {
 		t.Fatalf("first: %d", first.Code)
 	}
 	second := authRequest(t, handler, "/api/v1/auth/register",
-		`{"email":"dup@example.com","display_name":"Второй","password":"password123"}`)
+		`{"email":"dup@example.com","display_name":"Второй","password":"password123","consent":true}`)
 	if second.Code != http.StatusConflict {
 		t.Fatalf("duplicate: %d %s", second.Code, second.Body.String())
 	}
@@ -108,7 +108,7 @@ func TestRegistrationBcryptPasswordLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := json.Marshal(registerRequest{
-				Email: "limit@example.invalid", DisplayName: "Тест", Password: tc.value,
+				Email: "limit@example.invalid", DisplayName: "Тест", Password: tc.value, Consent: true,
 			})
 			if err != nil {
 				t.Fatal(err)

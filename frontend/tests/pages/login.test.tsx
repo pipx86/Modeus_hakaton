@@ -67,7 +67,7 @@ describe("страница входа", () => {
     expect(getStoredToken()).toBeNull()
   })
 
-  it("регистрирует аккаунт и отправляет display_name", async () => {
+  it("регистрирует аккаунт и отправляет display_name и согласие", async () => {
     setFetchHandler(async (url) => {
       if (url.endsWith("/api/v1/auth/register")) {
         return {
@@ -89,6 +89,7 @@ describe("страница входа", () => {
     fireEvent.change(screen.getByLabelText("Повторите пароль"), {
       target: { value: "password123" },
     })
+    fireEvent.click(screen.getByLabelText("Я согласен на обработку персональных данных"))
     fireEvent.click(screen.getByRole("button", { name: "Зарегистрироваться" }))
 
     expect(await screen.findByText("home-page")).toBeInTheDocument()
@@ -97,6 +98,61 @@ describe("страница входа", () => {
     const body = JSON.parse(String(call?.init.body)) as Record<string, string>
     expect(body.display_name).toBe("Новый")
     expect(body.email).toBe("new@example.com")
+    expect(body.consent).toBe(true)
+    expect(body.consent_version).toBe("v1")
+  })
+
+  it("блокирует регистрацию, пока не отмечено согласие", async () => {
+    setFetchHandler(async () => ({
+      status: 201,
+      body: { token, user: { id: "user-1", email: "new@example.com", display_name: "Новый", role: "user" } },
+    }))
+    renderLogin()
+
+    fireEvent.click(screen.getByRole("button", { name: "Регистрация" }))
+    fireEvent.change(screen.getByLabelText("Имя"), { target: { value: "Новый" } })
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } })
+    fireEvent.change(screen.getByLabelText("Пароль"), { target: { value: "password123" } })
+    fireEvent.change(screen.getByLabelText("Повторите пароль"), {
+      target: { value: "password123" },
+    })
+
+    const submit = screen.getByRole("button", { name: "Зарегистрироваться" })
+    expect(submit).toBeDisabled()
+    fireEvent.click(submit)
+    expect(fetchCalls().some((item) => item.url.endsWith("/api/v1/auth/register"))).toBe(false)
+
+    const link = screen.getByRole("link", { name: "Открыть текст согласия" })
+    expect(link).toHaveAttribute("href", "/consent")
+    expect(link).toHaveAttribute("target", "_blank")
+  })
+
+  it("показывает понятную ошибку, если сервер требует согласие", async () => {
+    setFetchHandler(async (url) => {
+      if (url.endsWith("/api/v1/auth/register")) {
+        return {
+          status: 422,
+          body: { code: "CONSENT_REQUIRED", message: "consent is required" },
+        }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderLogin()
+
+    fireEvent.click(screen.getByRole("button", { name: "Регистрация" }))
+    fireEvent.change(screen.getByLabelText("Имя"), { target: { value: "Новый" } })
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } })
+    fireEvent.change(screen.getByLabelText("Пароль"), { target: { value: "password123" } })
+    fireEvent.change(screen.getByLabelText("Повторите пароль"), {
+      target: { value: "password123" },
+    })
+    fireEvent.click(screen.getByLabelText("Я согласен на обработку персональных данных"))
+    fireEvent.click(screen.getByRole("button", { name: "Зарегистрироваться" }))
+
+    expect(
+      await screen.findByText(/Нужно согласие на обработку персональных данных/),
+    ).toBeInTheDocument()
+    expect(getStoredToken()).toBeNull()
   })
 
   it("показывает сессию и очищает токен при выходе", async () => {

@@ -156,6 +156,11 @@ func (s *Server) Routes() http.Handler {
 	// Статическая страница и спецификация API.
 	mux.Handle("/swagger/", http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs"))))
 
+	// Согласие на обработку персональных данных (152-ФЗ): статус и принятие
+	// для авторизованного пользователя, документ — публично.
+	mux.HandleFunc("GET /api/v1/consent/status", s.handleConsentStatus)
+	mux.HandleFunc("POST /api/v1/consent", s.handleAcceptConsent)
+
 	mux.HandleFunc("GET /api/v1/subscriptions", s.handlePublicationSubscriptions)
 	mux.HandleFunc("POST /api/v1/subscriptions", s.handleCreatePublicationSubscription)
 	mux.HandleFunc("DELETE /api/v1/subscriptions/{id}", s.handleDeletePublicationSubscription)
@@ -290,6 +295,8 @@ func (s *Server) Routes() http.Handler {
 	})
 	root.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
 	root.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	// Текст политики нужен фронтенду до регистрации, поэтому без токена.
+	root.HandleFunc("GET /api/v1/consent/document", s.handleConsentDocument)
 
 	protected := idempotency.Middleware(s.idemStore, time.Hour, mux)
 	root.Handle("/", auth.MiddlewareWithWhitelist(protected, []string{"/swagger"}))
@@ -395,6 +402,11 @@ func (s *Server) setProfileSkills(runID string, skills []string) {
 
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleUser) {
+		return
+	}
+	// Создание исследования — единственное действие, которое требует
+	// согласия; чтение, вход и админские операции остаются доступными.
+	if !s.requireConsent(w, r, http.StatusForbidden) {
 		return
 	}
 

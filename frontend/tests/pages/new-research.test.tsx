@@ -16,6 +16,7 @@ function renderPage() {
       <Routes>
         <Route path="/research/new" element={<NewResearch />} />
         <Route path="/research/:id" element={<LocationProbe />} />
+        <Route path="/consent" element={<LocationProbe />} />
         <Route path="/" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>,
@@ -144,6 +145,24 @@ describe("NewResearch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
 
     expect(await screen.findByText("profession: слишком длинное название")).toBeInTheDocument()
+  })
+
+  it("при 403 CONSENT_REQUIRED отправляет на страницу согласия", async () => {
+    setFetchHandler(async (url, init) => {
+      const method = init?.method ?? "GET"
+      if (url.endsWith("/api/v1/runs") && method === "POST") {
+        return { status: 403, body: { code: "CONSENT_REQUIRED", message: "consent is required" } }
+      }
+      return { status: 404, body: { code: "NOT_FOUND", message: "нет маршрута" } }
+    })
+    renderPage()
+    await act(async () => {})
+
+    fireEvent.change(screen.getByLabelText("Профессия / роль"), { target: { value: "Data Scientist" } })
+    fireEvent.click(screen.getByRole("button", { name: "Начать исследование" }))
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/consent")
+    expect(screen.queryByText("consent is required")).not.toBeInTheDocument()
   })
 
   it("сетевой сбой показывает сообщение о недоступности сервера", async () => {

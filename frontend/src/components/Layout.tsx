@@ -9,6 +9,7 @@ import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { getCurrentRole, subscribeAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
+import { ConsentBanner } from "@/components/consent-banner"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -48,6 +49,12 @@ function useBreadcrumbs() {
     return [
       { to: "/", label: "Исследования" },
       { to: pathname, label: "Исследование" },
+    ]
+  }
+  if (pathname === "/consent") {
+    return [
+      { to: "/", label: "Исследования" },
+      { to: "/consent", label: "Согласие" },
     ]
   }
   return [{ to: "/", label: "Исследования" }]
@@ -233,6 +240,7 @@ export function Layout() {
             </header>
 
             <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-8 lg:px-8">
+              <ConsentBanner />
               <Outlet />
             </main>
           </div>
