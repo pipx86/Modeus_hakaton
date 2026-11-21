@@ -18,7 +18,7 @@ func TestTreeUsesRealInterviewAnswers(t *testing.T) {
 		},
 	}
 	nodes := Tree(session.Profession, session)
-	if len(nodes) != 4 {
+	if len(nodes) != 22 {
 		t.Fatalf("nodes = %d", len(nodes))
 	}
 	if nodes[0].Type != domain.NodeRole || nodes[3].Type != domain.NodeAction {
