@@ -118,7 +118,12 @@ func extractDOCX(data []byte) (string, error) {
 	}
 	defer stream.Close()
 
-	decoder := xml.NewDecoder(stream)
+	// Ограничиваем распакованный размер word/document.xml, чтобы защититься
+	// от zip-бомб: маленький архив не должен развернуться в гигабайты.
+	const maxDecompressed = 64 << 20
+	limited := &io.LimitedReader{R: stream, N: maxDecompressed + 1}
+
+	decoder := xml.NewDecoder(limited)
 	var builder strings.Builder
 	inText := false
 	for {
@@ -151,6 +156,9 @@ func extractDOCX(data []byte) (string, error) {
 				builder.Write(element)
 			}
 		}
+	}
+	if limited.N <= 0 {
+		return "", errors.New("DOCX: распакованный документ слишком большой")
 	}
 	return builder.String(), nil
 }

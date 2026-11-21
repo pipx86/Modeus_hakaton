@@ -22,8 +22,8 @@ jobs:
     name: lint (gofmt, vet, golangci-lint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26.10"
           cache: true
@@ -34,7 +34,7 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0
           args: --timeout=5m
@@ -43,8 +43,8 @@ jobs:
     name: unit tests (race)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26.10"
           cache: true
@@ -57,8 +57,8 @@ jobs:
     name: coverage (AI core + overall)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26.10"
           cache: true
@@ -74,7 +74,7 @@ jobs:
           go tool cover -func=coverage-ai.out | tail -1
           ai="$(go tool cover -func=coverage-ai.out | awk '/^total:/ {gsub("%", "", $3); print $3}')"
           awk -v ai="$ai" 'BEGIN { if (ai < 75) { print "AI core coverage below 75%: " ai; exit 1 } }'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: coverage
           path: |
@@ -86,8 +86,8 @@ jobs:
     name: offline pipeline e2e (fake model, no DB)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26.10"
           cache: true
@@ -95,7 +95,7 @@ jobs:
         run: go run ./cmd/e2e -out e2e-output.json
       - name: assert non-empty output
         run: test -s e2e-output.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: e2e-output
           path: e2e-output.json
@@ -122,19 +122,19 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:ci-only-password@127.0.0.1:5432/acceptance?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Migrations live in the DB workstream branch. The checkout is
       # best-effort: this branch must stay green before the DB branch merges.
       - name: fetch migrations branch (best effort)
         id: migrations
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: feature/rustam/goose-migrations
           path: .ci-db
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26.10"
           cache: true
@@ -159,6 +159,15 @@ jobs:
             echo "::warning::migrations not available on this branch; goose skipped (backend-acceptance.yml owns full DB acceptance)."
           fi
 
+      # .ci-db is a separate migrations branch and can lag behind the backend
+      # code. Apply this branch's own migrations on top so the schema matches
+      # dev (mirrors backend-acceptance.yml).
+      - name: apply current-branch migrations (when available)
+        run: |
+          if [ -d migrations ]; then
+            goose -dir migrations postgres "$DATABASE_URL" up
+          fi
+
       - name: schema assertion (when migrations applied)
         run: |
           if [ -d .ci-db/migrations ] || [ -d migrations ]; then
@@ -173,7 +182,7 @@ jobs:
     name: deploy config (compose, Grafana, Prometheus, n8n)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: validate deploy assets
         run: python3 scripts/check_deploy.py
       - name: compose config (default + all profiles)
@@ -196,7 +205,7 @@ jobs:
     name: frontend (only if frontend/ exists)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: detect frontend
         id: detect
         run: |
@@ -207,7 +216,7 @@ jobs:
             echo "::notice::No frontend/package.json on this branch; frontend job skipped."
           fi
       - if: steps.detect.outputs.exists == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -226,7 +235,7 @@ jobs:
     name: docker image (<100MB) + container smoke
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build API image
         run: docker build -t activity-descriptor-api:local .
       - name: assert image size below 100 MB

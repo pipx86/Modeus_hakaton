@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -49,6 +50,42 @@ func TestUpdateEvidenceQuote(t *testing.T) {
 	}
 	if updated.Quote != "обновлённая цитата" {
 		t.Fatalf("цитата не обновилась: %q", updated.Quote)
+	}
+}
+
+func TestUpdateEvidenceQuoteResetsReviewStatus(t *testing.T) {
+	m := newMemStore()
+	run, err := m.CreateRun("backend developer")
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	m.mu.Lock()
+	m.evidences["ev-approved"] = domain.Evidence{ID: "ev-approved", SourceID: "src-go", Quote: "старая цитата"}
+	m.status["ev-approved"] = domain.EvidenceApproved
+	m.approved["ev-approved"] = true
+	m.runEvidenceIDs[run.ID] = []string{"ev-approved"}
+	m.mu.Unlock()
+
+	ts := httptest.NewServer(NewServer(m).Routes())
+	defer ts.Close()
+
+	auth.EnsureTestSecret()
+	token, err := auth.Issue("admin-user", auth.RoleAdmin, time.Hour)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	resp := patchEvidenceQuote(t, ts.URL, token, "ev-approved", "исправленная цитата")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("ожидали 200, получили %d", resp.StatusCode)
+	}
+	var updated domain.Evidence
+	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if updated.Status != domain.EvidencePending {
+		t.Fatalf("статус после правки = %q, ожидали %q", updated.Status, domain.EvidencePending)
 	}
 }
 

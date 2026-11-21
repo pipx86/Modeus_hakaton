@@ -20,6 +20,10 @@ func (s *Server) handleInterviewLink(w http.ResponseWriter, r *http.Request) {
 	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist, auth.RoleUser) {
 		return
 	}
+	runID := r.PathValue("id")
+	if !s.allowInterviewAccess(w, r, runID) {
+		return
+	}
 	if s.chat == nil {
 		writeErr(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "чат недоступен")
 		return
@@ -39,7 +43,7 @@ func (s *Server) handleInterviewLink(w http.ResponseWriter, r *http.Request) {
 	if title == "" {
 		title = parsed.Host
 	}
-	message, err := s.chat.Post(r.PathValue("id"), "Прикрепляю ссылку-доказательство «"+title+"»: "+raw)
+	message, err := s.chat.Post(runID, "Прикрепляю ссылку-доказательство «"+title+"»: "+raw)
 	if err != nil {
 		writeErr(w, http.StatusConflict, "CHAT_UNAVAILABLE", "не удалось добавить ссылку в интервью")
 		return

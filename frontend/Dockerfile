@@ -3,7 +3,7 @@
 # the Dockerfile can reuse frontend/package-lock.json; deploy/nginx is excluded
 # from the root context, therefore the nginx configs live under frontend/nginx.
 
-FROM node:22-alpine AS build
+FROM node:22.22.3-alpine AS build
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json ./

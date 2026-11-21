@@ -46,7 +46,7 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server \
 # (which type-checks src/ and tests/) and then `vite build` into frontend/dist.
 # Only the package manifests are copied before `npm ci`, so dependency
 # installation stays cached when application sources change.
-FROM node:22.20-bookworm-slim AS frontend-build
+FROM node:22.22.3-bookworm-slim AS frontend-build
 
 WORKDIR /src/frontend
 

@@ -31,6 +31,11 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   const [streamState, setStreamState] = useState<StreamState>("open")
   const knownIds = useRef<Set<string>>(new Set())
   const previousStreamState = useRef<StreamState>("open")
+  // Текущий runId и номер запроса истории: ответы старого прогона игнорируются.
+  const runIdRef = useRef(runId)
+  const historySeq = useRef(0)
+  // false после размонтирования - запрещает setState из асинхронного send().
+  const mounted = useRef(true)
 
   const interviewFinished =
     stage === "analysis" || stage === "synthesis" || stage === "review" || stage === "done"
@@ -39,6 +44,9 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   const appendMessages = useCallback((incoming: ChatMessage[]) => {
     // Бэкенд может вернуть объект ошибки вместо массива - не роняем вкладку.
     if (!Array.isArray(incoming)) return
+    // Ответ агента пришёл (в том числе опросом при SSE-fallback) - индикатор
+    // "думает" больше не актуален.
+    if (incoming.some((message) => message.role === "agent")) setThinking(false)
     const fresh = incoming.filter((message) => !knownIds.current.has(message.id))
     if (fresh.length === 0) return
     for (const message of fresh) knownIds.current.add(message.id)
@@ -46,10 +54,15 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   }, [])
 
   const loadHistory = useCallback(async () => {
+    const requestedRunId = runId
+    const requestId = ++historySeq.current
+    const isCurrent = () =>
+      requestId === historySeq.current && requestedRunId === runIdRef.current
     try {
       const { data, error } = await apiClient.GET("/runs/{id}/messages", {
         params: { path: { id: runId } },
       })
+      if (!isCurrent()) return
       if (Array.isArray(data)) {
         appendMessages(data)
         setLoadError(null)
@@ -61,18 +74,32 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
         )
       }
     } catch {
+      if (!isCurrent()) return
       setLoadError("История чата недоступна: сервер не отвечает.")
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }, [runId, appendMessages])
 
   useEffect(() => {
-    // Новый прогон - новый чат: старые id не должны блокировать загрузку истории.
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    // Новый прогон - новый чат: старые id и ответы не должны попасть в него.
+    runIdRef.current = runId
     knownIds.current = new Set()
+    historySeq.current += 1
+    previousStreamState.current = "open"
     // Сброс при смене runId - синхронизация с внешним run, а не каскадный рендер.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([])
+    setLoading(true)
+    setLoadError(null)
+    setThinking(false)
   }, [runId])
 
   useEffect(() => {
@@ -121,10 +148,13 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
               description: "Новые сообщения приходят опросом раз в 5 секунд.",
             })
           }
+          if (pollTimer !== undefined) return
           pollTimer = window.setInterval(async () => {
             const { data, error } = await apiClient.GET("/runs/{id}/messages", {
               params: { path: { id: runId } },
             })
+            // Ответ старого прогона не должен попасть в новый чат.
+            if (!mounted.current || runIdRef.current !== runId) return
             if (data) {
               appendMessages(data)
               return
@@ -148,12 +178,15 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
   const send = async () => {
     const content = draft
     if (!content.trim() || sending) return
+    const requestedRunId = runId
     setSending(true)
     try {
       const { data, error } = await apiClient.POST("/runs/{id}/messages", {
         params: { path: { id: runId } },
         body: { content },
       })
+      // После размонтирования или смены прогона ответ уже не актуален.
+      if (!mounted.current || runIdRef.current !== requestedRunId) return
       if (error) {
         toast.error("Не удалось отправить ответ", { description: error.message })
         return
@@ -162,9 +195,10 @@ export function useChatStream({ runId, active, runStatus, stage }: UseChatStream
       setDraft("")
       setThinking(true)
     } catch {
+      if (!mounted.current || runIdRef.current !== requestedRunId) return
       toast.error("Сервер недоступен", { description: "Ответ не отправлен." })
     } finally {
-      setSending(false)
+      if (mounted.current) setSending(false)
     }
   }
 
