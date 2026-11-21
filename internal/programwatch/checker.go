@@ -51,6 +51,12 @@ var watchedDocumentExtensions = map[string]bool{
 // фейк без сети. nil означает прежнее поведение: статус needs_parser.
 type PDFExtractor = fgos.DocumentExtractor
 
+// PageExtractor — необязательное расширение PDFExtractor: разбор уже
+// подготовленных страниц без файла-документа. Нужно HTML-режиму, когда полный
+// текст ФГОС взят прямо со страницы. Реализуется fgos.Extractor и (по
+// встраиванию) ocr.FGOSExtractor; старые реализации работают через Extract.
+type PageExtractor = fgos.PageExtractor
+
 // Checker проверяет источники и сохраняет результат. Зависимости — интерфейсы,
 // поэтому и воркер, и API, и тесты работают без PostgreSQL и без сети.
 type Checker struct {
@@ -133,6 +139,19 @@ func (c *Checker) check(ctx context.Context, source Source) (CheckResult, CheckU
 	pageUnchanged := source.LastHash != "" && pageHash == source.LastHash
 
 	if isHTML(page.contentType, page.body) {
+		// На fgosvo.ru официальный ФГОС часто опубликован сканом, а полный текст
+		// стандарта лежит на обычной HTML-странице. Если в HTML есть текст ФГОС,
+		// он приоритетнее ссылки на PDF: OCR скана теряет компетенции, а HTML
+		// содержит их дословно.
+		if htmlTextEnabled() {
+			text, textErr := HTMLText(bytes.NewReader(page.body))
+			if textErr != nil {
+				c.logger().Warn("program_watch_html_text_failed",
+					"source_id", source.ID, "url", source.URL, "error", textErr)
+			} else if LooksLikeFGOS(text) {
+				return c.checkHTMLFGOS(ctx, source, page, text)
+			}
+		}
 		documentURL, ok := firstDocumentLink(page.body, page.url)
 		if !ok {
 			return CheckResult{Status: StatusNeedsAttention, Error: "на странице нет ссылки на документ"}, CheckUpdate{}
@@ -221,6 +240,86 @@ func (c *Checker) checkAttachedDocument(ctx context.Context, source Source) (Che
 	}
 	setDocumentValidators(&docUpdate, source.DocumentURL, document.etag, document.lastModified, documentHash)
 	return result, docUpdate
+}
+
+// checkHTMLFGOS разбирает HTML-страницу, на которой опубликован полный текст
+// ФГОС. Страницы условные (по ~3000 символов), поэтому в черновик добавляется
+// предупреждение HTMLPageNumbersWarning. Статус и черновик создаются как для
+// обычного документа: source_format = "html", source_name — host+path
+// страницы.
+//
+// Если страница не менялась с прошлой успешной проверки, разбор не повторяется:
+// иначе каждый цикл воркера создавал бы новый черновик из того же текста.
+func (c *Checker) checkHTMLFGOS(ctx context.Context, source Source, page pageResponse, text string) (CheckResult, CheckUpdate) {
+	pageHash := sha256Hex(page.body)
+	// Одинаковый хэш пропускает повторный разбор, только если прошлая успешная
+	// проверка тоже была HTML-разбором (у неё нет document_url). Иначе после
+	// переключения FGOS_HTML_TEXT страница осталась бы «неизменной», а черновик
+	// из HTML так и не появился бы.
+	if source.LastHash != "" && source.LastHash == pageHash && strings.TrimSpace(source.DocumentURL) == "" {
+		return CheckResult{Status: StatusUnchanged}, CheckUpdate{}
+	}
+	if c.PDFExtractor == nil {
+		return CheckResult{
+			Status: StatusNeedsParser,
+			Error:  "HTML с текстом ФГОС требует LLM-адаптера",
+		}, CheckUpdate{}
+	}
+	pages := PagesFromHTML(text)
+	if len(pages) == 0 {
+		return errorResult("в HTML не найден текст ФГОС")
+	}
+	c.logger().Info("program_watch_html_parse",
+		"source_id", source.ID,
+		"url", source.URL,
+		"pages", len(pages),
+		"chars", len([]rune(text)))
+
+	program, warnings, err := c.extractProgram(ctx, pages)
+	if err != nil {
+		return errorResult("не удалось извлечь программу из HTML: " + compactError(err.Error()))
+	}
+	warnings = append([]string{HTMLPageNumbersWarning}, warnings...)
+	if strings.TrimSpace(program.Title) == "" {
+		program.Title = strings.TrimSpace(source.ProgramKey)
+	}
+	if strings.TrimSpace(program.Code) == "" {
+		program.Code = source.ProgramKey
+	}
+
+	result, update := c.createDraft(ctx, source.ProgramKey, htmlSourceName(page.url), "html", program, warnings)
+	if result.Status != StatusChanged {
+		return result, update
+	}
+	setPageValidators(&update, page, pageHash)
+	// HTML-страница сама является источником текста: привязанного документа
+	// больше нет. Пустые значения очищают его в реестре и не дают проверке 304
+	// уйти в устаревший PDF.
+	setDocumentValidators(&update, "", "", "", "")
+	return result, update
+}
+
+// extractProgram разбирает готовые страницы. HTML-текст не является файлом,
+// поэтому используется ExtractFromPages, если адаптер его реализует; старые
+// реализации DocumentExtractor работают через Extract с той же сигнатурой.
+func (c *Checker) extractProgram(ctx context.Context, pages []fgos.Page) (ingestion.EducationProgram, []string, error) {
+	if extractor, ok := c.PDFExtractor.(PageExtractor); ok {
+		return extractor.ExtractFromPages(ctx, pages)
+	}
+	return c.PDFExtractor.Extract(ctx, pages)
+}
+
+// htmlSourceName возвращает имя HTML-страницы для черновика: host+path без
+// схемы и query — так администратор видит, откуда пришёл текст.
+func htmlSourceName(pageURL *url.URL) string {
+	if pageURL == nil {
+		return "html"
+	}
+	name := strings.TrimSpace(pageURL.Host + pageURL.Path)
+	if name == "" {
+		return "html"
+	}
+	return name
 }
 
 // processDocument выбирает способ разбора по формату: встроенные парсеры для

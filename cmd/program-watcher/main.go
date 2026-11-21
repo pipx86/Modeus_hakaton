@@ -40,7 +40,7 @@ func run() error {
 	lease := flag.Duration("lease", programwatch.DefaultLease, "lease duration for claimed sources (must exceed one check)")
 	owner := flag.String("owner", programwatch.DefaultOwner(), "lock owner id (default: hostname-pid)")
 	once := flag.Bool("once", false, "process one cycle, then exit")
-	pdfLLM := flag.Bool("pdf-llm", false, "parse PDF/DOCX with the LLM FGOS adapter (requires LLM_* environment variables)")
+	pdfLLM := flag.Bool("pdf-llm", false, "parse PDF/DOCX and HTML FGOS pages with the LLM FGOS adapter (requires LLM_* environment variables)")
 	ocrEnabled := flag.Bool("ocr", false, "recognize scanned PDF/images with tesseract and poppler (implies -pdf-llm; tools are configured by OCR_* variables)")
 	ocrLang := flag.String("ocr-lang", "", "tesseract languages for OCR (default: OCR_LANG or rus+eng)")
 	ocrDPI := flag.Int("ocr-dpi", 0, "PDF render DPI for OCR (default: OCR_DPI or 200)")
@@ -123,9 +123,10 @@ func run() error {
 }
 
 // newFGOSExtractor собирает LLM-адаптер ФГОС из тех же переменных окружения,
-// что и cmd/server (LLM_API_KEY / LLM_BASE_URL / LLM_<AGENT>_*). Если LLM не
-// настроен, воркер продолжает работать без адаптера: PDF и DOCX остаются в
-// статусе needs_parser, а не роняют цикл.
+// что и cmd/server (LLM_API_KEY / LLM_BASE_URL / LLM_<AGENT>_*). Адаптер
+// разбирает PDF/DOCX и HTML-текст ФГОС (FGOS_HTML_TEXT, по умолчанию включён).
+// Если LLM не настроен, воркер продолжает работать без адаптера: PDF/DOCX и
+// HTML-текст ФГОС остаются в статусе needs_parser, а не роняют цикл.
 //
 // При включённом OCR адаптер оборачивается ocr.FGOSExtractor: страницы без
 // текстового слоя распознаются tesseract/poppler. Отсутствие инструментов не

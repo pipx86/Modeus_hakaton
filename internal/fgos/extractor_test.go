@@ -201,7 +201,7 @@ func TestExtractRejectsInvalidItems(t *testing.T) {
 		`{"code":"ПК-3","title":"Странный тип","type":"mystery","citations":[{"page":1,"quote":"` + quoteOne + `"}]},` +
 		// цитаты нет на странице
 		`{"code":"ПК-4","title":"Выдуманная цитата","type":"professional","citations":[{"page":1,"quote":"этой фразы нет в документе"}]},` +
-		// страница вне фрагмента
+		// страница вне документа
 		`{"code":"ПК-5","title":"Чужая страница","type":"professional","citations":[{"page":9,"quote":"` + quoteOne + `"}]},` +
 		// нет ни одной цитаты
 		`{"code":"ПК-6","title":"Без цитат","type":"professional","citations":[]}` +
@@ -222,9 +222,9 @@ func TestExtractRejectsInvalidItems(t *testing.T) {
 		"код должен соответствовать",
 		"пустой title",
 		"неизвестный type",
-		"не найдена дословно на странице",
-		"страница 9 вне фрагмента",
-		"нет ни одной дословной цитаты",
+		"не найдена на странице 1 ± 1",
+		"страница 9 вне документа",
+		"нет ни одной подтверждённой цитаты",
 		"KSA с видом",
 	} {
 		if !strings.Contains(joined, marker) {
@@ -585,6 +585,7 @@ func TestNewExtractorDefaults(t *testing.T) {
 	t.Setenv("FGOS_CONCURRENCY", "")
 	t.Setenv("FGOS_SECTION_ONLY", "")
 	t.Setenv("FGOS_SECTION_WINDOW", "")
+	t.Setenv("FGOS_CITATION_WINDOW", "")
 	extractor := NewExtractor(&fakeLLM{})
 	if extractor.MaxCharsPerChunk != 6000 {
 		t.Fatalf("MaxCharsPerChunk = %d, ожидали 6000", extractor.MaxCharsPerChunk)
@@ -603,6 +604,9 @@ func TestNewExtractorDefaults(t *testing.T) {
 	}
 	if extractor.SectionWindow != DefaultSectionWindow {
 		t.Fatalf("SectionWindow = %d, ожидали %d", extractor.SectionWindow, DefaultSectionWindow)
+	}
+	if extractor.CitationWindow != DefaultCitationWindow {
+		t.Fatalf("CitationWindow = %d, ожидали %d", extractor.CitationWindow, DefaultCitationWindow)
 	}
 }
 
@@ -1047,6 +1051,90 @@ func TestExtractLogsSectionSelection(t *testing.T) {
 		if !strings.Contains(output, marker) {
 			t.Errorf("в логе нет %q:\n%s", marker, output)
 		}
+	}
+}
+
+// TestExtractAcceptsQuoteOnNeighborPage — модель указала страницу 1, а цитата
+// оказалась на странице 2: пункт принимается без предупреждения, потому что
+// текст подтверждён в документе.
+func TestExtractAcceptsQuoteOnNeighborPage(t *testing.T) {
+	t.Setenv("FGOS_CITATION_WINDOW", "1")
+	client := &fakeLLM{answers: []string{
+		answerFor("ОПК-2", "Способен разрабатывать программное обеспечение",
+			"general_professional", "knowledge", "основы алгоритмизации", 1, quoteTwo),
+	}}
+	extractor := NewExtractor(client)
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	program, warnings, err := extractor.Extract(context.Background(), []Page{
+		{Number: 1, Text: pageOneText},
+		{Number: 2, Text: pageTwoText},
+	})
+	if err != nil {
+		t.Fatalf("цитата на соседней странице должна приниматься: %v", err)
+	}
+	if len(program.Competencies) != 1 || program.Competencies[0].Code != "ОПК-2" {
+		t.Fatalf("компетенции: %+v", program.Competencies)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("принятая цитата не должна давать предупреждений: %v", warnings)
+	}
+}
+
+// TestExtractNeighborCitationWindowDisabled — FGOS_CITATION_WINDOW=0 запрещает
+// соседние страницы: та же цитата отбрасывается, причина называет страницу без
+// окна.
+func TestExtractNeighborCitationWindowDisabled(t *testing.T) {
+	t.Setenv("FGOS_CITATION_WINDOW", "0")
+	client := &fakeLLM{answers: []string{
+		answerFor("ОПК-2", "Способен разрабатывать программное обеспечение",
+			"general_professional", "knowledge", "основы алгоритмизации", 1, quoteTwo),
+	}}
+	extractor := NewExtractor(client)
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	_, warnings, err := extractor.Extract(context.Background(), []Page{
+		{Number: 1, Text: pageOneText},
+		{Number: 2, Text: pageTwoText},
+	})
+	if !errors.Is(err, ErrNoCompetencies) {
+		t.Fatalf("ожидали ErrNoCompetencies, получили %v", err)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, "не найдена на странице 1") {
+		t.Fatalf("нет причины отказа: %v", warnings)
+	}
+	if strings.Contains(joined, "±") {
+		t.Fatalf("при window=0 окно не упоминается: %v", warnings)
+	}
+}
+
+// TestExtractNormalizesCitationHyphenationAndWhitespace — перенос слова,
+// мягкий перенос строки и лишние пробелы в документе не мешают подтвердить
+// цитату.
+func TestExtractNormalizesCitationHyphenationAndWhitespace(t *testing.T) {
+	pageText := "УК-1. Способен осуществлять поиск и критический анализ информа-\nции.\n" +
+		"Знать:\u00a0методы  учёта и системного анализа."
+	quote := "поиск и критический анализ информации"
+	client := &fakeLLM{answers: []string{
+		answerFor("УК-1", "Способен осуществлять поиск и критический анализ информации",
+			"universal", "knowledge", "методы учёта", 1, quote),
+	}}
+	extractor := NewExtractor(client)
+	extractor.Concurrency = 1
+	extractor.Logger = testLogger
+
+	program, warnings, err := extractor.Extract(context.Background(), []Page{{Number: 1, Text: pageText}})
+	if err != nil {
+		t.Fatalf("нормализованная цитата должна приниматься: %v", err)
+	}
+	if len(program.Competencies) != 1 {
+		t.Fatalf("компетенции: %+v", program.Competencies)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("предупреждения: %v", warnings)
 	}
 }
 

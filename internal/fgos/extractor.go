@@ -13,7 +13,6 @@ import (
 
 	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/llm"
-	"activity-descriptor/internal/llm/validate"
 )
 
 // competencyCodePattern — допустимый код компетенции ФГОС: две–четыре
@@ -46,8 +45,11 @@ type promptSegment struct {
 // chunk — часть документа, отправляемая модели одним запросом. Страница
 // никогда не разрывается на этапе базового чанкинга; при аварийном делении
 // текст режется по символам, но полные страницы сохраняются в pages.
+// document — все страницы документа: цитата проверяется не только по
+// страницам чанка, но и по соседним страницам за его границей.
 type chunk struct {
 	pages    []Page
+	document []Page
 	segments []promptSegment
 	chars    int
 }
@@ -174,6 +176,10 @@ type rawCitation struct {
 // (env FGOS_SECTION_WINDOW). MaxPages проверяется по отобранным страницам:
 // общие положения не должны упираться в лимит, если модель их не увидит.
 //
+// Цитата пункта проверяется по полному документу: на указанной странице и в
+// пределах CitationWindow соседних страниц (env FGOS_CITATION_WINDOW), поэтому
+// перенос абзаца через границу страницы не отбрасывает компетенцию.
+//
 // Возвращаются программа (без title — его заполняет вызывающий), предупреждения
 // о каждом отброшенном пункте и ошибка. Если ни одного валидного пункта не
 // осталось, ошибка оборачивает ErrNoCompetencies и содержит причину последней
@@ -249,7 +255,7 @@ func (e *Extractor) Extract(ctx context.Context, pages []Page) (ingestion.Educat
 
 	e.applyResponseTokenLimit()
 
-	chunks := chunkPages(selected, e.maxCharsPerChunk())
+	chunks := chunkPages(selected, filled, e.maxCharsPerChunk())
 	concurrency := e.concurrency()
 	if concurrency > len(chunks) {
 		concurrency = len(chunks)
@@ -283,6 +289,13 @@ func (e *Extractor) Extract(ctx context.Context, pages []Page) (ingestion.Educat
 		return program, state.warnings, state.failureError()
 	}
 	return program, state.warnings, nil
+}
+
+// ExtractFromPages разбирает готовые страницы, когда файла-документа нет:
+// HTML-режим programwatch вытаскивает текст стандарта из HTML-страницы и
+// передаёт его сюда. Поведение совпадает с Extract.
+func (e *Extractor) ExtractFromPages(ctx context.Context, pages []Page) (ingestion.EducationProgram, []string, error) {
+	return e.Extract(ctx, pages)
 }
 
 // extractChunksParallel разбирает чанки пулом воркеров. Каждый чанк пишет
@@ -358,7 +371,7 @@ func (e *Extractor) extractChunk(ctx context.Context, system string, part chunk,
 	}
 	valid := 0
 	for _, raw := range response.Competencies {
-		competency, itemWarnings, ok := validateCompetency(raw, part.pages)
+		competency, itemWarnings, ok := validateCompetency(raw, part.document, e.citationWindow())
 		for _, warning := range itemWarnings {
 			outcome.addWarning(fmt.Sprintf("фрагмент %d: %s", fragment+1, warning))
 		}
@@ -417,8 +430,9 @@ func (e *Extractor) splitOrFail(ctx context.Context, system string, part chunk, 
 }
 
 // chunkPages режет страницы на чанки по limit символов, не разрывая страницу.
-// Страница длиннее лимита становится отдельным чанком.
-func chunkPages(pages []Page, limit int) []chunk {
+// Страница длиннее лимита становится отдельным чанком. document — все страницы
+// документа: по ним проверяются цитаты, в том числе на соседних страницах.
+func chunkPages(pages, document []Page, limit int) []chunk {
 	if limit <= 0 {
 		limit = DefaultMaxCharsPerChunk
 	}
@@ -436,6 +450,9 @@ func chunkPages(pages []Page, limit int) []chunk {
 	}
 	if len(current.segments) > 0 {
 		result = append(result, current)
+	}
+	for index := range result {
+		result[index].document = document
 	}
 	return result
 }
@@ -477,6 +494,8 @@ func splitChunk(part chunk) (chunk, chunk, bool) {
 	}
 	left.pages = pagesForSegments(part.pages, left.segments)
 	right.pages = pagesForSegments(part.pages, right.segments)
+	left.document = part.document
+	right.document = part.document
 	return left, right, true
 }
 
@@ -606,8 +625,11 @@ func firstJSONObject(answer string) (string, error) {
 }
 
 // validateCompetency проверяет один пункт ответа. Невалидный пункт
-// отбрасывается, а причина попадает в предупреждения.
-func validateCompetency(raw rawCompetency, pages []Page) (ingestion.ProgramCompetency, []string, bool) {
+// отбрасывается, а причина попадает в предупреждения. document — все страницы
+// документа: цитата ищется на указанной странице, а затем в пределах
+// citationWindow соседних страниц (мягкое сравнение с нормализацией пробелов,
+// переносов и ё/е).
+func validateCompetency(raw rawCompetency, document []Page, citationWindow int) (ingestion.ProgramCompetency, []string, bool) {
 	competency := ingestion.ProgramCompetency{}
 	warnings := []string{}
 	code := strings.TrimSpace(raw.Code)
@@ -641,24 +663,32 @@ func validateCompetency(raw rawCompetency, pages []Page) (ingestion.ProgramCompe
 	}
 	citations := 0
 	for _, citation := range raw.Citations {
-		page, found := findPage(pages, citation.Page)
-		if !found {
+		if _, found := findPage(document, citation.Page); !found {
 			warnings = append(warnings, fmt.Sprintf(
-				"компетенция %s: цитата отброшена — страница %d вне фрагмента", code, citation.Page))
+				"компетенция %s: цитата отброшена — страница %d вне документа", code, citation.Page))
 			continue
 		}
-		if !validate.ContainsQuote(page.Text, citation.Quote) {
-			warnings = append(warnings, fmt.Sprintf(
-				"компетенция %s: цитата отброшена — не найдена дословно на странице %d", code, citation.Page))
+		if !QuoteFound(document, citation.Page, citation.Quote, citationWindow) {
+			warnings = append(warnings, citationNotFoundWarning(code, citation.Page, citationWindow))
 			continue
 		}
 		citations++
 	}
 	if citations == 0 {
 		return competency, append(warnings, fmt.Sprintf(
-			"компетенция %s отброшена: нет ни одной дословной цитаты на указанной странице", code)), false
+			"компетенция %s отброшена: нет ни одной подтверждённой цитаты", code)), false
 	}
 	return competency, warnings, true
+}
+
+// citationNotFoundWarning формулирует причину отказа от цитаты: администратор
+// должен видеть, на какой странице и в каком окне её искали.
+func citationNotFoundWarning(code string, page, window int) string {
+	if window > 0 {
+		return fmt.Sprintf("компетенция %s: цитата отброшена — не найдена на странице %d ± %d",
+			code, page, window)
+	}
+	return fmt.Sprintf("компетенция %s: цитата отброшена — не найдена на странице %d", code, page)
 }
 
 func findPage(pages []Page, number int) (Page, bool) {

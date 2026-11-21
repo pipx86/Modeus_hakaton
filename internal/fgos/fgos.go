@@ -108,6 +108,17 @@ type DocumentExtractor interface {
 	Extract(ctx context.Context, pages []Page) (ingestion.EducationProgram, []string, error)
 }
 
+// PageExtractor — необязательное расширение DocumentExtractor: разбор уже
+// подготовленных страниц без файла-документа. Нужно HTML-режиму воркера, когда
+// текст ФГОС извлечён из HTML-страницы и файла для ExtractPages нет.
+//
+// Проверяется через type assertion: старые реализации DocumentExtractor
+// продолжают работать, разбор HTML тогда идёт через Extract. Реализуется
+// Extractor; ocr.FGOSExtractor получает метод по встраиванию *fgos.Extractor.
+type PageExtractor interface {
+	ExtractFromPages(ctx context.Context, pages []Page) (ingestion.EducationProgram, []string, error)
+}
+
 // MaxResponseTokensSetter — необязательное расширение llm.ChatClient: ограничить
 // число токенов ответа на один запрос. Клиенты проекта задают MaxTokens при
 // создании (LLM_<AGENT>_MAX_TOKENS), поэтому адаптер вызывает сеттер только
@@ -143,6 +154,10 @@ type Extractor struct {
 	// SectionWindow — сколько соседних страниц добавлять к найденным страницам
 	// раздела. NewExtractor читает FGOS_SECTION_WINDOW (по умолчанию 1).
 	SectionWindow int
+	// CitationWindow — сколько соседних страниц проверять вместе с указанной
+	// при валидации цитаты. NewExtractor читает FGOS_CITATION_WINDOW (по
+	// умолчанию 1). 0 отключает окно: цитата должна быть на указанной странице.
+	CitationWindow int
 	// Logger — необязательный логгер; по умолчанию slog.Default().
 	Logger *slog.Logger
 
@@ -150,24 +165,29 @@ type Extractor struct {
 	// Для Extractor, созданного литералом, значения по-прежнему читаются из env,
 	// поэтому по умолчанию отбор включён.
 	sectionConfigured bool
+	// citationConfigured делает то же для FGOS_CITATION_WINDOW.
+	citationConfigured bool
 }
 
 // NewExtractor создаёт адаптер с боевыми настройками по умолчанию.
 // Параллельность читается из FGOS_CONCURRENCY (1 — последовательно, по
 // умолчанию 3, не больше 6). Отбор страниц раздела компетенций включается
 // FGOS_SECTION_ONLY (по умолчанию true), окно соседних страниц задаёт
-// FGOS_SECTION_WINDOW (по умолчанию 1).
+// FGOS_SECTION_WINDOW (по умолчанию 1), окно проверки цитат —
+// FGOS_CITATION_WINDOW (по умолчанию 1).
 func NewExtractor(client llm.ChatClient) *Extractor {
 	return &Extractor{
-		Client:            client,
-		MaxPages:          DefaultMaxPages,
-		MaxCharsPerChunk:  DefaultMaxCharsPerChunk,
-		MaxResponseTokens: DefaultMaxResponseTokens,
-		Concurrency:       concurrencyFromEnv(),
-		Timeout:           DefaultTimeout,
-		SectionOnly:       sectionOnlyFromEnv(),
-		SectionWindow:     sectionWindowFromEnv(),
-		sectionConfigured: true,
+		Client:             client,
+		MaxPages:           DefaultMaxPages,
+		MaxCharsPerChunk:   DefaultMaxCharsPerChunk,
+		MaxResponseTokens:  DefaultMaxResponseTokens,
+		Concurrency:        concurrencyFromEnv(),
+		Timeout:            DefaultTimeout,
+		SectionOnly:        sectionOnlyFromEnv(),
+		SectionWindow:      sectionWindowFromEnv(),
+		CitationWindow:     citationWindowFromEnv(),
+		sectionConfigured:  true,
+		citationConfigured: true,
 	}
 }
 
@@ -219,6 +239,18 @@ func (e *Extractor) sectionWindow() int {
 		return DefaultSectionWindow
 	}
 	return e.SectionWindow
+}
+
+// citationWindow — фактическое окно проверки цитат: 0 означает «только
+// указанная страница», отрицательное значение читает FGOS_CITATION_WINDOW.
+func (e *Extractor) citationWindow() int {
+	if e == nil || !e.citationConfigured {
+		return citationWindowFromEnv()
+	}
+	if e.CitationWindow < 0 {
+		return citationWindowFromEnv()
+	}
+	return e.CitationWindow
 }
 
 // concurrencyFromEnv читает FGOS_CONCURRENCY. Некорректное значение даёт
@@ -347,3 +379,4 @@ func ApproximatePageNumbersWarningFor(format string) string {
 }
 
 var _ DocumentExtractor = (*Extractor)(nil)
+var _ PageExtractor = (*Extractor)(nil)

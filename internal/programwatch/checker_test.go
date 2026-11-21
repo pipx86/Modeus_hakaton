@@ -1066,17 +1066,19 @@ func TestCheckerPDFNeedsParserKeepsDocumentURL(t *testing.T) {
 // fakePDFExtractor — LLM-адаптер ФГОС без сети: возвращает заранее заданную
 // программу и страницы, запоминает входные данные.
 type fakePDFExtractor struct {
-	mu           sync.Mutex
-	pages        []fgos.Page
-	program      ingestion.EducationProgram
-	warnings     []string
-	pagesErr     error
-	extractErr   error
-	pagesCalls   int
-	extractCalls int
-	lastName     string
-	lastData     []byte
-	lastPages    []fgos.Page
+	mu                    sync.Mutex
+	pages                 []fgos.Page
+	program               ingestion.EducationProgram
+	warnings              []string
+	pagesErr              error
+	extractErr            error
+	pagesCalls            int
+	extractCalls          int
+	extractFromPagesCalls int
+	lastName              string
+	lastData              []byte
+	lastPages             []fgos.Page
+	lastFromPages         []fgos.Page
 }
 
 func (f *fakePDFExtractor) ExtractPages(name string, data []byte) ([]fgos.Page, error) {
@@ -1096,6 +1098,19 @@ func (f *fakePDFExtractor) Extract(_ context.Context, pages []fgos.Page) (ingest
 	defer f.mu.Unlock()
 	f.extractCalls++
 	f.lastPages = pages
+	if f.extractErr != nil {
+		return ingestion.EducationProgram{}, nil, f.extractErr
+	}
+	return f.program, f.warnings, nil
+}
+
+// ExtractFromPages реализует необязательное расширение PageExtractor: HTML-режим
+// передаёт готовые страницы, не скачивая PDF.
+func (f *fakePDFExtractor) ExtractFromPages(_ context.Context, pages []fgos.Page) (ingestion.EducationProgram, []string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.extractFromPagesCalls++
+	f.lastFromPages = pages
 	if f.extractErr != nil {
 		return ingestion.EducationProgram{}, nil, f.extractErr
 	}
@@ -1200,6 +1215,297 @@ func TestCheckerDOCXWithExtractorAddsPageNumberWarning(t *testing.T) {
 	}
 	if len(input.Warnings) == 0 || input.Warnings[0] != fgos.ApproximatePageNumbersWarning {
 		t.Fatalf("нет предупреждения о приблизительных страницах: %v", input.Warnings)
+	}
+}
+
+// testFGOSHTML — HTML-страница с полным текстом стандарта и ссылкой на PDF.
+// HTML-режим должен разобрать текст, не скачивая PDF.
+const testFGOSHTML = `<html><body>
+<h1>Требования к результатам освоения</h1>
+<p>УК-1. Способен осуществлять поиск и критический анализ информации.</p>
+<p>ОПК-2. Способен разрабатывать программное обеспечение.</p>
+<p>ПК-3. Способен проектировать базы данных.</p>
+<a href="/files/fgos.pdf">Скачать PDF</a>
+</body></html>`
+
+func TestCheckerHTMLFGOSParsesTextWithoutPDF(t *testing.T) {
+	t.Setenv("FGOS_HTML_TEXT", "true")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/news/view/3224", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(testFGOSHTML))
+	})
+	mux.HandleFunc("/files/fgos.pdf", func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("в HTML-режиме PDF не должен скачиваться")
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write([]byte("%PDF-1.7 fake"))
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, mux, store, drafts)
+	extractor := &fakePDFExtractor{
+		pages:    []fgos.Page{{Number: 1, Text: "УК-1. Способен осуществлять поиск."}},
+		program:  testFGOSProgram(),
+		warnings: []string{"фрагмент 1: предупреждение адаптера"},
+	}
+	checker.PDFExtractor = extractor
+	source := store.add(Source{
+		ProgramKey:    "fgosvo/09.03.01/2024/full-time",
+		URL:           server.URL + "/news/view/3224",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+
+	result, err := checker.CheckAndSave(context.Background(), source, testOwner)
+	if err != nil {
+		t.Fatalf("CheckAndSave: %v", err)
+	}
+	if result.Status != StatusChanged || result.DraftID != "draft-1" {
+		t.Fatalf("result: %+v", result)
+	}
+	if len(drafts.inputs) != 1 {
+		t.Fatalf("ожидали один черновик: %+v", drafts.inputs)
+	}
+	input := drafts.inputs[0]
+	wantName := strings.TrimPrefix(server.URL, "http://") + "/news/view/3224"
+	if input.SourceFormat != "html" || input.SourceName != wantName {
+		t.Fatalf("draft input: %+v, ожидали format=html name=%q", input, wantName)
+	}
+	if len(input.Warnings) != 2 ||
+		input.Warnings[0] != HTMLPageNumbersWarning ||
+		input.Warnings[1] != "фрагмент 1: предупреждение адаптера" {
+		t.Fatalf("предупреждения: %v", input.Warnings)
+	}
+	if input.Program.Title != source.ProgramKey || input.Program.Code != source.ProgramKey {
+		t.Fatalf("title/code: %+v", input.Program)
+	}
+	if extractor.pagesCalls != 0 || extractor.extractCalls != 0 || extractor.extractFromPagesCalls != 1 {
+		t.Fatalf("вызовы адаптера: pages=%d extract=%d from_pages=%d",
+			extractor.pagesCalls, extractor.extractCalls, extractor.extractFromPagesCalls)
+	}
+	if len(extractor.lastFromPages) == 0 || !strings.Contains(extractor.lastFromPages[0].Text, "УК-1") {
+		t.Fatalf("адаптер получил страницы: %+v", extractor.lastFromPages)
+	}
+	update := store.lastCheck(t, source.ID)
+	if update.LastHash == nil {
+		t.Fatalf("отпечаток HTML-страницы должен сохраняться: %+v", update)
+	}
+	if update.DocumentURL == nil || *update.DocumentURL != "" {
+		t.Fatalf("у HTML-режима нет привязанного документа: %+v", update.DocumentURL)
+	}
+}
+
+// TestCheckerHTMLTextDisabledFallsBackToDocumentLink — FGOS_HTML_TEXT=false
+// возвращает прежнее поведение: страница даёт ссылку на PDF, PDF скачивается и
+// разбирается.
+func TestCheckerHTMLTextDisabledFallsBackToDocumentLink(t *testing.T) {
+	t.Setenv("FGOS_HTML_TEXT", "false")
+	document := []byte("%PDF-1.7 fake")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/news/view/3224", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(testFGOSHTML))
+	})
+	mux.HandleFunc("/files/fgos.pdf", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write(document)
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, mux, store, drafts)
+	extractor := &fakePDFExtractor{
+		pages:   []fgos.Page{{Number: 1, Text: "УК-1. Способен осуществлять поиск."}},
+		program: testFGOSProgram(),
+	}
+	checker.PDFExtractor = extractor
+	source := store.add(Source{
+		ProgramKey:    "fgosvo/09.03.01/2024/full-time",
+		URL:           server.URL + "/news/view/3224",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+
+	result, err := checker.CheckAndSave(context.Background(), source, testOwner)
+	if err != nil {
+		t.Fatalf("CheckAndSave: %v", err)
+	}
+	if result.Status != StatusChanged {
+		t.Fatalf("result: %+v", result)
+	}
+	input := drafts.inputs[0]
+	if input.SourceFormat != "pdf" || input.SourceName != "fgos.pdf" {
+		t.Fatalf("ожидали разбор PDF по ссылке: %+v", input)
+	}
+	if extractor.pagesCalls != 1 || extractor.extractCalls != 1 || extractor.extractFromPagesCalls != 0 {
+		t.Fatalf("вызовы адаптера: pages=%d extract=%d from_pages=%d",
+			extractor.pagesCalls, extractor.extractCalls, extractor.extractFromPagesCalls)
+	}
+	for _, warning := range input.Warnings {
+		if warning == HTMLPageNumbersWarning {
+			t.Fatalf("при разборе PDF предупреждения об HTML быть не должно: %v", input.Warnings)
+		}
+	}
+}
+
+// TestCheckerHTMLFGOSNeedsParserWithoutExtractor — текст стандарта найден, но
+// LLM-адаптер не настроен: needs_parser без черновика, как у PDF.
+func TestCheckerHTMLFGOSNeedsParserWithoutExtractor(t *testing.T) {
+	t.Setenv("FGOS_HTML_TEXT", "true")
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(testFGOSHTML))
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, handler, store, drafts)
+	source := store.add(Source{
+		ProgramKey:    "fgosvo/09.03.01/2024/full-time",
+		URL:           server.URL + "/news/view/3224",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+
+	result, err := checker.CheckAndSave(context.Background(), source, testOwner)
+	if err != nil {
+		t.Fatalf("CheckAndSave: %v", err)
+	}
+	if result.Status != StatusNeedsParser || result.Error != "HTML с текстом ФГОС требует LLM-адаптера" {
+		t.Fatalf("result: %+v", result)
+	}
+	if len(drafts.inputs) != 0 {
+		t.Fatalf("черновик без адаптера не создаётся: %+v", drafts.inputs)
+	}
+}
+
+func TestCheckerHTMLFGOSExtractError(t *testing.T) {
+	t.Setenv("FGOS_HTML_TEXT", "true")
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(testFGOSHTML))
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, handler, store, drafts)
+	checker.PDFExtractor = &fakePDFExtractor{extractErr: errors.New("не удалось извлечь компетенции")}
+	source := store.add(Source{
+		ProgramKey:    "fgosvo/09.03.01/2024/full-time",
+		URL:           server.URL + "/news/view/3224",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+
+	result, err := checker.CheckAndSave(context.Background(), source, testOwner)
+	if err != nil {
+		t.Fatalf("CheckAndSave: %v", err)
+	}
+	if result.Status != StatusError || !strings.Contains(result.Error, "не удалось извлечь программу из HTML") {
+		t.Fatalf("result: %+v", result)
+	}
+	if len(drafts.inputs) != 0 {
+		t.Fatalf("при ошибке черновик не создаётся: %+v", drafts.inputs)
+	}
+}
+
+// TestCheckerHTMLModeEnabledAfterPDFCheck — включение FGOS_HTML_TEXT после
+// успешной проверки по PDF-ссылке не теряется: при том же хэше страницы
+// HTML-режим разбирает текст, потому что прошлая проверка была не HTML.
+func TestCheckerHTMLModeEnabledAfterPDFCheck(t *testing.T) {
+	t.Setenv("FGOS_HTML_TEXT", "false")
+	document := []byte("%PDF-1.7 fake")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/news/view/3224", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(testFGOSHTML))
+	})
+	mux.HandleFunc("/files/fgos.pdf", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write(document)
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, mux, store, drafts)
+	extractor := &fakePDFExtractor{
+		pages:   []fgos.Page{{Number: 1, Text: "УК-1. Способен осуществлять поиск."}},
+		program: testFGOSProgram(),
+	}
+	checker.PDFExtractor = extractor
+	source := store.add(Source{
+		ProgramKey:    "fgosvo/09.03.01/2024/full-time",
+		URL:           server.URL + "/news/view/3224",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+
+	if _, err := checker.CheckAndSave(context.Background(), source, testOwner); err != nil {
+		t.Fatalf("первая проверка: %v", err)
+	}
+	afterPDF, err := store.GetWatchSource(context.Background(), source.ID)
+	if err != nil {
+		t.Fatalf("GetWatchSource: %v", err)
+	}
+	if afterPDF.DocumentURL == "" {
+		t.Fatalf("после разбора PDF document_url должен быть сохранён: %+v", afterPDF)
+	}
+
+	t.Setenv("FGOS_HTML_TEXT", "true")
+	result, err := checker.CheckAndSave(context.Background(), afterPDF, testOwner)
+	if err != nil {
+		t.Fatalf("вторая проверка: %v", err)
+	}
+	if result.Status != StatusChanged {
+		t.Fatalf("включение HTML-режима должно создавать черновик: %+v", result)
+	}
+	if len(drafts.inputs) != 2 || drafts.inputs[1].SourceFormat != "html" {
+		t.Fatalf("ожидали второй черновик из HTML: %+v", drafts.inputs)
+	}
+	afterHTML, err := store.GetWatchSource(context.Background(), source.ID)
+	if err != nil {
+		t.Fatalf("GetWatchSource: %v", err)
+	}
+	if afterHTML.DocumentURL != "" {
+		t.Fatalf("после HTML-разбора document_url должен очищаться: %q", afterHTML.DocumentURL)
+	}
+}
+
+// TestCheckerHTMLFGOSDoesNotRepeatDraft — повторная проверка неизменившейся
+// HTML-страницы не тратит модель и не создаёт второй черновик.
+func TestCheckerHTMLFGOSDoesNotRepeatDraft(t *testing.T) {
+	t.Setenv("FGOS_HTML_TEXT", "true")
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(testFGOSHTML))
+	})
+	store := newFakeWatchStore()
+	drafts := &fakeDrafts{}
+	checker, server := newCheckerServer(t, handler, store, drafts)
+	extractor := &fakePDFExtractor{program: testFGOSProgram()}
+	checker.PDFExtractor = extractor
+	source := store.add(Source{
+		ProgramKey:    "fgosvo/09.03.01/2024/full-time",
+		URL:           server.URL + "/news/view/3224",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+
+	if _, err := checker.CheckAndSave(context.Background(), source, testOwner); err != nil {
+		t.Fatalf("первая проверка: %v", err)
+	}
+	updated, err := store.GetWatchSource(context.Background(), source.ID)
+	if err != nil {
+		t.Fatalf("GetWatchSource: %v", err)
+	}
+	result, err := checker.CheckAndSave(context.Background(), updated, testOwner)
+	if err != nil {
+		t.Fatalf("вторая проверка: %v", err)
+	}
+	if result.Status != StatusUnchanged {
+		t.Fatalf("неизменившаяся страница должна давать unchanged: %+v", result)
+	}
+	if len(drafts.inputs) != 1 {
+		t.Fatalf("второй черновик не должен создаваться: %d", len(drafts.inputs))
+	}
+	if extractor.extractFromPagesCalls != 1 {
+		t.Fatalf("модель не должна вызываться повторно: %d", extractor.extractFromPagesCalls)
 	}
 }
 
