@@ -187,8 +187,6 @@ describe("NewResearch", () => {
     expect(JSON.parse(String(request?.init.body))).toEqual({
       profession: "Аналитик",
       type: "chat",
-      github_consent: true,
-      github_exclude: [],
       result_kind: "activity",
     })
     expect(fetchCalls().some((call) => call.url.includes("/runs/estimate"))).toBe(false)

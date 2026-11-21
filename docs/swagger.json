@@ -3,7 +3,7 @@
   "info": {
     "title": "Modeus activity-descriptor API",
     "version": "0.1.0",
-    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`, require a JWT bearer token. Successful responses are JSON, except the run export which serves Markdown by default (`?format=md`) and JSON on request (`?format=json`); run progress is streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`. Forecasts, vacancy analytics, market dashboards, cross-run comparison, ZUN suggestions and new learning runs require MODEUS_ENABLE_DEFERRED_API=true. Existing learning plans and snapshot diffs remain readable with the default settings."
+    "description": "Contract for the multi-agent activity-descriptor backend (cards 1, 18, 19, 20). This file is the source of truth; the copies served by the API from `docs/` (`swagger.json` and `swagger.yaml`, shown at `/swagger/`) are generated from it. All endpoints are relative to the `/api/v1` server and, except for `GET /health`, `GET /ready`, `POST /auth/register` and `POST /auth/login`, require a JWT bearer token. Successful responses are JSON, except the run export which serves Markdown by default (`?format=md`) and JSON on request (`?format=json`), the program draft export `GET /admin/programs/drafts/{id}/export.docx` which serves a DOCX attachment, and run progress, streamed by `GET /runs/{id}/events` as `text/event-stream`. Error responses carry a stable machine-readable `code` and a human-readable `message`. Forecasts, vacancy analytics, market dashboards, cross-run comparison, ZUN suggestions and new learning runs require MODEUS_ENABLE_DEFERRED_API=true. Existing learning plans and snapshot diffs remain readable with the default settings."
   },
   "servers": [
     {
@@ -3429,13 +3429,30 @@
                     "type": "string",
                     "enum": [
                       "chat",
-                      "batch"
+                      "batch",
+                      "learning"
                     ],
                     "description": "chat starts the interactive interviewer; batch runs the domain.Orchestrate pipeline. Omitted means chat when the chat service is configured, otherwise batch."
                   },
                   "transcript": {
                     "type": "string",
                     "description": "Optional interview transcript for a batch run. Chat runs ignore it. Batch runs with a transcript require a configured LLM analyst."
+                  },
+                  "github_username": {
+                    "type": "string",
+                    "description": "Optional public GitHub profile used to personalize an interview."
+                  },
+                  "github_consent": {
+                    "type": "boolean"
+                  },
+                  "github_exclude": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "profile_context": {
+                    "type": "string"
                   }
                 }
               },
@@ -3822,6 +3839,49 @@
       }
     },
     "/runs/{id}/sources": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Used materials of a research run",
+        "description": "Returns the materials attached to the run through `run_sources` together with the number of tree-node evidence items that quote each source (`evidence_count`). The count is scoped to this run only: the same material linked to several runs reports each run's own quotes, and a material attached but never quoted honestly reports zero. Read-only card 10 of the MVP plan. Access matches the interview endpoints: the run owner or an administrator (roles admin, user, specialist).",
+        "operationId": "listRunSources",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of used materials with their evidence count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunSourceCard"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
       "post": {
         "tags": [
           "runs"
@@ -4277,6 +4337,163 @@
           },
           "504": {
             "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/review-access": {
+      "post": {
+        "summary": "Grant a specialist access to a research run",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Access granted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke a specialist's access to a research run",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Access revoked"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/runs/{id}/source-changes": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List changed sources potentially affecting evidence",
+        "description": "Returns evidence whose source content changed after it was created. Changes are recorded after the tracking migration; the result requires human review.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Potentially affected evidence and nodes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "source_id",
+                      "source_title",
+                      "node_id",
+                      "node_title",
+                      "evidence_id",
+                      "changed_at"
+                    ],
+                    "properties": {
+                      "source_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "source_title": {
+                        "type": "string"
+                      },
+                      "node_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "node_title": {
+                        "type": "string"
+                      },
+                      "evidence_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "changed_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
       }
@@ -5030,6 +5247,852 @@
         }
       }
     },
+    "/runs/{id}/retry": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Повторить финализацию интервью",
+        "description": "Повторно запускает построение дерева (аналитик, синтезатор, сохранение) по сохранённому диалогу интервью, когда прогон завершился `failed` или дерево так и не было построено. Транскрипт восстанавливается из сохранённых сообщений (`GET /runs/{id}/messages`), терминальное состояние durable-сессии сбрасывается в `active`, поэтому после каждой неудачи повтор остаётся возможным: отдельного «уже перезапускали» флага нет. Доступ есть у владельца прогона и администратора (роли admin, user, specialist). Ответ `202` означает, что анализ уже идёт в фоне: итоговый статус прогона публикуется в `GET /runs/{id}/events` и доступен в `GET /runs/{id}`. Если LLM недоступен, прогон снова станет `failed` — это ожидаемый результат, и повтор разрешён после восстановления провайдера.",
+        "operationId": "retryRunFinalization",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Повторная финализация запущена в фоне.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryRunResult"
+                },
+                "example": {
+                  "run_id": "11111111-1111-1111-1111-111111111111",
+                  "status": "running"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Прогон принадлежит другому пользователю; доступ есть у владельца и администратора.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN",
+                  "message": "доступ к интервью есть у владельца и администратора"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Повтор невозможен: дерево уже построено, в прогоне нет сохранённых сообщений, интервью или другой повтор ещё выполняется, либо состояние сессии изменилось параллельным писателем.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "treeAlreadyExists": {
+                    "summary": "Дерево уже построено",
+                    "value": {
+                      "code": "TREE_ALREADY_EXISTS",
+                      "message": "дерево уже построено: повторный анализ не требуется"
+                    }
+                  },
+                  "nothingToRetry": {
+                    "summary": "Нет сохранённого транскрипта",
+                    "value": {
+                      "code": "NOTHING_TO_RETRY",
+                      "message": "в прогоне нет сохранённых сообщений интервью"
+                    }
+                  },
+                  "retryInProgress": {
+                    "summary": "Повтор уже выполняется",
+                    "value": {
+                      "code": "RETRY_IN_PROGRESS",
+                      "message": "повторный анализ уже выполняется"
+                    }
+                  },
+                  "conflict": {
+                    "summary": "Состояние сессии изменилось",
+                    "value": {
+                      "code": "CONFLICT",
+                      "message": "состояние интервью изменилось; повторите запрос"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "description": "Чат-сервис не настроен на этом сервере или у сервиса нет финализатора (не настроен LLM-аналитик), поэтому повтор невозможен.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "NOT_IMPLEMENTED",
+                  "message": "повторная финализация недоступна: не настроен LLM-аналитик"
+                }
+              }
+            }
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        }
+      }
+    },
+    "/runs/{id}/interviews": {
+      "get": {
+        "tags": [
+          "interviews"
+        ],
+        "summary": "List respondent interviews of a run",
+        "description": "Returns every respondent interview of the research run, oldest first. A run keeps at most one active interview; finished interviews stay as history with their own dialog, so the answers of different specialists are never mixed.",
+        "operationId": "listRunInterviews",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of interviews.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunInterview"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "interviews"
+        ],
+        "summary": "Start a new respondent interview",
+        "description": "Closes the active interview of the run, opens a new one for the given respondent and resets the interviewer cursor, so the dialog starts from the first question instead of resuming the previous respondent. Only chat runs that are not finished accept a new interview.",
+        "operationId": "startRunInterview",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new interview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunInterview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run is not a chat run or is already finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "RUN_FINISHED",
+                  "message": "нельзя начать интервью в завершённом исследовании"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The respondent descriptor is too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "description": "The interview was created but the dialog could not be started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/interviews/{interview_id}/messages": {
+      "get": {
+        "tags": [
+          "interviews"
+        ],
+        "summary": "Read the dialog of one interview",
+        "description": "Returns the messages of exactly one respondent interview, so the dialogs of several respondents of the same run never mix.",
+        "operationId": "listInterviewMessages",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "interview_id",
+            "in": "path",
+            "required": true,
+            "description": "Interview id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of chat messages of that interview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatMessage"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/runs/{id}/interviews/{interview_id}/evidence": {
+      "get": {
+        "tags": [
+          "interviews"
+        ],
+        "summary": "Evidence items born from one interview",
+        "description": "Returns the tree-node evidence items whose `ref_id` points at a message of exactly this interview of the run, so the methodologist sees which answers became the grounds of the tree. Evidence whose anchor points at a search fragment instead of an interview message is not listed, and the answers of another respondent or another run can never leak into the card. An interview that does not belong to the run (or does not exist) is 404. Read-only card 14 of the MVP plan.",
+        "operationId": "listInterviewEvidence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "interview_id",
+            "in": "path",
+            "required": true,
+            "description": "Interview id; it must belong to the run in the path.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of evidence items born from the answers of that interview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InterviewEvidence"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/nodes/{id}/review": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Review one activity tree node",
+        "description": "Stores the methodologist decision on a node: approved or rejected, with an optional comment. The evidence of the node is kept as is, so approving or rejecting a node never removes its quotes.",
+        "operationId": "reviewNode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Node id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeReviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Unknown decision or too long comment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/program-links": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "List activity-to-program links of a run",
+        "description": "Returns the proposals and decisions that connect activity tree nodes with educational program competencies. Until the methodologist approves a link it stays `proposed` and is not a fact. Candidates are produced by the core (card 22); this endpoint only reads and reviews them.",
+        "operationId": "listProgramLinks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Filter by link status.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "approved",
+                "rejected"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of links with node, program and competency titles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProgramLink"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/runs/{id}/program-links/generate": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "operationId": "generateProgramLinks",
+        "summary": "Предложить сопоставления узлов с выбранной программой",
+        "description": "Создаёт снимок дерева, анализирует основания и сохраняет до трёх кандидатов на узел как proposed. Методист принимает итоговое решение.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Кандидаты и ранее сохранённые решения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProgramLink"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Для исследования не выбрана программа или дерево не содержит оснований"
+          },
+          "503": {
+            "description": "PostgreSQL или модель сопоставления недоступны"
+          }
+        }
+      }
+    },
+    "/runs/{id}/program-links/{link_id}/review": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Review one activity-to-program link",
+        "description": "Approves or rejects a proposed link. The methodologist comment is appended to the system explanation instead of replacing it, so the reason a link was proposed stays visible.",
+        "operationId": "reviewProgramLink",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "description": "Link id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          },
+          "competency_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional corrected competency target."
+          },
+          "ksa_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional corrected KSA belonging to competency_id."
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramLink"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Unknown decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{id}/review/summary": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Review progress of a research run",
+        "description": "Counts how many nodes, evidence items and program links are already reviewed, so the methodologist sees from one place what is checked and what still needs attention.",
+        "operationId": "getReviewSummary",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review progress counters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/runs/{id}/program-coverage": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Coverage of the educational program by the activity tree",
+        "description": "Groups every tree node of the run by program coverage: `confirmed` when at least one link to a program competency is approved, `proposed` when there are only proposals from the core, `none` when there are no links or all of them are rejected (rejected links stay visible in `links`). `competencies` contains approved links only, grouped per competency with their `links_count`. When the run has no selected program (`result_kind` is not `program`) or no links at all, the response is still 200 with `counts.none` equal to `counts.total` and empty `competencies`, so the UI can show its empty state. Read-only card 24 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).",
+        "operationId": "getProgramCoverage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Program coverage report; a run without program or links returns an empty coverage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramCoverage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/activity-changes": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Changes of professional activity between two research runs",
+        "description": "Compares the current activity trees of two runs owned by the same user. Nodes are matched semantically by type, normalized title and normalized ancestor path, because independent runs never share node ids. Returns added, removed and changed nodes with parent title, evidence count and the new sources that confirm the node; summary reports counts per category and the number of unique sources added or removed. A different profession is not an error: same_profession=false marks the report. A run without a tree returns 409 TREE_MISSING. Read-only card 31 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).",
+        "operationId": "getActivityChanges",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "against",
+            "in": "query",
+            "required": true,
+            "description": "Run id to compare with.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity change report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityChangeReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The against parameter is missing or not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "message": "against должен быть UUID исследования"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "One of the runs has no activity tree yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "TREE_MISSING",
+                  "message": "у исследования ещё нет дерева деятельности — сравнивать пока нечего"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/runs/{id}/program-suggestions": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Program-related suggestions based on activity mapping",
+        "description": "Builds read-only proposals from saved activity-to-program links: `unmapped_activity` for a task or action without an approved link, `unconfirmed_competency` for a competency with proposed links but no approval, `uncovered_competency` for a competency without any activity link, and `conflicting_links` for a node with approved and rejected links to different competencies. Priorities are high for task-level unmapped, medium for other unmapped and unconfirmed, and low for uncovered and conflicting. Every proposal has status `proposal`; the system never approves or rewrites the program. When the run is not in program mode or has no links yet, the response is still 200 with an empty `proposals` array and an explanatory `summary`. Read-only card 32 of the MVP plan; access is the run owner or an administrator (roles admin, user, specialist).",
+        "operationId": "getProgramSuggestions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Program suggestions; an empty proposals array is a valid answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramSuggestions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
     "/runs/{id}/conflicts": {
       "get": {
         "tags": [
@@ -5457,7 +6520,7 @@
           "runs"
         ],
         "summary": "Diff two snapshots of a run",
-        "description": "Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Equal snapshots produce an empty diff (all arrays empty, summary zeros, story says the trees are identical). `story` is a deterministic one-line Russian summary of the diff and `story_lines` is the same story line by line (header with counts, then one line per change, at most 20 detail lines followed by an \"Ещё изменений: N.\" overflow line); the counts in both always agree with `summary`.",
+        "description": "Compares the tree stored in the `against` snapshot (base) with the tree stored in the path snapshot (head). Both snapshots must belong to the run `{id}`. Nodes are matched by id; `added` and `removed` list whole nodes and `changed` lists nodes with the changed field names in the fixed order `title`, `description`, `type`, `parent_id`, `evidence`. Evidence order inside a node is not significant, an empty status is treated as `pending`, and every returned node carries its evidence (`source_id`, `ref_id`, `quote`, `status`) so the UI can jump to the original source quote. Each changed node additionally carries the additive `evidence_added` and `evidence_removed` arrays (card 19 of the MVP plan): evidence items present only in head or only in base, compared by evidence id and sorted by id; editing a quote under the same id is a field change, not an add/remove. Equal snapshots produce an empty diff (all arrays empty, summary zeros, story says the trees are identical). `story` is a deterministic one-line Russian summary of the diff and `story_lines` is the same story line by line (header with counts, then one line per change, at most 20 detail lines followed by an \"Ещё изменений: N.\" overflow line); the counts in both always agree with `summary`.",
         "operationId": "diffRunSnapshots",
         "parameters": [
           {
@@ -5867,6 +6930,668 @@
           }
         }
       }
+    },
+    "/admin/programs/import": {
+      "post": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Импортировать образовательную программу в черновик",
+        "description": "Принимает файл CSV, XLSX, JSON, размеченный TXT/MD, а также PDF/DOCX ФГОС и PNG/JPEG при включённом OCR, и постоянный ключ программы. Файл разбирается и валидируется, но не публикуется: создаётся черновик для проверки человеком. PDF и DOCX разбирает LLM-адаптер ФГОС синхронно (таймаут PROGRAM_IMPORT_TIMEOUT_S, по умолчанию 15 минут; OCR и LLM работают в одном бюджете): из документа извлекаются компетенции, KSA и дословные цитаты с номерами страниц, а невалидные пункты отбрасываются с предупреждениями в отчёте. Страницы без текстового слоя распознаются tesseract/poppler; в report.warnings появляется «страница N распознана OCR (точность ниже)». Если LLM-адаптер не настроен, PDF/DOCX/сканы отклоняются с 422 PROGRAM_IMPORT_LLM_NOT_CONFIGURED; если OCR выключен, PNG/JPEG получают 422 PROGRAM_IMPORT_OCR_DISABLED, а PDF-скан — 422 PROGRAM_IMPORT_INVALID с подсказкой включить OCR; если tesseract/poppler не установлены — 503 PROGRAM_IMPORT_OCR_UNAVAILABLE; если модель или OCR не успели ответить — 503. Ошибки строк возвращаются списком в details (HTTP 422) и не обрывают разбор на первой строке.",
+        "operationId": "importProgramDraft",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "key"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "CSV, XLSX, JSON, TXT/MD или PDF/DOCX; не больше 20 МБ. PDF/DOCX требуют настроенного LLM-адаптера ФГОС. PNG/JPEG принимаются только при OCR_ENABLED=true; PDF-сканы без текстового слоя также требуют OCR."
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "description": "Постоянный код программы, под которым черновик будет опубликован."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Черновик создан; возвращаются draft_id, разобранная программа и отчёт.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "description": "Файл больше 20 МБ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ProgramImportInvalid"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "description": "LLM-адаптер или OCR недоступны либо не уложились в таймаут. code = PROGRAM_IMPORT_LLM_TIMEOUT, PROGRAM_IMPORT_LLM_UNAVAILABLE, PROGRAM_IMPORT_OCR_TIMEOUT или PROGRAM_IMPORT_OCR_UNAVAILABLE; details для OCR содержит инструкцию по установке tesseract/poppler (OCR_TESSERACT/OCR_PDFTOPPM) и ссылку на docs/ocr-setup.txt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProgramImportError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/programs/drafts": {
+      "get": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Список черновиков импорта образовательных программ",
+        "description": "Только admin. Черновики возвращаются от новых к старым вместе со счётчиками компетенций, KSA и предупреждений.",
+        "operationId": "listProgramImportDrafts",
+        "responses": {
+          "200": {
+            "description": "Черновики импорта.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProgramImportDraftSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/programs/drafts/{id}": {
+      "get": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Черновик импорта образовательной программы",
+        "description": "Только admin. Возвращает черновик вместе с разобранной программой и отчётом импорта.",
+        "operationId": "getProgramImportDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramDraftId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Черновик программы.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramImportDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/programs/drafts/{id}/ksa": {
+      "post": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Добавить KSA из ОПОП/РПД в черновик образовательной программы",
+        "description": "Только admin. Принимает PDF, DOCX, TXT или MD с текстом ОПОП/РПД, извлекает знания, умения и навыки вторым LLM-промптом (fgosksa/v1) и дописывает их в существующий черновик по коду компетенции. Формулировки компетенций не меняются; коды, которых нет в программе, возвращаются в unknown_codes и не создают компетенции. Повторная загрузка того же документа идемпотентна: added=0, already_present равно числу уже сохранённых KSA. PDF/DOCX разбираются существующим механизмом страниц (OCR при OCR_ENABLED=true), TXT/MD — одной страницей. Таймаут — PROGRAM_IMPORT_TIMEOUT_S (по умолчанию 15 минут) и общий для OCR и LLM. Черновик загружается до разбора файла, поэтому неизвестный id даёт 404 независимо от содержимого формы. 422 — в документе нет KSA, он не разобрался или LLM-адаптер не настроен; 503 — модель или OCR недоступны либо не успели ответить.",
+        "operationId": "importProgramDraftKSA",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramDraftId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "PDF, DOCX, TXT или MD с текстом ОПОП/РПД; не больше 20 МБ. HTML и таблицы программ (CSV/XLSX/JSON) не принимаются."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "KSA добавлены; счётчики описывают только текущий вызов.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramKSAImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "description": "Файл больше 20 МБ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "В документе не нашлось KSA (code=PROGRAM_KSA_NOT_FOUND), файл не разобрался (code=PROGRAM_KSA_INVALID), для скана выключен OCR (code=PROGRAM_KSA_OCR_DISABLED, PROGRAM_KSA_OCR_PAGE_LIMIT) или LLM-адаптер не настроен (code=PROGRAM_KSA_LLM_NOT_CONFIGURED). details содержит причину или подсказку по OCR.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramImportError"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "description": "LLM-адаптер или OCR недоступны либо не уложились в таймаут. code = PROGRAM_KSA_LLM_UNAVAILABLE, PROGRAM_KSA_LLM_TIMEOUT, PROGRAM_KSA_OCR_UNAVAILABLE, PROGRAM_KSA_OCR_TIMEOUT или PROGRAM_KSA_EXTRACTION_UNAVAILABLE; details уточняет причину.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProgramImportError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/programs/drafts/{id}/export.docx": {
+      "get": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Выгрузить черновик образовательной программы в DOCX",
+        "description": "Только admin. Возвращает читабельный DOCX: название и реквизиты программы, сводку, таблицу компетенций с знаниями/умениями/навыками, предупреждения импорта и подпись по статусу черновика. Имя файла — program-<безопасный код>.docx, в нём остаются только [a-z0-9._-].",
+        "operationId": "exportProgramImportDraftDOCX",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramDraftId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DOCX-документ черновика.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "attachment; filename=\"program-<безопасный код>.docx\".",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "attachment; filename=\"program-09.03.01.docx\""
+              }
+            },
+            "content": {
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/msword": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/programs/drafts/{id}/publish": {
+      "post": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Опубликовать черновик образовательной программы",
+        "description": "Только admin. Сохраняет программу через ingestion.SaveEducation и переводит черновик в published. taxonomy — необязательный UUID справочника для сопоставления кодов. Повторная публикация или публикация отклонённого черновика возвращает 409.",
+        "operationId": "publishProgramImportDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramDraftId"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramImportPublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Отчёт публикации.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EducationReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/programs/drafts/{id}/reject": {
+      "post": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Отклонить черновик образовательной программы",
+        "description": "Только admin. Переводит черновик в rejected; необязательная причина сохраняется в поле error. Повторное решение возвращает 409.",
+        "operationId": "rejectProgramImportDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramDraftId"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramImportRejectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Черновик отклонён."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/program-sources": {
+      "post": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Добавить источник образовательной программы",
+        "description": "Только admin. Регистрирует URL, который воркер cmd/program-watcher проверяет по расписанию. program_key обязан быть каноническим org/code/year/form (например mirea/09.03.01/2024/full-time); старые ключи без «/» здесь отклоняются с 400. Разрешены только http/https URL. Пара program_key+url уникальна.",
+        "operationId": "createProgramSource",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramWatchSourceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Источник добавлен.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramWatchSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ProgramSourceBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/ProgramSourceConflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Список источников образовательных программ",
+        "description": "Только admin. Возвращает реестр URL и состояние последней проверки.",
+        "operationId": "listProgramSources",
+        "responses": {
+          "200": {
+            "description": "Реестр источников.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProgramWatchSource"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/program-sources/{id}": {
+      "patch": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Обновить источник образовательной программы",
+        "description": "Только admin. Меняет enabled и/или interval_hours. URL, program_key и doc_format задаются при создании и не меняются.",
+        "operationId": "updateProgramSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramSourceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramWatchSourceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Источник обновлён.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramWatchSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Удалить источник образовательной программы",
+        "description": "Только admin. Удаляет URL из реестра; созданные черновики не затрагиваются.",
+        "operationId": "deleteProgramSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramSourceId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Источник удалён."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/admin/program-sources/{id}/check": {
+      "post": {
+        "tags": [
+          "academic"
+        ],
+        "summary": "Проверить источник образовательной программы синхронно",
+        "description": "Только admin. Скачивает URL с If-None-Match/If-Modified-Since и отдельно проверяет отпечаток привязанного документа (document_etag, document_last_modified, document_hash): обновление xlsx/pdf по неизменившейся странице не теряется. При изменении документ разбирается и создаётся черновик импорта. HTML-страница должна содержать ссылку на документ программы (.xlsx/.csv/.json/.txt/.md/.pdf/.docx). PDF и DOCX разбирает LLM-адаптер ФГОС, если он настроен на сервере; без адаптера статус needs_parser. Результат сохраняется в реестре и возвращается в теле ответа; сетевые ошибки — это status=error с HTTP 200. На время проверки источник получает lease-блокировку, поэтому параллельный запрос или воркер получает 409 PROGRAM_SOURCE_BUSY; после сохранения результата или ошибки блокировка снимается.",
+        "operationId": "checkProgramSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProgramSourceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Результат проверки.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramWatchCheckResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ProgramSourceBusy"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5933,9 +7658,61 @@
         "schema": {
           "type": "string"
         }
+      },
+      "ProgramDraftId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Идентификатор черновика импорта (UUID).",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ProgramSourceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Идентификатор источника программы в реестре (UUID).",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       }
     },
     "responses": {
+      "Conflict": {
+        "description": "Черновик уже опубликован или отклонён.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "PROGRAM_DRAFT_ALREADY_DECIDED",
+              "message": "черновик уже опубликован или отклонён"
+            }
+          }
+        }
+      },
+      "ProgramImportInvalid": {
+        "description": "Файл программы не прошёл проверку. details содержит все найденные проблемы с номерами строк или листов. Для PDF/DOCX/сканов сюда же попадают ошибки извлечения (в документе нет текстового слоя — нужен OCR; PDF-скан при выключенном OCR — код PROGRAM_IMPORT_INVALID с подсказкой; PNG/JPEG при выключенном OCR — code=PROGRAM_IMPORT_OCR_DISABLED; превышен лимит страниц OCR — code=PROGRAM_IMPORT_OCR_PAGE_LIMIT; OCR не распознал текст; модель не вернула ни одной валидной компетенции) и отсутствие LLM-адаптера (code=PROGRAM_IMPORT_LLM_NOT_CONFIGURED).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProgramImportError"
+            },
+            "example": {
+              "code": "PROGRAM_IMPORT_INVALID",
+              "message": "файл программы не прошёл проверку",
+              "details": [
+                "строка 5: повтор кода компетенции \"K1\"",
+                "лист «KSA», строка 3: неизвестный вид KSA"
+              ]
+            }
+          }
+        }
+      },
       "BadRequest": {
         "description": "Malformed request body, path or query parameter.",
         "content": {
@@ -5946,6 +7723,48 @@
             "example": {
               "code": "BAD_REQUEST",
               "message": "invalid JSON body"
+            }
+          }
+        }
+      },
+      "ProgramSourceBadRequest": {
+        "description": "Некорректный program_key или URL. Ключ обязан иметь канонический формат org/code/year/form; допускаются только абсолютные http/https URL и interval_hours от 1 до 720.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "BAD_REQUEST",
+              "message": "некорректный program_key: ключ \"prog-key\" должен иметь формат org/code/year/form, например mirea/09.03.01/2024/full-time"
+            }
+          }
+        }
+      },
+      "ProgramSourceConflict": {
+        "description": "Источник с такой парой program_key+url уже зарегистрирован.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "PROGRAM_SOURCE_ALREADY_EXISTS",
+              "message": "источник с таким program_key и url уже существует"
+            }
+          }
+        }
+      },
+      "ProgramSourceBusy": {
+        "description": "Источник уже проверяется: воркер или другой администратор держит lease-блокировку. Повторите запрос после завершения текущей проверки или истечения lease (по умолчанию 16 минут для ручной проверки с LLM/OCR и 10 минут для воркера).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "PROGRAM_SOURCE_BUSY",
+              "message": "источник уже проверяется"
             }
           }
         }
@@ -6414,9 +8233,10 @@
         "type": "string",
         "enum": [
           "batch",
-          "chat"
+          "chat",
+          "learning"
         ],
-        "description": "chat runs are driven by the interview chat; batch runs by the batch pipeline."
+        "description": "chat runs are driven by the interview chat; batch runs by the batch pipeline; learning runs produce an individual study plan."
       },
       "EvidenceStatus": {
         "type": "string",
@@ -6458,6 +8278,18 @@
           },
           "status": {
             "$ref": "#/components/schemas/EvidenceStatus"
+          },
+          "claim_origin": {
+            "type": "string",
+            "enum": [
+              "source_statement",
+              "model_interpretation",
+              "unclassified"
+            ]
+          },
+          "interview_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -6493,6 +8325,18 @@
           },
           "status": {
             "$ref": "#/components/schemas/EvidenceStatus"
+          },
+          "claim_origin": {
+            "type": "string",
+            "enum": [
+              "source_statement",
+              "model_interpretation",
+              "unclassified"
+            ]
+          },
+          "interview_id": {
+            "type": "string",
+            "format": "uuid"
           },
           "approved": {
             "type": "boolean",
@@ -6563,6 +8407,23 @@
             "items": {
               "$ref": "#/components/schemas/Evidence"
             }
+          },
+          "review_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "description": "Methodologist decision on the node itself (not on its evidence)."
+          },
+          "review_comment": {
+            "type": "string",
+            "description": "Optional methodologist comment stored with the decision."
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -6836,6 +8697,18 @@
           "created_by": {
             "type": "string",
             "description": "Account id that created the run; empty for legacy runs."
+          },
+          "result_kind": {
+            "type": "string",
+            "enum": [
+              "activity",
+              "program"
+            ],
+            "description": "Expected result of the research. `activity` is the description of the activity only (default); `program` also compares it with an educational program."
+          },
+          "program_id": {
+            "type": "string",
+            "description": "Educational program used for the comparison; required when result_kind is program."
           }
         }
       },
@@ -6855,8 +8728,7 @@
             "format": "uuid"
           },
           "run_id": {
-            "type": "string",
-            "format": "uuid"
+            "type": "string"
           },
           "version": {
             "type": "integer",
@@ -6892,13 +8764,41 @@
           }
         }
       },
+      "SnapshotEvidenceRef": {
+        "type": "object",
+        "required": [
+          "id",
+          "quote",
+          "source_id"
+        ],
+        "additionalProperties": false,
+        "description": "Compact reference to one evidence item that a snapshot diff reports as added or removed (card 19 of the MVP plan): the id, the quote and the source, which is enough for the UI to open the original material.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Evidence id."
+          },
+          "quote": {
+            "type": "string",
+            "description": "Quoted text of the evidence item."
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Source the quote belongs to."
+          }
+        }
+      },
       "SnapshotNodeChange": {
         "type": "object",
         "required": [
           "id",
           "before",
           "after",
-          "fields"
+          "fields",
+          "evidence_added",
+          "evidence_removed"
         ],
         "additionalProperties": false,
         "description": "A node present in both snapshots whose fields changed.",
@@ -6925,6 +8825,20 @@
                 "parent_id",
                 "evidence"
               ]
+            }
+          },
+          "evidence_added": {
+            "type": "array",
+            "description": "Evidence items that exist only in the head version of the node (card 19), sorted by id. Editing a quote under the same evidence id is reported through fields = [evidence] and does not appear here. Always an array, empty when nothing was added. Run-to-run comparison keeps it empty because evidence ids of independent runs never match.",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotEvidenceRef"
+            }
+          },
+          "evidence_removed": {
+            "type": "array",
+            "description": "Evidence items that exist only in the base version of the node (card 19), sorted by id. Always an array, empty when nothing was removed.",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotEvidenceRef"
             }
           }
         }
@@ -7052,7 +8966,16 @@
             "minLength": 1
           },
           "source_title": {
+            "type": "string"
+          },
+          "source_type": {
             "type": "string",
+            "enum": [
+              "vacancy",
+              "interview",
+              "standard",
+              "document"
+            ],
             "description": "Source title for reviewer context."
           },
           "source_url": {
@@ -7202,6 +9125,798 @@
           }
         }
       },
+      "RunInterview": {
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "status",
+          "started_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "respondent_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "respondent_role": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "respondent_ref": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Anonymised external label of the respondent (channel or code), never personal contact data."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "failed"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RespondentInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Anonymised respondent descriptor. All fields are optional and at most 120 characters long.",
+        "properties": {
+          "respondent_name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "respondent_role": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "respondent_ref": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      },
+      "NodeReviewResult": {
+        "type": "object",
+        "required": [
+          "id",
+          "node_id",
+          "review_status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "review_comment": {
+            "type": "string"
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "type": "array",
+            "description": "Evidence from the immutable snapshot used when the link was suggested.",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          }
+        }
+      },
+      "ProgramLink": {
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "node_id",
+          "program_id",
+          "competency_id",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshot_version": {
+            "type": "integer"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "node_type": {
+            "type": "string",
+            "enum": [
+              "role",
+              "function",
+              "task",
+              "action"
+            ]
+          },
+          "program_id": {
+            "type": "string"
+          },
+          "program_title": {
+            "type": "string"
+          },
+          "competency_id": {
+            "type": "string"
+          },
+          "competency_title": {
+            "type": "string"
+          },
+          "ksa_id": {
+            "type": "string"
+          },
+          "ksa_title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "approved",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the system proposed the link, plus the methodologist note."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "system",
+              "methodist"
+            ]
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "type": "array",
+            "description": "Основания из снимка, к которому привязано сопоставление.",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          }
+        }
+      },
+      "ReviewCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pending": {
+            "type": "integer"
+          },
+          "approved": {
+            "type": "integer"
+          },
+          "rejected": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "LinkCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "proposed": {
+            "type": "integer"
+          },
+          "approved": {
+            "type": "integer"
+          },
+          "rejected": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "ReviewSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "nodes": {
+            "$ref": "#/components/schemas/ReviewCounts"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ReviewCounts"
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkCounts"
+          }
+        }
+      },
+      "RunSourceCard": {
+        "type": "object",
+        "description": "One material used by a research run (card 10 of the MVP plan).",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "source_url",
+          "created_at",
+          "evidence_count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_url": {
+            "type": "string",
+            "description": "Original URL; empty string when the material was uploaded without one."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of evidence items of this run's tree that quote the source. Zero when the material was attached but never quoted."
+          }
+        }
+      },
+      "InterviewEvidence": {
+        "type": "object",
+        "description": "Evidence item born from an answer of one respondent interview (card 14 of the MVP plan): evidence.ref_id points at a run_chat_messages.id of that interview.",
+        "required": [
+          "evidence_id",
+          "node_id",
+          "node_title",
+          "node_type",
+          "quote",
+          "source_id",
+          "source_title",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "node_type": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_title": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvidenceStatus"
+          }
+        }
+      },
+      "ProgramCoverageLink": {
+        "type": "object",
+        "description": "Link between a tree node and a program competency inside the coverage report.",
+        "required": [
+          "link_id",
+          "node_id",
+          "competency_id",
+          "competency_title",
+          "status",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "competency_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "competency_title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "approved",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the system proposed the link, plus the methodologist note."
+          }
+        }
+      },
+      "ProgramCoverageNode": {
+        "type": "object",
+        "description": "One tree node and its links to program competencies (card 24 of the MVP plan).",
+        "required": [
+          "node_id",
+          "node_title",
+          "node_type",
+          "status",
+          "links"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "node_type": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "proposed",
+              "none"
+            ],
+            "description": "confirmed when at least one link is approved; proposed when only proposals exist; none when there are no links or all are rejected."
+          },
+          "links": {
+            "type": "array",
+            "description": "All links of the node, including rejected ones, in creation order.",
+            "items": {
+              "$ref": "#/components/schemas/ProgramCoverageLink"
+            }
+          }
+        }
+      },
+      "ProgramCoverageCompetency": {
+        "type": "object",
+        "description": "Competency with its approved links count; proposals are not counted.",
+        "required": [
+          "competency_id",
+          "competency_title",
+          "links_count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "competency_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "competency_title": {
+            "type": "string"
+          },
+          "links_count": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "ProgramCoverageCounts": {
+        "type": "object",
+        "description": "Node distribution by coverage status; confirmed + proposed + none always equals total.",
+        "required": [
+          "confirmed",
+          "proposed",
+          "none",
+          "total"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "proposed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "none": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ProgramCoverage": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/program-coverage (card 24 of the MVP plan).",
+        "required": [
+          "run_id",
+          "program_id",
+          "program_title",
+          "nodes",
+          "competencies",
+          "counts"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "program_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Selected program; null when the run result kind is not program."
+          },
+          "program_title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Title of the selected program; null together with program_id."
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Every node of the run tree in tree order (level, id).",
+            "items": {
+              "$ref": "#/components/schemas/ProgramCoverageNode"
+            }
+          },
+          "competencies": {
+            "type": "array",
+            "description": "Approved links grouped per competency, most covered first (then by title and id). Empty array when no link is approved yet.",
+            "items": {
+              "$ref": "#/components/schemas/ProgramCoverageCompetency"
+            }
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ProgramCoverageCounts"
+          }
+        }
+      },
+      "ActivityChangeSource": {
+        "type": "object",
+        "description": "Material that confirms a report node and does not appear anywhere in the tree of the compared run.",
+        "required": [
+          "source_id",
+          "source_title",
+          "source_type"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_title": {
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          }
+        }
+      },
+      "ActivityChangeNode": {
+        "type": "object",
+        "description": "One node of the activity change report (card 31 of the MVP plan). The changed_fields array is present only on nodes of the `changed` array.",
+        "required": [
+          "node_id",
+          "node_title",
+          "node_type",
+          "parent_title",
+          "evidence_count",
+          "new_sources"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "node_title": {
+            "type": "string"
+          },
+          "node_type": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "parent_title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Title of the parent node in the same tree; null for a root node."
+          },
+          "evidence_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of evidence items attached to the node in its own run."
+          },
+          "new_sources": {
+            "type": "array",
+            "description": "Materials of this node that are not used anywhere in the compared run, sorted by title and id. Always an array; removed nodes report an empty array because nothing new confirms a disappeared node.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityChangeSource"
+            }
+          },
+          "changed_fields": {
+            "type": "array",
+            "description": "Present only for changed nodes: fields whose raw values differ, in the fixed contract order title, description, type. A change that is only case/punctuation in the title keeps the semantic match and is reported here.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "title",
+                "description",
+                "type"
+              ]
+            }
+          }
+        }
+      },
+      "ActivityChangeSummary": {
+        "type": "object",
+        "description": "Counts of the activity change report. sources_added and sources_removed count unique materials of the whole tree, not node-source pairs.",
+        "required": [
+          "added",
+          "removed",
+          "changed",
+          "sources_added",
+          "sources_removed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "changed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sources_added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sources_removed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ActivityChangeReport": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/activity-changes?against={run_id} (card 31).",
+        "required": [
+          "run_id",
+          "against_run_id",
+          "same_profession",
+          "added",
+          "removed",
+          "changed",
+          "summary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "against_run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "same_profession": {
+            "type": "boolean",
+            "description": "True when both runs describe the same profession after normalization. False is not an error; it only marks that changes may be caused by a different profession."
+          },
+          "added": {
+            "type": "array",
+            "description": "Nodes that exist only in the current run, in tree order.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityChangeNode"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "description": "Nodes that exist only in the compared run, in tree order.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityChangeNode"
+            }
+          },
+          "changed": {
+            "type": "array",
+            "description": "Semantically matched nodes whose fields changed, in tree order.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityChangeNode"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ActivityChangeSummary"
+          }
+        }
+      },
+      "ProgramSuggestionTarget": {
+        "type": "object",
+        "description": "What a proposal points at: node_id for activity proposals, competency_id plus competency_title for competency proposals. Omitted fields are absent from JSON.",
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "competency_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "competency_title": {
+            "type": "string"
+          }
+        }
+      },
+      "ProgramProposal": {
+        "type": "object",
+        "description": "One suggestion of card 32 of the MVP plan.",
+        "required": [
+          "id",
+          "kind",
+          "target",
+          "rationale",
+          "priority",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable id built from the kind and the target id."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unmapped_activity",
+              "unconfirmed_competency",
+              "uncovered_competency",
+              "conflicting_links"
+            ]
+          },
+          "target": {
+            "$ref": "#/components/schemas/ProgramSuggestionTarget"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "Short neutral Russian explanation of why the candidate is worth checking."
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposal"
+            ],
+            "description": "The system only proposes; it never approves or rewrites the program."
+          }
+        }
+      },
+      "ProgramSuggestions": {
+        "type": "object",
+        "description": "JSON body of GET /runs/{id}/program-suggestions (card 32 of the MVP plan).",
+        "required": [
+          "run_id",
+          "program_id",
+          "program_title",
+          "generated_at",
+          "proposals",
+          "summary",
+          "disclaimer"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "program_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Selected program; null when the run result kind is not program."
+          },
+          "program_title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Title of the selected program; null together with program_id."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the report was built, UTC."
+          },
+          "proposals": {
+            "type": "array",
+            "description": "Suggestions ordered by priority, kind and id. Empty when the run has no program mapping or no open candidates; the summary explains why.",
+            "items": {
+              "$ref": "#/components/schemas/ProgramProposal"
+            }
+          },
+          "summary": {
+            "type": "string",
+            "description": "Human-readable neutral summary with priority counts, or the reason the list is empty."
+          },
+          "disclaimer": {
+            "type": "string",
+            "description": "Fixed notice that the system only proposes and the methodologist makes the decision."
+          }
+        }
+      },
       "ChatMessage": {
         "type": "object",
         "required": [
@@ -7253,6 +9968,28 @@
           },
           "quote": {
             "type": "string"
+          }
+        }
+      },
+      "RetryRunResult": {
+        "type": "object",
+        "description": "Результат запуска повторной финализации. Описывает фоновую операцию, а не строку прогона: итоговый статус прогона (done, degraded или снова failed) публикуется событиями прогона и в GET /runs/{id}.",
+        "required": [
+          "run_id",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "description": "Идентификатор прогона, финализация которого запущена повторно."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running"
+            ],
+            "description": "Состояние фоновой операции повтора."
           }
         }
       },
@@ -8505,6 +11242,9 @@
           "source_title": {
             "type": "string"
           },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
           "source_url": {
             "type": "string"
           },
@@ -8516,6 +11256,21 @@
           },
           "status": {
             "$ref": "#/components/schemas/EvidenceStatus"
+          },
+          "claim_origin": {
+            "type": "string",
+            "enum": [
+              "source_statement",
+              "model_interpretation",
+              "unclassified"
+            ]
+          },
+          "interview_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "respondent_name": {
+            "type": "string"
           }
         }
       },
@@ -8653,6 +11408,618 @@
           "note": {
             "type": "string",
             "description": "Human-readable explanation of the chosen match strategy (or why nothing matched)."
+          }
+        }
+      },
+      "ProgramKSA": {
+        "type": "object",
+        "description": "Знание, умение или навык компетенции.",
+        "required": [
+          "kind",
+          "title"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "knowledge",
+              "skill",
+              "ability"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "taxonomy_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProgramCompetency": {
+        "type": "object",
+        "description": "Компетенция образовательной программы. Тип хранится отдельным полем, а не выводится из кода: один и тот же код может иметь разный тип в разных программах.",
+        "required": [
+          "code",
+          "title"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "universal",
+              "general_professional",
+              "professional",
+              "other"
+            ],
+            "description": "Вид компетенции: universal (УК), general_professional (ОПК), professional (ПК), other (иное). Пустое значение допустимо и даёт предупреждение при импорте."
+          },
+          "taxonomy_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ksa": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgramKSA"
+            }
+          }
+        }
+      },
+      "EducationProgram": {
+        "type": "object",
+        "description": "Разобранная образовательная программа, сохранённая в черновике.",
+        "required": [
+          "code",
+          "title",
+          "competencies"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "organization": {
+            "type": "string"
+          },
+          "competencies": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ProgramCompetency"
+            }
+          }
+        }
+      },
+      "EducationReport": {
+        "type": "object",
+        "description": "Отчёт ingestion.SaveEducation о сопоставлении программы с таксономией.",
+        "required": [
+          "program_id",
+          "unmatched_competencies",
+          "unmatched_ksa",
+          "unknown_taxonomy_codes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "program_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unmatched_competencies": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unmatched_ksa": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_taxonomy_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProgramImportReport": {
+        "type": "object",
+        "description": "Сводка импорта до публикации.",
+        "required": [
+          "competencies",
+          "ksa",
+          "warnings"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "competencies": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ksa": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProgramImportCounts": {
+        "type": "object",
+        "description": "Счётчики строки списка черновиков.",
+        "required": [
+          "competencies",
+          "ksa",
+          "warnings"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "competencies": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ksa": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ProgramImportDraft": {
+        "type": "object",
+        "description": "Черновик импортированной программы, ожидающий решения администратора.",
+        "required": [
+          "id",
+          "status",
+          "key",
+          "source_name",
+          "source_format",
+          "program",
+          "report",
+          "warnings",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "rejected"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "source_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "xlsx",
+              "json",
+              "text"
+            ]
+          },
+          "program": {
+            "$ref": "#/components/schemas/EducationProgram"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ProgramImportReport"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_by": {
+            "type": "string",
+            "description": "JWT subject создателя, если он является UUID."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decided_by": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string",
+            "description": "Причина отклонения, если черновик отклонён."
+          }
+        }
+      },
+      "ProgramKSAImportResult": {
+        "type": "object",
+        "description": "Результат добавления KSA из ОПОП/РПД в черновик программы.",
+        "required": [
+          "draft_id",
+          "added",
+          "already_present",
+          "unknown_codes",
+          "warnings"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "added": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Сколько KSA дописано в программу этим вызовом."
+          },
+          "already_present": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Сколько KSA уже было в программе; сюда же входят повторы внутри загруженного документа."
+          },
+          "unknown_codes": {
+            "type": "array",
+            "description": "Коды компетенций, которых нет в программе, без дублей и в отсортированном виде. Новые компетенции по ним не создаются.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Предупреждения текущего извлечения: отброшенные пункты, OCR, приблизительные номера страниц DOCX.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProgramImportResult": {
+        "type": "object",
+        "description": "Ответ на создание черновика импорта.",
+        "required": [
+          "draft_id",
+          "program",
+          "report",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program": {
+            "$ref": "#/components/schemas/EducationProgram"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ProgramImportReport"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft"
+            ]
+          }
+        }
+      },
+      "ProgramImportDraftSummary": {
+        "type": "object",
+        "description": "Строка списка черновиков импорта.",
+        "required": [
+          "id",
+          "key",
+          "source_name",
+          "status",
+          "created_at",
+          "counts"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "rejected"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ProgramImportCounts"
+          }
+        }
+      },
+      "ProgramImportPublishRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "taxonomy": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Необязательный UUID таксономии для сопоставления кодов."
+          }
+        }
+      },
+      "ProgramImportRejectRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      },
+      "ProgramImportError": {
+        "type": "object",
+        "description": "Ошибка импорта с полным списком проблем.",
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProgramWatchSource": {
+        "type": "object",
+        "description": "URL образовательной программы, который проверяется по расписанию.",
+        "required": [
+          "id",
+          "program_key",
+          "url",
+          "interval_hours",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "program_key": {
+            "type": "string",
+            "description": "Канонический ключ org/code/year/form.",
+            "example": "mirea/09.03.01/2024/full-time"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "doc_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "xlsx",
+              "json",
+              "txt",
+              "md",
+              "pdf",
+              "docx",
+              "html",
+              "other"
+            ],
+            "description": "Необязательное переопределение формата; по умолчанию — расширение URL."
+          },
+          "interval_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "etag": {
+            "type": "string",
+            "description": "Сохранённый ETag последней успешной проверки."
+          },
+          "last_modified": {
+            "type": "string",
+            "description": "Сохранённый Last-Modified последней успешной проверки."
+          },
+          "last_hash": {
+            "type": "string",
+            "description": "sha256 тела последнего успешного ответа страницы."
+          },
+          "document_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL привязанного документа программы: ссылка со страницы или прямой URL источника."
+          },
+          "document_hash": {
+            "type": "string",
+            "description": "sha256 последнего успешно разобранного документа. Совпадение даёт статус unchanged, даже если страница изменилась."
+          },
+          "document_etag": {
+            "type": "string",
+            "description": "ETag документа для If-None-Match при повторной проверке."
+          },
+          "document_last_modified": {
+            "type": "string",
+            "description": "Last-Modified документа для If-Modified-Since при повторной проверке."
+          },
+          "last_checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_status": {
+            "type": "string",
+            "enum": [
+              "unchanged",
+              "changed",
+              "needs_parser",
+              "needs_attention",
+              "error"
+            ]
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Последний созданный черновик; null, если изменений ещё не было."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProgramWatchSourceCreate": {
+        "type": "object",
+        "required": [
+          "program_key",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "program_key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Канонический ключ org/code/year/form.",
+            "example": "mirea/09.03.01/2024/full-time"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Только абсолютный http/https URL."
+          },
+          "interval_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "default": 24
+          },
+          "doc_format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "xlsx",
+              "json",
+              "txt",
+              "md",
+              "pdf",
+              "docx",
+              "html",
+              "other"
+            ],
+            "description": "Необязательное переопределение формата документа."
+          }
+        }
+      },
+      "ProgramWatchSourceUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "interval_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
+          }
+        }
+      },
+      "ProgramWatchCheckResult": {
+        "type": "object",
+        "description": "Результат одной проверки. changed означает, что создан новый черновик; unchanged — 304 страницы или документа, либо совпадение sha256 тела страницы или привязанного документа; needs_parser — PDF/DOCX без LLM-адаптера; needs_attention — HTML без ссылки на документ; error — сеть/разбор. Отпечаток документа сравнивается отдельно от страницы, поэтому unchanged не означает, что страница не менялась.",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unchanged",
+              "changed",
+              "needs_parser",
+              "needs_attention",
+              "error"
+            ]
+          },
+          "draft_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Черновик, созданный при status=changed."
+          },
+          "error": {
+            "type": "string",
+            "description": "Причина для needs_parser, needs_attention и error."
           }
         }
       }

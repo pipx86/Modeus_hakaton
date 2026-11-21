@@ -1697,6 +1697,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/programs/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Импортировать образовательную программу в черновик
+         * @description Принимает файл CSV, XLSX, JSON, размеченный TXT/MD, а также PDF/DOCX ФГОС и PNG/JPEG при включённом OCR, и постоянный ключ программы. Файл разбирается и валидируется, но не публикуется: создаётся черновик для проверки человеком. PDF и DOCX разбирает LLM-адаптер ФГОС синхронно (таймаут PROGRAM_IMPORT_TIMEOUT_S, по умолчанию 15 минут; OCR и LLM работают в одном бюджете): из документа извлекаются компетенции, KSA и дословные цитаты с номерами страниц, а невалидные пункты отбрасываются с предупреждениями в отчёте. Страницы без текстового слоя распознаются tesseract/poppler; в report.warnings появляется «страница N распознана OCR (точность ниже)». Если LLM-адаптер не настроен, PDF/DOCX/сканы отклоняются с 422 PROGRAM_IMPORT_LLM_NOT_CONFIGURED; если OCR выключен, PNG/JPEG получают 422 PROGRAM_IMPORT_OCR_DISABLED, а PDF-скан — 422 PROGRAM_IMPORT_INVALID с подсказкой включить OCR; если tesseract/poppler не установлены — 503 PROGRAM_IMPORT_OCR_UNAVAILABLE; если модель или OCR не успели ответить — 503. Ошибки строк возвращаются списком в details (HTTP 422) и не обрывают разбор на первой строке.
+         */
+        post: operations["importProgramDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/programs/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Список черновиков импорта образовательных программ
+         * @description Только admin. Черновики возвращаются от новых к старым вместе со счётчиками компетенций, KSA и предупреждений.
+         */
+        get: operations["listProgramImportDrafts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/programs/drafts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Черновик импорта образовательной программы
+         * @description Только admin. Возвращает черновик вместе с разобранной программой и отчётом импорта.
+         */
+        get: operations["getProgramImportDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/programs/drafts/{id}/ksa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Добавить KSA из ОПОП/РПД в черновик образовательной программы
+         * @description Только admin. Принимает PDF, DOCX, TXT или MD с текстом ОПОП/РПД, извлекает знания, умения и навыки вторым LLM-промптом (fgosksa/v1) и дописывает их в существующий черновик по коду компетенции. Формулировки компетенций не меняются; коды, которых нет в программе, возвращаются в unknown_codes и не создают компетенции. Повторная загрузка того же документа идемпотентна: added=0, already_present равно числу уже сохранённых KSA. PDF/DOCX разбираются существующим механизмом страниц (OCR при OCR_ENABLED=true), TXT/MD — одной страницей. Таймаут — PROGRAM_IMPORT_TIMEOUT_S (по умолчанию 15 минут) и общий для OCR и LLM. Черновик загружается до разбора файла, поэтому неизвестный id даёт 404 независимо от содержимого формы. 422 — в документе нет KSA, он не разобрался или LLM-адаптер не настроен; 503 — модель или OCR недоступны либо не успели ответить.
+         */
+        post: operations["importProgramDraftKSA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/programs/drafts/{id}/export.docx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Выгрузить черновик образовательной программы в DOCX
+         * @description Только admin. Возвращает читабельный DOCX: название и реквизиты программы, сводку, таблицу компетенций с знаниями/умениями/навыками, предупреждения импорта и подпись по статусу черновика. Имя файла — program-<безопасный код>.docx, в нём остаются только [a-z0-9._-].
+         */
+        get: operations["exportProgramImportDraftDOCX"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/programs/drafts/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Опубликовать черновик образовательной программы
+         * @description Только admin. Сохраняет программу через ingestion.SaveEducation и переводит черновик в published. taxonomy — необязательный UUID справочника для сопоставления кодов. Повторная публикация или публикация отклонённого черновика возвращает 409.
+         */
+        post: operations["publishProgramImportDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/programs/drafts/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Отклонить черновик образовательной программы
+         * @description Только admin. Переводит черновик в rejected; необязательная причина сохраняется в поле error. Повторное решение возвращает 409.
+         */
+        post: operations["rejectProgramImportDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/program-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Список источников образовательных программ
+         * @description Только admin. Возвращает реестр URL и состояние последней проверки.
+         */
+        get: operations["listProgramSources"];
+        put?: never;
+        /**
+         * Добавить источник образовательной программы
+         * @description Только admin. Регистрирует URL, который воркер cmd/program-watcher проверяет по расписанию. program_key обязан быть каноническим org/code/year/form (например mirea/09.03.01/2024/full-time); старые ключи без «/» здесь отклоняются с 400. Разрешены только http/https URL. Пара program_key+url уникальна.
+         */
+        post: operations["createProgramSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/program-sources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Удалить источник образовательной программы
+         * @description Только admin. Удаляет URL из реестра; созданные черновики не затрагиваются.
+         */
+        delete: operations["deleteProgramSource"];
+        options?: never;
+        head?: never;
+        /**
+         * Обновить источник образовательной программы
+         * @description Только admin. Меняет enabled и/или interval_hours. URL, program_key и doc_format задаются при создании и не меняются.
+         */
+        patch: operations["updateProgramSource"];
+        trace?: never;
+    };
+    "/admin/program-sources/{id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Проверить источник образовательной программы синхронно
+         * @description Только admin. Скачивает URL с If-None-Match/If-Modified-Since и отдельно проверяет отпечаток привязанного документа (document_etag, document_last_modified, document_hash): обновление xlsx/pdf по неизменившейся странице не теряется. При изменении документ разбирается и создаётся черновик импорта. HTML-страница должна содержать ссылку на документ программы (.xlsx/.csv/.json/.txt/.md/.pdf/.docx). PDF и DOCX разбирает LLM-адаптер ФГОС, если он настроен на сервере; без адаптера статус needs_parser. Результат сохраняется в реестре и возвращается в теле ответа; сетевые ошибки — это status=error с HTTP 200. На время проверки источник получает lease-блокировку, поэтому параллельный запрос или воркер получает 409 PROGRAM_SOURCE_BUSY; после сохранения результата или ошибки блокировка снимается.
+         */
+        post: operations["checkProgramSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2754,8 +2962,246 @@ export interface components {
             /** @description Human-readable explanation of the chosen match strategy (or why nothing matched). */
             note: string;
         };
+        /** @description Знание, умение или навык компетенции. */
+        ProgramKSA: {
+            /** @enum {string} */
+            kind: "knowledge" | "skill" | "ability";
+            title: string;
+            taxonomy_codes?: string[];
+        };
+        /** @description Компетенция образовательной программы. Тип хранится отдельным полем, а не выводится из кода: один и тот же код может иметь разный тип в разных программах. */
+        ProgramCompetency: {
+            code: string;
+            title: string;
+            /**
+             * @description Вид компетенции: universal (УК), general_professional (ОПК), professional (ПК), other (иное). Пустое значение допустимо и даёт предупреждение при импорте.
+             * @enum {string}
+             */
+            type?: "universal" | "general_professional" | "professional" | "other";
+            taxonomy_codes?: string[];
+            ksa?: components["schemas"]["ProgramKSA"][];
+        };
+        /** @description Разобранная образовательная программа, сохранённая в черновике. */
+        EducationProgram: {
+            code: string;
+            title: string;
+            organization?: string;
+            competencies: components["schemas"]["ProgramCompetency"][];
+        };
+        /** @description Отчёт ingestion.SaveEducation о сопоставлении программы с таксономией. */
+        EducationReport: {
+            /** Format: uuid */
+            program_id: string;
+            unmatched_competencies: number;
+            unmatched_ksa: number;
+            unknown_taxonomy_codes: string[];
+        };
+        /** @description Сводка импорта до публикации. */
+        ProgramImportReport: {
+            competencies: number;
+            ksa: number;
+            warnings: string[];
+        };
+        /** @description Счётчики строки списка черновиков. */
+        ProgramImportCounts: {
+            competencies: number;
+            ksa: number;
+            warnings: number;
+        };
+        /** @description Черновик импортированной программы, ожидающий решения администратора. */
+        ProgramImportDraft: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "draft" | "published" | "rejected";
+            key: string;
+            source_name: string;
+            /** @enum {string} */
+            source_format: "csv" | "xlsx" | "json" | "text";
+            program: components["schemas"]["EducationProgram"];
+            report: components["schemas"]["ProgramImportReport"];
+            warnings: string[];
+            /** @description JWT subject создателя, если он является UUID. */
+            created_by?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at?: string | null;
+            decided_by?: string;
+            /** @description Причина отклонения, если черновик отклонён. */
+            error?: string;
+        };
+        /** @description Результат добавления KSA из ОПОП/РПД в черновик программы. */
+        ProgramKSAImportResult: {
+            /** Format: uuid */
+            draft_id: string;
+            /** @description Сколько KSA дописано в программу этим вызовом. */
+            added: number;
+            /** @description Сколько KSA уже было в программе; сюда же входят повторы внутри загруженного документа. */
+            already_present: number;
+            /** @description Коды компетенций, которых нет в программе, без дублей и в отсортированном виде. Новые компетенции по ним не создаются. */
+            unknown_codes: string[];
+            /** @description Предупреждения текущего извлечения: отброшенные пункты, OCR, приблизительные номера страниц DOCX. */
+            warnings: string[];
+        };
+        /** @description Ответ на создание черновика импорта. */
+        ProgramImportResult: {
+            /** Format: uuid */
+            draft_id: string;
+            program: components["schemas"]["EducationProgram"];
+            report: components["schemas"]["ProgramImportReport"];
+            /** @enum {string} */
+            status: "draft";
+        };
+        /** @description Строка списка черновиков импорта. */
+        ProgramImportDraftSummary: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            source_name: string;
+            /** @enum {string} */
+            status: "draft" | "published" | "rejected";
+            /** Format: date-time */
+            created_at: string;
+            counts: components["schemas"]["ProgramImportCounts"];
+        };
+        ProgramImportPublishRequest: {
+            /**
+             * Format: uuid
+             * @description Необязательный UUID таксономии для сопоставления кодов.
+             */
+            taxonomy?: string;
+        };
+        ProgramImportRejectRequest: {
+            reason?: string;
+        };
+        /** @description Ошибка импорта с полным списком проблем. */
+        ProgramImportError: {
+            code: string;
+            message: string;
+            details: string[];
+        };
+        /** @description URL образовательной программы, который проверяется по расписанию. */
+        ProgramWatchSource: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Канонический ключ org/code/year/form.
+             * @example mirea/09.03.01/2024/full-time
+             */
+            program_key: string;
+            /** Format: uri */
+            url: string;
+            /**
+             * @description Необязательное переопределение формата; по умолчанию — расширение URL.
+             * @enum {string}
+             */
+            doc_format?: "csv" | "xlsx" | "json" | "txt" | "md" | "pdf" | "docx" | "html" | "other";
+            interval_hours: number;
+            enabled: boolean;
+            /** @description Сохранённый ETag последней успешной проверки. */
+            etag?: string;
+            /** @description Сохранённый Last-Modified последней успешной проверки. */
+            last_modified?: string;
+            /** @description sha256 тела последнего успешного ответа страницы. */
+            last_hash?: string;
+            /**
+             * Format: uri
+             * @description URL привязанного документа программы: ссылка со страницы или прямой URL источника.
+             */
+            document_url?: string;
+            /** @description sha256 последнего успешно разобранного документа. Совпадение даёт статус unchanged, даже если страница изменилась. */
+            document_hash?: string;
+            /** @description ETag документа для If-None-Match при повторной проверке. */
+            document_etag?: string;
+            /** @description Last-Modified документа для If-Modified-Since при повторной проверке. */
+            document_last_modified?: string;
+            /** Format: date-time */
+            last_checked_at?: string | null;
+            /** @enum {string} */
+            last_status?: "unchanged" | "changed" | "needs_parser" | "needs_attention" | "error";
+            last_error?: string;
+            /**
+             * Format: uuid
+             * @description Последний созданный черновик; null, если изменений ещё не было.
+             */
+            draft_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ProgramWatchSourceCreate: {
+            /**
+             * @description Канонический ключ org/code/year/form.
+             * @example mirea/09.03.01/2024/full-time
+             */
+            program_key: string;
+            /**
+             * Format: uri
+             * @description Только абсолютный http/https URL.
+             */
+            url: string;
+            /** @default 24 */
+            interval_hours: number;
+            /**
+             * @description Необязательное переопределение формата документа.
+             * @enum {string}
+             */
+            doc_format?: "csv" | "xlsx" | "json" | "txt" | "md" | "pdf" | "docx" | "html" | "other";
+        };
+        ProgramWatchSourceUpdate: {
+            enabled?: boolean;
+            interval_hours?: number;
+        };
+        /** @description Результат одной проверки. changed означает, что создан новый черновик; unchanged — 304 страницы или документа, либо совпадение sha256 тела страницы или привязанного документа; needs_parser — PDF/DOCX без LLM-адаптера; needs_attention — HTML без ссылки на документ; error — сеть/разбор. Отпечаток документа сравнивается отдельно от страницы, поэтому unchanged не означает, что страница не менялась. */
+        ProgramWatchCheckResult: {
+            /** @enum {string} */
+            status: "unchanged" | "changed" | "needs_parser" | "needs_attention" | "error";
+            /**
+             * Format: uuid
+             * @description Черновик, созданный при status=changed.
+             */
+            draft_id?: string;
+            /** @description Причина для needs_parser, needs_attention и error. */
+            error?: string;
+        };
     };
     responses: {
+        /** @description Черновик уже опубликован или отклонён. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "PROGRAM_DRAFT_ALREADY_DECIDED",
+                 *       "message": "черновик уже опубликован или отклонён"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Файл программы не прошёл проверку. details содержит все найденные проблемы с номерами строк или листов. Для PDF/DOCX/сканов сюда же попадают ошибки извлечения (в документе нет текстового слоя — нужен OCR; PDF-скан при выключенном OCR — код PROGRAM_IMPORT_INVALID с подсказкой; PNG/JPEG при выключенном OCR — code=PROGRAM_IMPORT_OCR_DISABLED; превышен лимит страниц OCR — code=PROGRAM_IMPORT_OCR_PAGE_LIMIT; OCR не распознал текст; модель не вернула ни одной валидной компетенции) и отсутствие LLM-адаптера (code=PROGRAM_IMPORT_LLM_NOT_CONFIGURED). */
+        ProgramImportInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "PROGRAM_IMPORT_INVALID",
+                 *       "message": "файл программы не прошёл проверку",
+                 *       "details": [
+                 *         "строка 5: повтор кода компетенции \"K1\"",
+                 *         "лист «KSA», строка 3: неизвестный вид KSA"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProgramImportError"];
+            };
+        };
         /** @description Malformed request body, path or query parameter. */
         BadRequest: {
             headers: {
@@ -2766,6 +3212,51 @@ export interface components {
                  * @example {
                  *       "code": "BAD_REQUEST",
                  *       "message": "invalid JSON body"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Некорректный program_key или URL. Ключ обязан иметь канонический формат org/code/year/form; допускаются только абсолютные http/https URL и interval_hours от 1 до 720. */
+        ProgramSourceBadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "BAD_REQUEST",
+                 *       "message": "некорректный program_key: ключ \"prog-key\" должен иметь формат org/code/year/form, например mirea/09.03.01/2024/full-time"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Источник с такой парой program_key+url уже зарегистрирован. */
+        ProgramSourceConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "PROGRAM_SOURCE_ALREADY_EXISTS",
+                 *       "message": "источник с таким program_key и url уже существует"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Источник уже проверяется: воркер или другой администратор держит lease-блокировку. Повторите запрос после завершения текущей проверки или истечения lease (по умолчанию 16 минут для ручной проверки с LLM/OCR и 10 минут для воркера). */
+        ProgramSourceBusy: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "PROGRAM_SOURCE_BUSY",
+                 *       "message": "источник уже проверяется"
                  *     }
                  */
                 "application/json": components["schemas"]["Error"];
@@ -2906,6 +3397,10 @@ export interface components {
         SnapshotId: string;
         /** @description Evidence identifier. It must belong to the run in the path; evidence of another run is indistinguishable from a missing one (404). */
         EvidenceContextId: string;
+        /** @description Идентификатор черновика импорта (UUID). */
+        ProgramDraftId: string;
+        /** @description Идентификатор источника программы в реестре (UUID). */
+        ProgramSourceId: string;
     };
     requestBodies: never;
     headers: never;
@@ -7649,6 +8144,422 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    importProgramDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description CSV, XLSX, JSON, TXT/MD или PDF/DOCX; не больше 20 МБ. PDF/DOCX требуют настроенного LLM-адаптера ФГОС. PNG/JPEG принимаются только при OCR_ENABLED=true; PDF-сканы без текстового слоя также требуют OCR.
+                     */
+                    file: string;
+                    /** @description Постоянный код программы, под которым черновик будет опубликован. */
+                    key: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Черновик создан; возвращаются draft_id, разобранная программа и отчёт. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Файл больше 20 МБ. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ProgramImportInvalid"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            /** @description LLM-адаптер или OCR недоступны либо не уложились в таймаут. code = PROGRAM_IMPORT_LLM_TIMEOUT, PROGRAM_IMPORT_LLM_UNAVAILABLE, PROGRAM_IMPORT_OCR_TIMEOUT или PROGRAM_IMPORT_OCR_UNAVAILABLE; details для OCR содержит инструкцию по установке tesseract/poppler (OCR_TESSERACT/OCR_PDFTOPPM) и ссылку на docs/ocr-setup.txt. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramImportError"] | components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listProgramImportDrafts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Черновики импорта. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramImportDraftSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getProgramImportDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор черновика импорта (UUID). */
+                id: components["parameters"]["ProgramDraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Черновик программы. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramImportDraft"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    importProgramDraftKSA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор черновика импорта (UUID). */
+                id: components["parameters"]["ProgramDraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description PDF, DOCX, TXT или MD с текстом ОПОП/РПД; не больше 20 МБ. HTML и таблицы программ (CSV/XLSX/JSON) не принимаются.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description KSA добавлены; счётчики описывают только текущий вызов. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramKSAImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Файл больше 20 МБ. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description В документе не нашлось KSA (code=PROGRAM_KSA_NOT_FOUND), файл не разобрался (code=PROGRAM_KSA_INVALID), для скана выключен OCR (code=PROGRAM_KSA_OCR_DISABLED, PROGRAM_KSA_OCR_PAGE_LIMIT) или LLM-адаптер не настроен (code=PROGRAM_KSA_LLM_NOT_CONFIGURED). details содержит причину или подсказку по OCR. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramImportError"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+            /** @description LLM-адаптер или OCR недоступны либо не уложились в таймаут. code = PROGRAM_KSA_LLM_UNAVAILABLE, PROGRAM_KSA_LLM_TIMEOUT, PROGRAM_KSA_OCR_UNAVAILABLE, PROGRAM_KSA_OCR_TIMEOUT или PROGRAM_KSA_EXTRACTION_UNAVAILABLE; details уточняет причину. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramImportError"] | components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportProgramImportDraftDOCX: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор черновика импорта (UUID). */
+                id: components["parameters"]["ProgramDraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description DOCX-документ черновика. */
+            200: {
+                headers: {
+                    /**
+                     * @description attachment; filename="program-<безопасный код>.docx".
+                     * @example attachment; filename="program-09.03.01.docx"
+                     */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
+                    "application/msword": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    publishProgramImportDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор черновика импорта (UUID). */
+                id: components["parameters"]["ProgramDraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProgramImportPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Отчёт публикации. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EducationReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    rejectProgramImportDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор черновика импорта (UUID). */
+                id: components["parameters"]["ProgramDraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProgramImportRejectRequest"];
+            };
+        };
+        responses: {
+            /** @description Черновик отклонён. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    listProgramSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Реестр источников. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramWatchSource"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    createProgramSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgramWatchSourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Источник добавлен. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramWatchSource"];
+                };
+            };
+            400: components["responses"]["ProgramSourceBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["ProgramSourceConflict"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    deleteProgramSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор источника программы в реестре (UUID). */
+                id: components["parameters"]["ProgramSourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Источник удалён. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    updateProgramSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор источника программы в реестре (UUID). */
+                id: components["parameters"]["ProgramSourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgramWatchSourceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Источник обновлён. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramWatchSource"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    checkProgramSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Идентификатор источника программы в реестре (UUID). */
+                id: components["parameters"]["ProgramSourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Результат проверки. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgramWatchCheckResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["ProgramSourceBusy"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
         };
     };
 }
