@@ -156,8 +156,8 @@ type EducationReport struct {
 // SaveEducation не удаляет записи и связи, созданные при предыдущих загрузках.
 func SaveEducation(ctx context.Context, pool transactionPool, key, taxonomyID string, data EducationProgram) (EducationReport, error) {
 	report := EducationReport{UnknownTaxonomyCodes: []string{}}
-	key = strings.TrimSpace(key)
-	if key == "" {
+	programKey, _, ok := NormalizeProgramKeyLenient(key)
+	if !ok {
 		return report, errors.New("нужен постоянный ключ программы")
 	}
 	tx, err := pool.Begin(ctx)
@@ -165,45 +165,84 @@ func SaveEducation(ctx context.Context, pool transactionPool, key, taxonomyID st
 		return report, err
 	}
 	defer tx.Rollback(context.Background())
-	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "education:"+key); err != nil {
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "education:"+programKey); err != nil {
 		return report, err
 	}
 	var source string
 	err = tx.QueryRow(ctx, `INSERT INTO sources(type,title,provider,external_id) VALUES('document',$1,'file',$2)
 ON CONFLICT (provider,type,external_id) WHERE provider IS NOT NULL AND external_id IS NOT NULL
-DO UPDATE SET title=EXCLUDED.title,updated_at=now() RETURNING id::text`, data.Title, "education:"+key).Scan(&source)
+DO UPDATE SET title=EXCLUDED.title,updated_at=now() RETURNING id::text`, data.Title, "education:"+programKey).Scan(&source)
 	if err != nil {
 		return report, err
 	}
-	rows, err := tx.Query(ctx, "SELECT p.id::text FROM education_programs p JOIN program_sources s ON s.program_id=p.id WHERE s.source_id=$1 LIMIT 2", source)
-	if err != nil {
+
+	// Новый путь: программа ищется по стабильному program_key. Старый путь
+	// (через sources.external_id и program_sources) остаётся для программ,
+	// импортированных до появления ключа.
+	var currentVersion int
+	var existingKey string
+	err = tx.QueryRow(ctx, `SELECT id::text,COALESCE(program_key,''),version FROM education_programs WHERE program_key=$1`, programKey).Scan(&report.ProgramID, &existingKey, &currentVersion)
+	found := err == nil
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return report, err
 	}
-	var programs []string
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
+	if !found {
+		rows, queryErr := tx.Query(ctx, `SELECT p.id::text,COALESCE(p.program_key,''),p.version
+FROM education_programs p JOIN program_sources s ON s.program_id=p.id
+WHERE s.source_id=$1 LIMIT 2`, source)
+		if queryErr != nil {
+			return report, queryErr
+		}
+		type existingProgram struct {
+			id      string
+			key     string
+			version int
+		}
+		var programs []existingProgram
+		for rows.Next() {
+			var item existingProgram
+			if scanErr := rows.Scan(&item.id, &item.key, &item.version); scanErr != nil {
+				rows.Close()
+				return report, scanErr
+			}
+			programs = append(programs, item)
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
 			rows.Close()
+			return report, rowsErr
+		}
+		rows.Close()
+		if len(programs) > 1 {
+			return report, errors.New("с источником связано несколько программ; автоматическое обновление невозможно")
+		}
+		if len(programs) == 1 {
+			report.ProgramID = programs[0].id
+			existingKey = programs[0].key
+			currentVersion = programs[0].version
+			found = true
+		}
+	}
+	if found {
+		if existingKey != "" && existingKey != programKey {
+			return report, fmt.Errorf("программа уже связана с ключом %q и не может быть перепривязана к %q", existingKey, programKey)
+		}
+		nextVersion := NextProgramVersion(currentVersion, true)
+		_, err = tx.Exec(ctx, `UPDATE education_programs
+SET title=$2,organization=NULLIF($3,''),code=NULLIF($4,''),program_key=$5,version=$6,updated_at=now()
+WHERE id=$1`, report.ProgramID, data.Title, strings.TrimSpace(data.Organization), strings.TrimSpace(data.Code), programKey, nextVersion)
+		if err != nil {
 			return report, err
 		}
-		programs = append(programs, id)
-	}
-	if err = rows.Err(); err != nil {
-		rows.Close()
-		return report, err
-	}
-	rows.Close()
-	if len(programs) > 1 {
-		return report, errors.New("с источником связано несколько программ; автоматическое обновление невозможно")
-	}
-	if len(programs) == 0 {
-		err = tx.QueryRow(ctx, "INSERT INTO education_programs(title,organization,code) VALUES($1,NULLIF($2,''),NULLIF($3,'')) RETURNING id::text", data.Title, strings.TrimSpace(data.Organization), strings.TrimSpace(data.Code)).Scan(&report.ProgramID)
+		if _, err = tx.Exec(ctx, "INSERT INTO program_sources(program_id,source_id) VALUES($1,$2) ON CONFLICT DO NOTHING", report.ProgramID, source); err != nil {
+			return report, err
+		}
+	} else {
+		err = tx.QueryRow(ctx, `INSERT INTO education_programs(title,organization,code,program_key,version)
+VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,1) RETURNING id::text`,
+			data.Title, strings.TrimSpace(data.Organization), strings.TrimSpace(data.Code), programKey).Scan(&report.ProgramID)
 		if err == nil {
 			_, err = tx.Exec(ctx, "INSERT INTO program_sources(program_id,source_id) VALUES($1,$2)", report.ProgramID, source)
 		}
-	} else {
-		report.ProgramID = programs[0]
-		_, err = tx.Exec(ctx, "UPDATE education_programs SET title=$2,organization=NULLIF($3,''),code=NULLIF($4,''),updated_at=now() WHERE id=$1", report.ProgramID, data.Title, strings.TrimSpace(data.Organization), strings.TrimSpace(data.Code))
 	}
 	if err != nil {
 		return report, err
