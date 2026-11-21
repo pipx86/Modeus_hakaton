@@ -11,6 +11,27 @@ import { fetchCalls, setFetchHandler } from "@/test/fetch-stub"
 import { InterviewsTab } from "@/components/interviews-tab"
 import type { InterviewMessage, RunInterview } from "@/lib/api/client"
 
+describe("Новый респондент", () => {
+  it("создаёт интервью с указанными данными и открывает диалог", async () => {
+    let received = ""
+    setFetchHandler(async (url, init) => {
+      if (url.endsWith("/runs/7/interviews") && init?.method === "POST") {
+        received = String(init.body)
+        return { status: 201, body: { id: "new" } }
+      }
+      return { status: 200, body: [] }
+    })
+    const started = vi.fn()
+    render(<InterviewsTab runId="7" canStart onStarted={started} />)
+    await userEvent.click(screen.getByRole("button", { name: "Новый респондент" }))
+    await userEvent.type(screen.getByLabelText("Имя респондента"), "Анна")
+    await userEvent.type(screen.getByLabelText("Роль респондента"), "Аналитик")
+    await userEvent.click(screen.getByRole("button", { name: "Начать интервью" }))
+    await waitFor(() => expect(started).toHaveBeenCalledOnce())
+    expect(JSON.parse(received)).toEqual({ respondent_name: "Анна", respondent_role: "Аналитик" })
+  })
+})
+
 const INTERVIEWS: RunInterview[] = [
   {
     id: "i-1",

@@ -275,7 +275,10 @@ func synthesisReviewError(w http.ResponseWriter, err error) {
 // @Security     BearerAuth
 // @Router       /api/v1/runs/{id}/conflicts [get]
 func (s *Server) handleRunConflicts(w http.ResponseWriter, r *http.Request) {
-	if !auth.RequireRole(w, r, auth.RoleAdmin) {
+	if !auth.RequireRole(w, r, auth.RoleAdmin, auth.RoleSpecialist) {
+		return
+	}
+	if auth.RoleFromCtx(r.Context()) == auth.RoleSpecialist && !s.allowInterviewAccess(w, r, r.PathValue("id")) {
 		return
 	}
 	reader, ok := s.store.(synthesisReviewReader)

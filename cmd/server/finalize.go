@@ -279,7 +279,7 @@ type baseSourceSelector func(ctx context.Context, profession string) []domain.So
 
 // maxBaseSourceCount caps how many base materials reach the analyst. The analyst
 // applies its own, smaller cap per source; this one bounds the request size.
-const maxBaseSourceCount = 8
+const maxBaseSourceCount = 50
 
 // selectBaseSources picks the profession-matched materials from the source base.
 // It deduplicates by source id, skips empty rows and truncates content to the
@@ -320,7 +320,7 @@ func loadGlobalSources(ctx context.Context, store finalizeStore) []domain.Source
 	if !ok {
 		return nil
 	}
-	global, err := lister.ListGlobalSources(5)
+	global, err := lister.ListGlobalSources(50)
 	if err != nil {
 		log.Printf("finalizer: load global sources: %v", err)
 		return nil

@@ -54,6 +54,7 @@ services:
       HTTP_ADDR: ":8080"
       APP_ENV: "${APP_ENV:-local}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
+      HH_TOKEN_CACHE: /app/hh-cache/token.json
       # Demo API does not read DATABASE_URL (in-memory store); it is wired for
       # parity with cmd/server / production.
       DATABASE_URL: "${DATABASE_URL:-}"
@@ -67,6 +68,8 @@ services:
       # observability.Setup yet; the production cmd/server does.
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       OTEL_EXPORTER_OTLP_INSECURE: "${OTEL_EXPORTER_OTLP_INSECURE:-}"
+    volumes:
+      - hh_token_cache:/app/hh-cache
     healthcheck:
       test: ["CMD", "/api", "-healthcheck"]
       interval: 15s
@@ -410,6 +413,7 @@ services:
 
 volumes:
   pgdata:
+  hh_token_cache:
   prometheus_data:
   grafana_data:
   n8n_data:

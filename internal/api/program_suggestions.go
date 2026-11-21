@@ -152,6 +152,7 @@ const programSuggestionsLinksQuery = `SELECT l.node_id::text, l.competency_id::t
 FROM activity_program_links l
 JOIN program_competencies c ON c.id = l.competency_id
 WHERE l.run_id = $1 AND l.program_id = $2
+AND l.snapshot_id IS NOT DISTINCT FROM (SELECT id FROM snapshots WHERE run_id=$1 ORDER BY version DESC LIMIT 1)
 ORDER BY l.created_at, l.id`
 
 const programSuggestionsNodesQuery = `SELECT id::text, title, type

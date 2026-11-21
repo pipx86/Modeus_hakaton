@@ -38,8 +38,9 @@ COPY deploy/docker/healthcheck ./deploy/docker/healthcheck
 
 RUN go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server \
  && go build -trimpath -ldflags="-s -w" -o /out/healthcheck ./deploy/docker/healthcheck \
- && mkdir -p /out/logs \
- && : > /out/logs/.keep
+ && mkdir -p /out/logs /out/hh-cache \
+ && : > /out/logs/.keep \
+ && : > /out/hh-cache/.keep
 
 # ---- frontend-build: production SPA bundle (Vite + TypeScript) -------------
 # The React frontend (frontend/) is a Vite app; `npm run build` runs `tsc -b`
@@ -89,6 +90,7 @@ COPY --from=server-build /out/healthcheck /app/healthcheck
 # cmd/server writes rotating logs to ./logs (LOG_FILE overrides the path);
 # keep the directory writable for the non-root user.
 COPY --from=server-build --chown=nonroot:nonroot /out/logs /app/logs
+COPY --from=server-build --chown=nonroot:nonroot /out/hh-cache /app/hh-cache
 # Swagger UI + OpenAPI spec: GET /swagger/ is served from ./docs.
 COPY --from=server-build /src/docs /app/docs
 # SQL migrations are shipped for parity with the deployment assets; applying

@@ -657,6 +657,22 @@ export async function listRunInterviews(runId: string): Promise<RunInterview[]> 
   return requestApi<RunInterview[]>(`/runs/${encodeURIComponent(runId)}/interviews`)
 }
 
+export async function startRunInterview(runId: string, respondentName: string, respondentRole: string): Promise<RunInterview> {
+  return requestApi<RunInterview>(`/runs/${encodeURIComponent(runId)}/interviews`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ respondent_name: respondentName, respondent_role: respondentRole }),
+  })
+}
+
+export async function setReviewAccess(runId: string, email: string, grant: boolean): Promise<void> {
+  await requestApi(`/runs/${encodeURIComponent(runId)}/review-access`, {
+    method: grant ? "POST" : "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  })
+}
+
 /** История сообщений выбранного интервью. */
 export async function listInterviewMessages(
   runId: string,

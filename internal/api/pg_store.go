@@ -565,7 +565,7 @@ func (p *PGStore) ListGlobalSources(limit int) ([]domain.Source, error) {
 	ctx, cancel := operation()
 	defer cancel()
 	rows, err := p.Pool.Query(ctx, `SELECT id::text,type,title,COALESCE(content,''),COALESCE(source_url,''),created_at
-FROM sources WHERE run_id IS NULL AND type <> 'vacancy' ORDER BY created_at DESC LIMIT $1`, limit)
+FROM sources WHERE run_id IS NULL ORDER BY created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, translate(err)
 	}

@@ -238,7 +238,7 @@ func TestAnalysisSourcesMergesMaterialsRunSourcesAndVacancies(t *testing.T) {
 	}
 }
 
-func TestAnalysisSourcesExcludesOtherProfession(t *testing.T) {
+func TestAnalysisSourcesIncludesAllProfessions(t *testing.T) {
 	step := &AgentAnalysisStep{
 		GlobalSources: staticSourceLoader{sources: []domain.Source{
 			{ID: "generic", Type: domain.SourceDocument, Title: "Общая методика", Content: "Как проводить встречи"},
@@ -248,8 +248,8 @@ func TestAnalysisSourcesExcludesOtherProfession(t *testing.T) {
 	sources := step.analysisSources(context.Background(), "run-2", "Backend-разработчик", []domain.VacancyRecord{{
 		ID: "v2", SourceID: "vac-2", Title: "Backend Engineer", Description: "Go и PostgreSQL",
 	}})
-	if len(sources) != 1 || sources[0].ID != "vac-2" {
-		t.Fatalf("sources = %#v, want only backend vacancy", sources)
+	if len(sources) != 3 {
+		t.Fatalf("sources = %#v, want all three sources", sources)
 	}
 }
 

@@ -266,7 +266,7 @@ func (a *Agent) Analyze(ctx context.Context, in agent.AnalystInput) (agent.Analy
 
 const (
 	maxAnalystTranscriptRunes = 12000
-	maxAnalystSources         = 8
+	maxAnalystSources         = 50
 	maxAnalystSourceRunes     = 2000
 )
 

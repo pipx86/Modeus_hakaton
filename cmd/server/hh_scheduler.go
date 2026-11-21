@@ -18,9 +18,15 @@ import (
 // vacancies. It is disabled unless HH_IMPORT_QUERY and application credentials
 // are configured. The token source refreshes the access token automatically.
 func startHHVacancyImporter(ctx context.Context, pool *pgxpool.Pool) {
-	query := strings.TrimSpace(os.Getenv("HH_IMPORT_QUERY"))
+	queries := strings.Split(os.Getenv("HH_IMPORT_QUERY"), ";")
+	var activeQueries []string
+	for _, query := range queries {
+		if query = strings.TrimSpace(query); query != "" {
+			activeQueries = append(activeQueries, query)
+		}
+	}
 	userAgent := strings.TrimSpace(os.Getenv("HH_USER_AGENT"))
-	if pool == nil || query == "" || userAgent == "" {
+	if pool == nil || len(activeQueries) == 0 || userAgent == "" {
 		return
 	}
 	if strings.TrimSpace(os.Getenv("HH_CLIENT_ID")) == "" ||
@@ -62,20 +68,23 @@ func startHHVacancyImporter(ctx context.Context, pool *pgxpool.Pool) {
 			logging.Logger.Warn("hh import token failed", "error", err)
 			return false
 		}
-		items, err := ingestion.FetchHH(ctx, client, "https://api.hh.ru/vacancies", query, userAgent, token, pages)
-		if err != nil {
-			logging.Logger.Warn("hh import fetch failed", "error", err)
-			return false
+		allOK := true
+		for _, query := range activeQueries {
+			items, err := ingestion.FetchHH(ctx, client, "https://api.hh.ru/vacancies", query, userAgent, token, pages)
+			if err != nil {
+				logging.Logger.Warn("hh import fetch failed", "query", query, "error", err)
+				allOK = false
+				continue
+			}
+			counts, err := ingestion.SaveVacancies(ctx, pool, items)
+			if err != nil {
+				logging.Logger.Warn("hh import save failed", "query", query, "error", err)
+				allOK = false
+				continue
+			}
+			logging.Logger.Info("hh import completed", "query", query, "inserted", counts.Inserted, "updated", counts.Updated, "skipped", counts.Skipped)
 		}
-		counts, err := ingestion.SaveVacancies(ctx, pool, items)
-		if err != nil {
-			logging.Logger.Warn("hh import save failed", "error", err)
-			return false
-		}
-		logging.Logger.Info("hh import completed",
-			"query", query, "inserted", counts.Inserted,
-			"updated", counts.Updated, "skipped", counts.Skipped)
-		return true
+		return allOK
 	}
 
 	go func() {
