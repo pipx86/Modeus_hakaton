@@ -4471,10 +4471,16 @@ paths:
       tags: [academic]
       summary: Импортировать образовательную программу в черновик
       description: >-
-        Принимает файл CSV, XLSX, JSON или размеченный TXT/MD и постоянный ключ
-        программы. Файл разбирается и валидируется, но не публикуется: создаётся
-        черновик для проверки человеком. Ошибки строк возвращаются списком в
-        details (HTTP 422) и не обрывают разбор на первой строке.
+        Принимает файл CSV, XLSX, JSON, размеченный TXT/MD, а также PDF/DOCX ФГОС
+        и постоянный ключ программы. Файл разбирается и валидируется, но не
+        публикуется: создаётся черновик для проверки человеком. PDF и DOCX
+        разбирает LLM-адаптер ФГОС синхронно (таймаут 5 минут): из документа
+        извлекаются компетенции, KSA и дословные цитаты с номерами страниц, а
+        невалидные пункты отбрасываются с предупреждениями в отчёте. Если
+        LLM-адаптер не настроен, PDF/DOCX отклоняются с 422
+        PROGRAM_IMPORT_LLM_NOT_CONFIGURED; если модель недоступна или не успела
+        ответить — 503. Ошибки строк возвращаются списком в details (HTTP 422) и
+        не обрывают разбор на первой строке.
       operationId: importProgramDraft
       requestBody:
         required: true
@@ -4488,7 +4494,9 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: CSV, XLSX, JSON или TXT/MD; не больше 20 МБ.
+                  description: >-
+                    CSV, XLSX, JSON, TXT/MD или PDF/DOCX; не больше 20 МБ.
+                    PDF/DOCX требуют настроенного LLM-адаптера ФГОС.
                 key:
                   type: string
                   minLength: 1
@@ -4519,6 +4527,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /admin/programs/drafts:
     get:
       tags: [academic]
@@ -4759,11 +4769,18 @@ paths:
       tags: [academic]
       summary: Проверить источник образовательной программы синхронно
       description: >-
-        Только admin. Скачивает URL с If-None-Match/If-Modified-Since, сравнивает
-        sha256 тела, при изменении разбирает документ и создаёт черновик импорта.
-        HTML-страница должна содержать ссылку на .xlsx/.csv/.json/.txt. PDF и
-        DOCX возвращают needs_parser. Результат сохраняется в реестре и
-        возвращается в теле ответа; сетевые ошибки — это status=error с HTTP 200.
+        Только admin. Скачивает URL с If-None-Match/If-Modified-Since и отдельно
+        проверяет отпечаток привязанного документа (document_etag,
+        document_last_modified, document_hash): обновление xlsx/pdf по
+        неизменившейся странице не теряется. При изменении документ разбирается
+        и создаётся черновик импорта. HTML-страница должна содержать ссылку на
+        документ программы (.xlsx/.csv/.json/.txt/.md/.pdf/.docx). PDF и DOCX
+        разбирает LLM-адаптер ФГОС, если он настроен на сервере; без адаптера
+        статус needs_parser. Результат сохраняется в реестре и возвращается в
+        теле ответа; сетевые ошибки — это status=error с HTTP 200. На время
+        проверки источник получает lease-блокировку, поэтому параллельный запрос
+        или воркер получает 409 PROGRAM_SOURCE_BUSY; после сохранения результата
+        или ошибки блокировка снимается.
       operationId: checkProgramSource
       parameters:
         - $ref: "#/components/parameters/ProgramSourceId"
@@ -4780,6 +4797,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ProgramSourceBusy"
         "500":
           $ref: "#/components/responses/InternalError"
         "501":
@@ -4868,7 +4887,10 @@ components:
     ProgramImportInvalid:
       description: >-
         Файл программы не прошёл проверку. details содержит все найденные
-        проблемы с номерами строк или листов.
+        проблемы с номерами строк или листов. Для PDF/DOCX сюда же попадают
+        ошибки извлечения (в документе нет текстового слоя — нужен OCR; модель
+        не вернула ни одной валидной компетенции) и отсутствие LLM-адаптера
+        (code=PROGRAM_IMPORT_LLM_NOT_CONFIGURED).
       content:
         application/json:
           schema:
@@ -4909,6 +4931,19 @@ components:
           example:
             code: PROGRAM_SOURCE_ALREADY_EXISTS
             message: источник с таким program_key и url уже существует
+    ProgramSourceBusy:
+      description: >-
+        Источник уже проверяется: воркер или другой администратор держит
+        lease-блокировку. Повторите запрос после завершения текущей проверки
+        или истечения lease (5 минут для ручной проверки, 10 минут по умолчанию
+        для воркера).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: PROGRAM_SOURCE_BUSY
+            message: источник уже проверяется
     Unauthorized:
       description: Missing or invalid bearer token.
       content:
@@ -7493,7 +7528,24 @@ components:
           description: Сохранённый Last-Modified последней успешной проверки.
         last_hash:
           type: string
-          description: sha256 тела последнего успешного ответа.
+          description: sha256 тела последнего успешного ответа страницы.
+        document_url:
+          type: string
+          format: uri
+          description: >-
+            URL привязанного документа программы: ссылка со страницы или прямой
+            URL источника.
+        document_hash:
+          type: string
+          description: >-
+            sha256 последнего успешно разобранного документа. Совпадение даёт
+            статус unchanged, даже если страница изменилась.
+        document_etag:
+          type: string
+          description: ETag документа для If-None-Match при повторной проверке.
+        document_last_modified:
+          type: string
+          description: Last-Modified документа для If-Modified-Since при повторной проверке.
         last_checked_at:
           type: string
           format: date-time
@@ -7552,8 +7604,11 @@ components:
       type: object
       description: >-
         Результат одной проверки. changed означает, что создан новый черновик;
-        unchanged — 304 или тот же sha256; needs_parser — PDF/DOCX;
-        needs_attention — HTML без ссылки на документ; error — сеть/разбор.
+        unchanged — 304 страницы или документа, либо совпадение sha256 тела
+        страницы или привязанного документа; needs_parser — PDF/DOCX без
+        LLM-адаптера; needs_attention — HTML без ссылки на документ; error —
+        сеть/разбор. Отпечаток документа сравнивается отдельно от страницы,
+        поэтому unchanged не означает, что страница не менялась.
       required: [status]
       additionalProperties: false
       properties:

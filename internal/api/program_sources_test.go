@@ -16,17 +16,24 @@ import (
 
 type fakeProgramWatchStore struct {
 	Store
-	mu      sync.Mutex
-	sources map[string]programwatch.Source
-	checks  map[string]programwatch.CheckUpdate
-	drafts  []programwatch.DraftInput
-	seq     int
+	mu         sync.Mutex
+	sources    map[string]programwatch.Source
+	checks     map[string]programwatch.CheckUpdate
+	locks      map[string]string
+	busy       map[string]bool
+	releases   []string
+	drafts     []programwatch.DraftInput
+	claimOwner string
+	claimLease time.Duration
+	seq        int
 }
 
 func newFakeProgramWatchStore() *fakeProgramWatchStore {
 	return &fakeProgramWatchStore{
 		sources: map[string]programwatch.Source{},
 		checks:  map[string]programwatch.CheckUpdate{},
+		locks:   map[string]string{},
+		busy:    map[string]bool{},
 	}
 }
 
@@ -123,6 +130,52 @@ func (f *fakeProgramWatchStore) DueWatchSources(_ context.Context, now time.Time
 	return programwatch.SelectDue(items, now, limit), nil
 }
 
+func (f *fakeProgramWatchStore) ClaimDueWatchSources(_ context.Context, now time.Time, limit int, lease time.Duration, owner string) ([]programwatch.Source, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.claimOwner = owner
+	f.claimLease = lease
+	items := make([]programwatch.Source, 0, len(f.sources))
+	for _, source := range f.sources {
+		items = append(items, source)
+	}
+	claimed := []programwatch.Source{}
+	for _, source := range programwatch.SelectDue(items, now, limit) {
+		if f.locks[source.ID] != "" {
+			continue
+		}
+		f.locks[source.ID] = owner
+		claimed = append(claimed, source)
+	}
+	return claimed, nil
+}
+
+func (f *fakeProgramWatchStore) ClaimWatchSource(_ context.Context, id string, lease time.Duration, owner string) (programwatch.Source, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.claimOwner = owner
+	f.claimLease = lease
+	source, ok := f.sources[id]
+	if !ok {
+		return programwatch.Source{}, programwatch.ErrNotFound
+	}
+	if f.busy[id] || f.locks[id] != "" {
+		return programwatch.Source{}, programwatch.ErrWatchSourceBusy
+	}
+	f.locks[id] = owner
+	return source, nil
+}
+
+func (f *fakeProgramWatchStore) ReleaseWatchSource(_ context.Context, id, owner string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.releases = append(f.releases, id)
+	if f.locks[id] == owner {
+		delete(f.locks, id)
+	}
+	return nil
+}
+
 func (f *fakeProgramWatchStore) SaveWatchCheck(_ context.Context, id string, update programwatch.CheckUpdate) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -142,6 +195,9 @@ func (f *fakeProgramWatchStore) SaveWatchCheck(_ context.Context, id string, upd
 	}
 	if update.LastHash != nil {
 		source.LastHash = *update.LastHash
+	}
+	if f.locks[id] == update.Owner {
+		delete(f.locks, id)
 	}
 	f.sources[id] = source
 	return nil
@@ -309,10 +365,58 @@ func TestProgramSourceCheckCreatesDraft(t *testing.T) {
 	if len(drafts) != 1 || drafts[0].ProgramKey != source.ProgramKey || checks != 1 {
 		t.Fatalf("drafts=%+v checks=%d", drafts, checks)
 	}
+	store.mu.Lock()
+	lease := store.claimLease
+	locks := len(store.locks)
+	store.mu.Unlock()
+	if lease != programSourceCheckLease {
+		t.Fatalf("ручная проверка должна брать lease %s, получили %s", programSourceCheckLease, lease)
+	}
+	if locks != 0 {
+		t.Fatalf("после успешной проверки блокировка должна быть снята: %d", locks)
+	}
 
 	missing := doProgramSourceJSON(t, handler, http.MethodPost, "/api/v1/admin/program-sources/cccccccc-cccc-cccc-cccc-cccccccccccc/check", "admin", "")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("неизвестный источник: ожидали 404, получили %d", missing.Code)
+	}
+}
+
+func TestProgramSourceCheckBusyReturns409(t *testing.T) {
+	store := newFakeProgramWatchStore()
+	source := store.add(programwatch.Source{
+		ProgramKey:    "mirea/09.03.01/2024/full-time",
+		URL:           "https://example.com/program.csv",
+		IntervalHours: 24,
+		Enabled:       true,
+	})
+	store.mu.Lock()
+	store.busy[source.ID] = true
+	store.mu.Unlock()
+	handler := NewServer(store).Routes()
+	recorder := doProgramSourceJSON(t, handler, http.MethodPost, "/api/v1/admin/program-sources/"+source.ID+"/check", "admin", "")
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("занятый источник: ожидали 409, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if body.Code != "PROGRAM_SOURCE_BUSY" {
+		t.Fatalf("code = %q", body.Code)
+	}
+	if !strings.Contains(body.Message, "источник уже проверяется") {
+		t.Fatalf("message = %q", body.Message)
+	}
+	store.mu.Lock()
+	checks := len(store.checks)
+	drafts := len(store.drafts)
+	store.mu.Unlock()
+	if checks != 0 || drafts != 0 {
+		t.Fatalf("занятый источник не должен проверяться: checks=%d drafts=%d", checks, drafts)
 	}
 }
 
@@ -352,7 +456,7 @@ func TestProgramSourceCheckWithoutDraftCreatorReturns501(t *testing.T) {
 // пробрасывает только методы реестра.
 type watchStoreOnly struct {
 	Store
-	watch programwatch.Store
+	watch *fakeProgramWatchStore
 }
 
 func (w *watchStoreOnly) CreateWatchSource(ctx context.Context, input programwatch.CreateInput) (programwatch.Source, error) {
@@ -372,6 +476,15 @@ func (w *watchStoreOnly) DeleteWatchSource(ctx context.Context, id string) error
 }
 func (w *watchStoreOnly) DueWatchSources(ctx context.Context, now time.Time, limit int) ([]programwatch.Source, error) {
 	return w.watch.DueWatchSources(ctx, now, limit)
+}
+func (w *watchStoreOnly) ClaimDueWatchSources(ctx context.Context, now time.Time, limit int, lease time.Duration, owner string) ([]programwatch.Source, error) {
+	return w.watch.ClaimDueWatchSources(ctx, now, limit, lease, owner)
+}
+func (w *watchStoreOnly) ClaimWatchSource(ctx context.Context, id string, lease time.Duration, owner string) (programwatch.Source, error) {
+	return w.watch.ClaimWatchSource(ctx, id, lease, owner)
+}
+func (w *watchStoreOnly) ReleaseWatchSource(ctx context.Context, id, owner string) error {
+	return w.watch.ReleaseWatchSource(ctx, id, owner)
 }
 func (w *watchStoreOnly) SaveWatchCheck(ctx context.Context, id string, update programwatch.CheckUpdate) error {
 	return w.watch.SaveWatchCheck(ctx, id, update)

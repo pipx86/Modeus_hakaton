@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/ingestion"
 )
 
@@ -509,5 +510,191 @@ func TestPublishWithoutPublisherReturns501(t *testing.T) {
 	recorder := doProgramJSON(t, server.Routes(), http.MethodPost, "/api/v1/admin/programs/drafts/"+testProgramDraftID+"/publish", "admin", "")
 	if recorder.Code != http.StatusNotImplemented {
 		t.Fatalf("без publisher: ожидали 501, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+}
+
+// fakeProgramExtractor — LLM-адаптер ФГОС без сети для тестов импорта.
+type fakeProgramExtractor struct {
+	mu         sync.Mutex
+	pages      []fgos.Page
+	program    ingestion.EducationProgram
+	warnings   []string
+	pagesErr   error
+	extractErr error
+	pagesCalls int
+	extract    int
+}
+
+func (f *fakeProgramExtractor) ExtractPages(_ string, _ []byte) ([]fgos.Page, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pagesCalls++
+	if f.pagesErr != nil {
+		return nil, f.pagesErr
+	}
+	return f.pages, nil
+}
+
+func (f *fakeProgramExtractor) Extract(_ context.Context, _ []fgos.Page) (ingestion.EducationProgram, []string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.extract++
+	if f.extractErr != nil {
+		return ingestion.EducationProgram{}, nil, f.extractErr
+	}
+	return f.program, f.warnings, nil
+}
+
+func (f *fakeProgramExtractor) calls() (int, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.pagesCalls, f.extract
+}
+
+func fgosTestProgram() ingestion.EducationProgram {
+	return ingestion.EducationProgram{
+		Competencies: []ingestion.ProgramCompetency{{
+			Code:  "УК-1",
+			Title: "Способен осуществлять поиск и критический анализ информации",
+			Type:  "universal",
+			KSA:   []ingestion.ProgramKSA{{Kind: "knowledge", Title: "методы системного анализа"}},
+		}},
+	}
+}
+
+func testProgramImportLLMServer(t *testing.T, extractor fgos.DocumentExtractor) (*fakeProgramDraftStore, http.Handler) {
+	t.Helper()
+	fake := newFakeProgramDraftStore()
+	server := NewServer(fake)
+	server.SetProgramTextExtractor(extractor)
+	return fake, server.Routes()
+}
+
+func (f *fakeProgramDraftStore) onlyDraft(t *testing.T) ProgramImportDraft {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.order) != 1 {
+		t.Fatalf("ожидали один черновик, получили %d", len(f.order))
+	}
+	return f.drafts[f.order[0]]
+}
+
+func hasWarning(warnings []string, want string) bool {
+	for _, warning := range warnings {
+		if warning == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestProgramImportPDFWithFakeExtractor(t *testing.T) {
+	extractor := &fakeProgramExtractor{
+		pages:    []fgos.Page{{Number: 1, Text: "УК-1. Способен осуществлять поиск."}},
+		program:  fgosTestProgram(),
+		warnings: []string{"фрагмент 1: предупреждение адаптера"},
+	}
+	fake, handler := testProgramImportLLMServer(t, extractor)
+	recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "fgos.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("ожидали 201, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var result programImportResult
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if result.DraftID == "" || result.Status != programDraftStatusDraft {
+		t.Fatalf("ответ: %+v", result)
+	}
+	if result.Report.Competencies != 1 || result.Report.KSA != 1 {
+		t.Fatalf("отчёт: %+v", result.Report)
+	}
+	draft := fake.onlyDraft(t)
+	if draft.SourceFormat != "pdf" || draft.SourceName != "fgos.pdf" {
+		t.Fatalf("черновик: %+v", draft)
+	}
+	if draft.Program.Title != "fgos" {
+		t.Fatalf("title из имени файла: %q", draft.Program.Title)
+	}
+	if !hasWarning(draft.Warnings, "фрагмент 1: предупреждение адаптера") {
+		t.Fatalf("предупреждения адаптера потерялись: %v", draft.Warnings)
+	}
+	if pagesCalls, extractCalls := extractor.calls(); pagesCalls != 1 || extractCalls != 1 {
+		t.Fatalf("вызовы адаптера: pages=%d extract=%d", pagesCalls, extractCalls)
+	}
+}
+
+func TestProgramImportPDFWithoutLLMReturns422(t *testing.T) {
+	_, _, handler := newProgramImportTestServer(t)
+	recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "fgos.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("без LLM: ожидали 422, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var body programImportErrorBody
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if body.Code != "PROGRAM_IMPORT_LLM_NOT_CONFIGURED" {
+		t.Fatalf("code = %q", body.Code)
+	}
+	if !strings.Contains(body.Message, "LLM") {
+		t.Fatalf("понятное сообщение: %q", body.Message)
+	}
+}
+
+func TestProgramImportDOCXWarnsAboutApproximatePages(t *testing.T) {
+	extractor := &fakeProgramExtractor{
+		pages:   []fgos.Page{{Number: 1, Text: "ОПК-2. Способен разрабатывать ПО."}},
+		program: fgosTestProgram(),
+	}
+	fake, handler := testProgramImportLLMServer(t, extractor)
+	recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "fgos.docx", "PK fake docx")
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("ожидали 201, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	draft := fake.onlyDraft(t)
+	if draft.SourceFormat != "docx" {
+		t.Fatalf("source_format: %q", draft.SourceFormat)
+	}
+	if len(draft.Warnings) == 0 || draft.Warnings[0] != fgos.ApproximatePageNumbersWarning {
+		t.Fatalf("предупреждение о приблизительных страницах: %v", draft.Warnings)
+	}
+}
+
+func TestProgramImportPDFExtractionErrors(t *testing.T) {
+	noText := &fakeProgramExtractor{pagesErr: fgos.ErrNoTextLayer}
+	_, handler := testProgramImportLLMServer(t, noText)
+	recorder := doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "scan.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("скан: ожидали 422, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var body programImportErrorBody
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if body.Code != "PROGRAM_IMPORT_INVALID" || len(body.Details) == 0 || !strings.Contains(body.Details[0], "нет текстового слоя") {
+		t.Fatalf("ответ: %+v", body)
+	}
+
+	timedOut := &fakeProgramExtractor{extractErr: fgos.ErrTimeout}
+	_, handler = testProgramImportLLMServer(t, timedOut)
+	recorder = doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "fgos.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("таймаут: ожидали 503, получили %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var timeoutBody errorBody
+	if err := json.Unmarshal(recorder.Body.Bytes(), &timeoutBody); err != nil {
+		t.Fatalf("ответ не JSON: %v", err)
+	}
+	if timeoutBody.Code != "PROGRAM_IMPORT_LLM_TIMEOUT" {
+		t.Fatalf("code = %q", timeoutBody.Code)
+	}
+
+	unavailable := &fakeProgramExtractor{extractErr: errors.New("upstream 500")}
+	_, handler = testProgramImportLLMServer(t, unavailable)
+	recorder = doProgramImport(t, handler, "admin", "mirea/09.03.01/2024/full-time", "fgos.pdf", "%PDF-1.4 fake")
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("недоступная модель: ожидали 503, получили %d (%s)", recorder.Code, recorder.Body.String())
 	}
 }

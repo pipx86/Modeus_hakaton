@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/ingestion"
 )
 
@@ -24,6 +25,13 @@ const (
 	maxStoredErrorRunes           = 1000
 	maxBackoff                    = 30 * 24 * time.Hour
 	defaultUserAgent              = "program-watcher/1.0"
+	// releaseTimeout ограничивает best-effort Release, чтобы недоступная БД не
+	// задерживала обработку следующего источника.
+	releaseTimeout = 5 * time.Second
+	// acceptDocuments — что воркер готов принять по ссылке со страницы.
+	acceptDocuments = "text/html,application/xhtml+xml,application/json,text/csv," +
+		"application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,*/*"
 )
 
 var htmlHrefPattern = regexp.MustCompile(`(?is)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))`)
@@ -33,7 +41,15 @@ var watchedDocumentExtensions = map[string]bool{
 	".csv":  true,
 	".json": true,
 	".txt":  true,
+	".md":   true,
+	".pdf":  true,
+	".docx": true,
 }
+
+// PDFExtractor — необязательный LLM-адаптер ФГОС для PDF и DOCX. Контракт живёт
+// в internal/fgos, здесь он вынесен отдельным именем, чтобы тесты подставляли
+// фейк без сети. nil означает прежнее поведение: статус needs_parser.
+type PDFExtractor = fgos.DocumentExtractor
 
 // Checker проверяет источники и сохраняет результат. Зависимости — интерфейсы,
 // поэтому и воркер, и API, и тесты работают без PostgreSQL и без сети.
@@ -45,6 +61,14 @@ type Checker struct {
 	MaxDocumentBytes int64
 	UserAgent        string
 	Logger           *slog.Logger
+	// PDFExtractor включает разбор PDF/DOCX через LLM. nil — needs_parser.
+	PDFExtractor PDFExtractor
+	// Owner — идентификатор владельца lease-блокировки для RunOnce. Если пуст,
+	// используется hostname-pid.
+	Owner string
+	// Lease — срок lease-блокировки для RunOnce. Если не задан, используется
+	// DefaultLease.
+	Lease time.Duration
 }
 
 // NewChecker создаёт чекер с боевыми настройками по умолчанию.
@@ -53,11 +77,14 @@ func NewChecker(store Store, drafts DraftCreator) *Checker {
 }
 
 // CheckAndSave синхронно проверяет один источник, применяет экспоненциальную
-// паузу при ошибке и сохраняет статус/валидаторы/черновик.
-func (c *Checker) CheckAndSave(ctx context.Context, source Source) (CheckResult, error) {
+// паузу при ошибке и сохраняет статус/валидаторы/черновик. owner — владелец
+// уже взятой lease-блокировки: успешный SaveWatchCheck снимает её, а ошибка
+// сохранения освобождает блокировку через ReleaseWatchSource.
+func (c *Checker) CheckAndSave(ctx context.Context, source Source, owner string) (CheckResult, error) {
 	now := c.now()
 	result, update := c.check(ctx, source)
 	update.CheckedAt = now
+	update.Owner = owner
 	// Статус и текст ошибки живут в результате проверки; сохраняем их вместе
 	// с валидаторами, иначе в реестре остаётся пустой last_status.
 	update.Status = result.Status
@@ -74,84 +101,144 @@ func (c *Checker) CheckAndSave(ctx context.Context, source Source) (CheckResult,
 		update.FailureCount = 0
 	}
 	if err := c.Store.SaveWatchCheck(ctx, source.ID, update); err != nil {
+		// Результат не сохранён — lease нужно вернуть сразу, не дожидаясь его
+		// истечения, иначе источник простаивает до locked_until.
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseTimeout)
+		defer cancel()
+		if releaseErr := c.Store.ReleaseWatchSource(releaseCtx, source.ID, owner); releaseErr != nil {
+			c.logger().Warn("program_watch_release_failed",
+				"source_id", source.ID, "owner", owner, "error", releaseErr)
+		}
 		return result, err
 	}
 	return result, nil
 }
 
+// check — одна проверка источника. Порядок важен: сначала сравнивается
+// отпечаток привязанного документа, и только потом решается, изменился ли
+// источник. Иначе обновление xlsx/pdf по неизменившейся HTML-странице
+// пропускалось бы.
 func (c *Checker) check(ctx context.Context, source Source) (CheckResult, CheckUpdate) {
-	update := CheckUpdate{}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
+	page, err := c.fetchPage(ctx, source)
 	if err != nil {
-		return errorResult(fmt.Sprintf("некорректный url источника: %v", err))
+		return errorResult(err.Error())
 	}
-	request.Header.Set("User-Agent", c.userAgent())
-	request.Header.Set("Accept", "text/html,application/xhtml+xml,application/json,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,*/*")
-	if source.ETag != "" {
-		request.Header.Set("If-None-Match", source.ETag)
-	}
-	if source.LastModified != "" {
-		request.Header.Set("If-Modified-Since", source.LastModified)
-	}
-	response, err := c.client().Do(request)
-	if err != nil {
-		return errorResult(fmt.Sprintf("источник недоступен: %v", err))
-	}
-	defer response.Body.Close()
-
-	switch response.StatusCode {
-	case http.StatusNotModified:
-		return CheckResult{Status: StatusUnchanged}, update
-	case http.StatusOK:
-	default:
-		return errorResult(fmt.Sprintf("источник ответил HTTP %d", response.StatusCode))
+	if page.notModified {
+		// Страница не менялась, но привязанный документ мог обновиться:
+		// проверяем сохранённый document_url по его собственным валидаторам.
+		return c.checkAttachedDocument(ctx, source)
 	}
 
-	body, err := readLimited(response.Body, c.maxDocumentBytes())
-	if err != nil {
-		return errorResult(fmt.Sprintf("не удалось прочитать ответ: %v", err))
-	}
-	bodyHash := sha256Hex(body)
-	etag := response.Header.Get("ETag")
-	lastModified := response.Header.Get("Last-Modified")
-	contentType := response.Header.Get("Content-Type")
+	pageHash := sha256Hex(page.body)
+	pageUnchanged := source.LastHash != "" && pageHash == source.LastHash
 
-	setValidators := func(hash string) {
-		update.ETag = &etag
-		update.LastModified = &lastModified
-		update.LastHash = &hash
-	}
-
-	if source.LastHash != "" && bodyHash == source.LastHash {
-		setValidators(bodyHash)
-		return CheckResult{Status: StatusUnchanged}, update
-	}
-
-	documentBody := body
-	documentName := fileNameFromURL(source.URL)
-	documentContentType := contentType
-
-	if isHTML(contentType, body) {
-		documentURL, ok := firstDocumentLink(body, response.Request.URL)
+	if isHTML(page.contentType, page.body) {
+		documentURL, ok := firstDocumentLink(page.body, page.url)
 		if !ok {
-			return CheckResult{Status: StatusNeedsAttention, Error: "на странице нет ссылки на документ"}, update
+			return CheckResult{Status: StatusNeedsAttention, Error: "на странице нет ссылки на документ"}, CheckUpdate{}
 		}
-		fetched, name, fetchedType, fetchErr := c.fetchDocument(ctx, documentURL)
-		if fetchErr != nil {
-			return errorResult(fetchErr.Error())
-		}
-		documentBody, documentName, documentContentType = fetched, name, fetchedType
+		return c.checkRemoteDocument(ctx, source, page, documentURL)
 	}
 
-	format := resolveDocumentFormat(source.DocFormat, documentName, documentContentType)
+	// Прямой URL: страница и документ — одно и то же тело, поэтому отдельный
+	// условный GET документу не нужен.
+	documentURL := source.URL
+	if pageUnchanged {
+		return unchangedWithFingerprint(page, documentURL, pageHash)
+	}
+	if sameDocument(source, documentURL) && source.DocumentHash != "" && source.DocumentHash == pageHash {
+		return unchangedWithFingerprint(page, documentURL, pageHash)
+	}
+
+	result, update := c.processDocument(ctx, source, documentURL, fileNameFromURL(documentURL), page.contentType, page.body)
+	if result.Status != StatusChanged {
+		return result, update
+	}
+	setPageValidators(&update, page, pageHash)
+	setDocumentValidators(&update, documentURL, page.etag, page.lastModified, pageHash)
+	return result, update
+}
+
+// checkRemoteDocument скачивает документ по ссылке со страницы. Условный GET
+// отправляется только когда ссылка та же, что сохранённый document_url:
+// валидаторы относятся к конкретному URL и не должны применяться к новому.
+func (c *Checker) checkRemoteDocument(ctx context.Context, source Source, page pageResponse, documentURL string) (CheckResult, CheckUpdate) {
+	knownURL := ""
+	etag, lastModified := "", ""
+	if sameDocument(source, documentURL) {
+		knownURL = source.DocumentURL
+		etag, lastModified = source.DocumentETag, source.DocumentLastModified
+	}
+	document, err := c.fetchDocumentConditional(ctx, documentURL, knownURL, etag, lastModified)
+	if err != nil {
+		return errorResult(err.Error())
+	}
+	update := CheckUpdate{}
+	if document.notModified {
+		// 304 документа означает «не менялся», даже если страница изменилась.
+		setPageValidators(&update, page, sha256Hex(page.body))
+		return CheckResult{Status: StatusUnchanged}, update
+	}
+	documentHash := sha256Hex(document.body)
+	if sameDocument(source, documentURL) && source.DocumentHash != "" && source.DocumentHash == documentHash {
+		setPageValidators(&update, page, sha256Hex(page.body))
+		setDocumentValidators(&update, documentURL, document.etag, document.lastModified, documentHash)
+		return CheckResult{Status: StatusUnchanged}, update
+	}
+
+	result, docUpdate := c.processDocument(ctx, source, documentURL, fileNameFromURL(documentURL), document.contentType, document.body)
+	if result.Status != StatusChanged {
+		return result, docUpdate
+	}
+	setPageValidators(&docUpdate, page, sha256Hex(page.body))
+	setDocumentValidators(&docUpdate, documentURL, document.etag, document.lastModified, documentHash)
+	return result, docUpdate
+}
+
+// checkAttachedDocument проверяет документ, когда страница ответила 304. Без
+// сохранённого document_url проверить нечего, поэтому источник остаётся
+// unchanged.
+func (c *Checker) checkAttachedDocument(ctx context.Context, source Source) (CheckResult, CheckUpdate) {
+	if strings.TrimSpace(source.DocumentURL) == "" {
+		return CheckResult{Status: StatusUnchanged}, CheckUpdate{}
+	}
+	document, err := c.fetchDocumentConditional(ctx, source.DocumentURL, source.DocumentURL, source.DocumentETag, source.DocumentLastModified)
+	if err != nil {
+		return errorResult(err.Error())
+	}
+	update := CheckUpdate{}
+	if document.notModified {
+		return CheckResult{Status: StatusUnchanged}, update
+	}
+	documentHash := sha256Hex(document.body)
+	if source.DocumentHash != "" && source.DocumentHash == documentHash {
+		setDocumentValidators(&update, source.DocumentURL, document.etag, document.lastModified, documentHash)
+		return CheckResult{Status: StatusUnchanged}, update
+	}
+	result, docUpdate := c.processDocument(ctx, source, source.DocumentURL, fileNameFromURL(source.DocumentURL), document.contentType, document.body)
+	if result.Status != StatusChanged {
+		return result, docUpdate
+	}
+	setDocumentValidators(&docUpdate, source.DocumentURL, document.etag, document.lastModified, documentHash)
+	return result, docUpdate
+}
+
+// processDocument выбирает способ разбора по формату: встроенные парсеры для
+// csv/xlsx/json/txt/md, LLM-адаптер для pdf/docx. Валидаторы здесь не
+// выставляются — это делает вызывающий, зная URL и заголовки ответа.
+func (c *Checker) processDocument(ctx context.Context, source Source, documentURL, documentName, contentType string, documentBody []byte) (CheckResult, CheckUpdate) {
+	format := resolveDocumentFormat(source.DocFormat, documentName, contentType)
 	switch format {
 	case "pdf", "docx":
-		return CheckResult{Status: StatusNeedsParser, Error: "PDF и DOCX требуют LLM-адаптера"}, update
+		return c.processPDF(ctx, source, documentURL, documentName, format, documentBody)
 	case "html":
 		return errorResult("источник вернул HTML вместо документа программы")
 	}
 	if !isParsedProgramFormat(format) {
-		return CheckResult{Status: StatusNeedsParser, Error: fmt.Sprintf("формат %q не поддерживается парсером программ", format)}, update
+		return CheckResult{
+			Status: StatusNeedsParser,
+			Error:  fmt.Sprintf("формат %q не поддерживается парсером программ", format),
+		}, CheckUpdate{DocumentURL: stringPointer(documentURL)}
 	}
 	if c.Drafts == nil {
 		return errorResult("создатель черновиков не настроен")
@@ -165,13 +252,49 @@ func (c *Checker) check(ctx context.Context, source Source) (CheckResult, CheckU
 	if strings.TrimSpace(program.Code) == "" {
 		program.Code = source.ProgramKey
 	}
+	return c.createDraft(ctx, source.ProgramKey, documentName, ingestion.ProgramSourceFormat(parserName), program, warnings)
+}
+
+// processPDF разбирает PDF/DOCX через необязательный LLM-адаптер ФГОС. Без
+// адаптера формат остаётся в статусе needs_parser, но document_url уже
+// сохраняется: включённый позже адаптер сразу увидит, какой документ проверять.
+func (c *Checker) processPDF(ctx context.Context, source Source, documentURL, documentName, format string, documentBody []byte) (CheckResult, CheckUpdate) {
+	if c.PDFExtractor == nil {
+		return CheckResult{Status: StatusNeedsParser, Error: "PDF и DOCX требуют LLM-адаптера"},
+			CheckUpdate{DocumentURL: stringPointer(documentURL)}
+	}
+	pages, err := c.PDFExtractor.ExtractPages(documentName, documentBody)
+	if err != nil {
+		return errorResult(fmt.Sprintf("не удалось прочитать %s: %s", strings.ToUpper(format), compactError(err.Error())))
+	}
+	program, warnings, err := c.PDFExtractor.Extract(ctx, pages)
+	if err != nil {
+		return errorResult(fmt.Sprintf("не удалось извлечь программу из %s: %s", strings.ToUpper(format), compactError(err.Error())))
+	}
+	if warning := fgos.ApproximatePageNumbersWarningFor(format); warning != "" {
+		warnings = append([]string{warning}, warnings...)
+	}
+	if strings.TrimSpace(program.Title) == "" {
+		program.Title = programTitleFromName(documentName)
+	}
+	if strings.TrimSpace(program.Code) == "" {
+		program.Code = source.ProgramKey
+	}
+	return c.createDraft(ctx, source.ProgramKey, documentName, format, program, warnings)
+}
+
+// createDraft создаёт черновик и возвращает changed с его идентификатором.
+func (c *Checker) createDraft(ctx context.Context, programKey, documentName, sourceFormat string, program ingestion.EducationProgram, warnings []string) (CheckResult, CheckUpdate) {
+	if c.Drafts == nil {
+		return errorResult("создатель черновиков не настроен")
+	}
 	if warnings == nil {
 		warnings = []string{}
 	}
 	draftID, draftErr := c.Drafts.CreateProgramWatchDraft(ctx, DraftInput{
-		ProgramKey:   source.ProgramKey,
+		ProgramKey:   programKey,
 		SourceName:   documentName,
-		SourceFormat: ingestion.ProgramSourceFormat(parserName),
+		SourceFormat: sourceFormat,
 		Program:      program,
 		Warnings:     warnings,
 		Competencies: len(program.Competencies),
@@ -180,32 +303,108 @@ func (c *Checker) check(ctx context.Context, source Source) (CheckResult, CheckU
 	if draftErr != nil {
 		return errorResult("не удалось создать черновик: " + compactError(draftErr.Error()))
 	}
-	setValidators(bodyHash)
-	update.DraftID = draftID
-	return CheckResult{Status: StatusChanged, DraftID: draftID}, update
+	return CheckResult{Status: StatusChanged, DraftID: draftID}, CheckUpdate{DraftID: draftID}
 }
 
-func (c *Checker) fetchDocument(ctx context.Context, rawURL string) ([]byte, string, string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+// pageResponse — успешный ответ страницы источника.
+type pageResponse struct {
+	body         []byte
+	url          *url.URL
+	etag         string
+	lastModified string
+	contentType  string
+	notModified  bool
+}
+
+// fetchPage скачивает страницу источника с сохранёнными валидаторами.
+func (c *Checker) fetchPage(ctx context.Context, source Source) (pageResponse, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("некорректная ссылка на документ: %w", err)
+		return pageResponse{}, fmt.Errorf("некорректный url источника: %v", err)
 	}
 	request.Header.Set("User-Agent", c.userAgent())
+	request.Header.Set("Accept", acceptDocuments)
+	if source.ETag != "" {
+		request.Header.Set("If-None-Match", source.ETag)
+	}
+	if source.LastModified != "" {
+		request.Header.Set("If-Modified-Since", source.LastModified)
+	}
 	response, err := c.client().Do(request)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("не удалось скачать документ: %w", err)
+		return pageResponse{}, fmt.Errorf("источник недоступен: %v", err)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, "", "", fmt.Errorf("документ ответил HTTP %d", response.StatusCode)
+	defer func() { _ = response.Body.Close() }()
+
+	switch response.StatusCode {
+	case http.StatusNotModified:
+		return pageResponse{notModified: true}, nil
+	case http.StatusOK:
+	default:
+		return pageResponse{}, fmt.Errorf("источник ответил HTTP %d", response.StatusCode)
 	}
 	body, err := readLimited(response.Body, c.maxDocumentBytes())
 	if err != nil {
-		return nil, "", "", fmt.Errorf("не удалось прочитать документ: %w", err)
+		return pageResponse{}, fmt.Errorf("не удалось прочитать ответ: %v", err)
 	}
-	name := fileNameFromURL(rawURL)
-	contentType := response.Header.Get("Content-Type")
-	return body, name, contentType, nil
+	return pageResponse{
+		body:         body,
+		url:          response.Request.URL,
+		etag:         response.Header.Get("ETag"),
+		lastModified: response.Header.Get("Last-Modified"),
+		contentType:  response.Header.Get("Content-Type"),
+	}, nil
+}
+
+// documentResponse — ответ условного GET документа программы.
+type documentResponse struct {
+	body         []byte
+	etag         string
+	lastModified string
+	contentType  string
+	notModified  bool
+}
+
+// fetchDocumentConditional скачивает документ, отправляя If-None-Match и
+// If-Modified-Since, только если известен тот же URL, что и в прошлой
+// проверке. Ответ 304 возвращается как notModified без тела.
+func (c *Checker) fetchDocumentConditional(ctx context.Context, rawURL, knownURL, etag, lastModified string) (documentResponse, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return documentResponse{}, fmt.Errorf("некорректная ссылка на документ: %w", err)
+	}
+	request.Header.Set("User-Agent", c.userAgent())
+	request.Header.Set("Accept", acceptDocuments)
+	if knownURL != "" && rawURL == knownURL {
+		if etag != "" {
+			request.Header.Set("If-None-Match", etag)
+		}
+		if lastModified != "" {
+			request.Header.Set("If-Modified-Since", lastModified)
+		}
+	}
+	response, err := c.client().Do(request)
+	if err != nil {
+		return documentResponse{}, fmt.Errorf("не удалось скачать документ: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	switch response.StatusCode {
+	case http.StatusNotModified:
+		return documentResponse{notModified: true}, nil
+	case http.StatusOK:
+	default:
+		return documentResponse{}, fmt.Errorf("документ ответил HTTP %d", response.StatusCode)
+	}
+	body, err := readLimited(response.Body, c.maxDocumentBytes())
+	if err != nil {
+		return documentResponse{}, fmt.Errorf("не удалось прочитать документ: %v", err)
+	}
+	return documentResponse{
+		body:         body,
+		etag:         response.Header.Get("ETag"),
+		lastModified: response.Header.Get("Last-Modified"),
+		contentType:  response.Header.Get("Content-Type"),
+	}, nil
 }
 
 func (c *Checker) client() *http.Client {
@@ -222,6 +421,22 @@ func (c *Checker) now() time.Time {
 	return time.Now().UTC()
 }
 
+// owner — владелец lease-блокировки текущего цикла.
+func (c *Checker) owner() string {
+	if trimmed := strings.TrimSpace(c.Owner); trimmed != "" {
+		return trimmed
+	}
+	return DefaultOwner()
+}
+
+// lease — срок lease-блокировки текущего цикла.
+func (c *Checker) lease() time.Duration {
+	if c.Lease > 0 {
+		return c.Lease
+	}
+	return DefaultLease
+}
+
 func (c *Checker) maxDocumentBytes() int64 {
 	if c.MaxDocumentBytes > 0 {
 		return c.MaxDocumentBytes
@@ -230,8 +445,8 @@ func (c *Checker) maxDocumentBytes() int64 {
 }
 
 func (c *Checker) userAgent() string {
-	if strings.TrimSpace(c.UserAgent) != "" {
-		return c.UserAgent
+	if trimmed := strings.TrimSpace(c.UserAgent); trimmed != "" {
+		return trimmed
 	}
 	return defaultUserAgent
 }
@@ -253,22 +468,27 @@ type RunStats struct {
 	Errors         int
 }
 
-// RunOnce проверяет не больше limit просроченных источников последовательно.
+// RunOnce берёт lease-блокировку на не больше limit просроченных источников и
+// проверяет их последовательно. Claim атомарный, поэтому параллельный воркер
+// или ручная проверка не получит те же строки.
 func (c *Checker) RunOnce(ctx context.Context, limit int) (RunStats, error) {
 	stats := RunStats{}
 	if limit <= 0 {
 		limit = 5
 	}
-	sources, err := c.Store.DueWatchSources(ctx, c.now(), limit)
+	owner := c.owner()
+	lease := c.lease()
+	sources, err := c.Store.ClaimDueWatchSources(ctx, c.now(), limit, lease, owner)
 	if err != nil {
 		return stats, err
 	}
-	for _, source := range sources {
-		if err := ctx.Err(); err != nil {
-			return stats, err
+	for index, source := range sources {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			c.releaseClaims(ctx, sources[index:], owner)
+			return stats, ctxErr
 		}
 		started := time.Now()
-		result, checkErr := c.CheckAndSave(ctx, source)
+		result, checkErr := c.CheckAndSave(ctx, source, owner)
 		stats.Fetched++
 		if checkErr != nil {
 			stats.Errors++
@@ -292,6 +512,8 @@ func (c *Checker) RunOnce(ctx context.Context, limit int) (RunStats, error) {
 			"url", source.URL,
 			"status", result.Status,
 			"duration_ms", time.Since(started).Milliseconds(),
+			"owner", owner,
+			"lease", lease.String(),
 		}
 		if result.DraftID != "" {
 			attrs = append(attrs, "draft_id", result.DraftID)
@@ -313,6 +535,19 @@ func (c *Checker) RunOnce(ctx context.Context, limit int) (RunStats, error) {
 	return stats, nil
 }
 
+// releaseClaims возвращает lease-блокировки источников, которые цикл не успел
+// обработать, чтобы они не простаивали до истечения lease.
+func (c *Checker) releaseClaims(ctx context.Context, sources []Source, owner string) {
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseTimeout)
+	defer cancel()
+	for _, source := range sources {
+		if err := c.Store.ReleaseWatchSource(releaseCtx, source.ID, owner); err != nil {
+			c.logger().Warn("program_watch_release_failed",
+				"source_id", source.ID, "owner", owner, "error", err)
+		}
+	}
+}
+
 // RunOnceAndLog — удобная обёртка для cmd/program-watcher -once.
 func (c *Checker) RunOnceAndLog(ctx context.Context, limit int) (RunStats, error) {
 	stats, err := c.RunOnce(ctx, limit)
@@ -325,8 +560,65 @@ func (c *Checker) RunOnceAndLog(ctx context.Context, limit int) (RunStats, error
 		"unchanged", stats.Unchanged,
 		"needs_parser", stats.NeedsParser,
 		"needs_attention", stats.NeedsAttention,
-		"errors", stats.Errors)
+		"errors", stats.Errors,
+		"owner", c.owner(),
+		"lease", c.lease().String())
 	return stats, nil
+}
+
+// unchangedWithFingerprint возвращает unchanged и обновляет оба отпечатка: и
+// страницы, и документа. Для прямого URL они совпадают, но document_url нужен,
+// чтобы следующий запуск знал, что за документ проверяется.
+func unchangedWithFingerprint(page pageResponse, documentURL, documentHash string) (CheckResult, CheckUpdate) {
+	update := CheckUpdate{}
+	setPageValidators(&update, page, sha256Hex(page.body))
+	setDocumentValidators(&update, documentURL, page.etag, page.lastModified, documentHash)
+	return CheckResult{Status: StatusUnchanged}, update
+}
+
+// setPageValidators сохраняет отпечаток страницы источника.
+func setPageValidators(update *CheckUpdate, page pageResponse, pageHash string) {
+	if update == nil {
+		return
+	}
+	etag := page.etag
+	lastModified := page.lastModified
+	hash := pageHash
+	update.ETag = &etag
+	update.LastModified = &lastModified
+	update.LastHash = &hash
+}
+
+// setDocumentValidators сохраняет отпечаток привязанного документа.
+func setDocumentValidators(update *CheckUpdate, documentURL, etag, lastModified, documentHash string) {
+	if update == nil {
+		return
+	}
+	update.DocumentURL = stringPointer(documentURL)
+	update.DocumentETag = stringPointer(etag)
+	update.DocumentLastModified = stringPointer(lastModified)
+	update.DocumentHash = stringPointer(documentHash)
+}
+
+// sameDocument сообщает, что проверяемая ссылка совпадает с сохранённой:
+// только тогда можно сравнивать хэши и отправлять условные заголовки.
+func sameDocument(source Source, documentURL string) bool {
+	return source.DocumentURL != "" && source.DocumentURL == documentURL
+}
+
+func stringPointer(value string) *string {
+	return &value
+}
+
+// programTitleFromName строит название программы по имени файла, когда модель
+// не вернула title: черновик должен быть читаемым до публикации.
+func programTitleFromName(name string) string {
+	base := filepath.Base(strings.TrimSpace(name))
+	base = strings.TrimSpace(strings.TrimSuffix(base, filepath.Ext(base)))
+	if base == "" || base == "." {
+		return "Образовательная программа"
+	}
+	return base
 }
 
 func pauseUntil(now time.Time, intervalHours, failures int) time.Time {

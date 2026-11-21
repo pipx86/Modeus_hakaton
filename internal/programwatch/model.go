@@ -30,28 +30,39 @@ var (
 	ErrNotFound = errors.New("PROGRAM_WATCH_SOURCE_NOT_FOUND")
 	// ErrDuplicate — пара program_key+url уже есть в реестре (409).
 	ErrDuplicate = errors.New("PROGRAM_WATCH_SOURCE_DUPLICATE")
+	// ErrWatchSourceBusy — источник уже проверяется другим воркером или
+	// администратором: lease-блокировка не истекла (409).
+	ErrWatchSourceBusy = errors.New("PROGRAM_SOURCE_BUSY")
 	// ErrUnavailable — хранилище не поддерживает реестр (501).
 	ErrUnavailable = errors.New("PROGRAM_WATCH_SOURCE_UNAVAILABLE")
 )
 
 // Source — строка реестра program_watch_sources.
 type Source struct {
-	ID            string     `json:"id"`
-	ProgramKey    string     `json:"program_key"`
-	URL           string     `json:"url"`
-	DocFormat     string     `json:"doc_format,omitempty"`
-	IntervalHours int        `json:"interval_hours"`
-	Enabled       bool       `json:"enabled"`
-	ETag          string     `json:"etag,omitempty"`
-	LastModified  string     `json:"last_modified,omitempty"`
-	LastHash      string     `json:"last_hash,omitempty"`
-	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
-	LastStatus    string     `json:"last_status,omitempty"`
-	LastError     string     `json:"last_error,omitempty"`
-	DraftID       string     `json:"draft_id,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	FailureCount  int        `json:"-"`
+	ID            string `json:"id"`
+	ProgramKey    string `json:"program_key"`
+	URL           string `json:"url"`
+	DocFormat     string `json:"doc_format,omitempty"`
+	IntervalHours int    `json:"interval_hours"`
+	Enabled       bool   `json:"enabled"`
+	// ETag/LastModified/LastHash — отпечаток страницы источника.
+	ETag         string `json:"etag,omitempty"`
+	LastModified string `json:"last_modified,omitempty"`
+	LastHash     string `json:"last_hash,omitempty"`
+	// DocumentURL/DocumentHash/DocumentETag/DocumentLastModified — отпечаток
+	// привязанного документа. Страница может не меняться, пока документ по
+	// ссылке обновляется; проверка сравнивает именно document_hash.
+	DocumentURL          string     `json:"document_url,omitempty"`
+	DocumentHash         string     `json:"document_hash,omitempty"`
+	DocumentETag         string     `json:"document_etag,omitempty"`
+	DocumentLastModified string     `json:"document_last_modified,omitempty"`
+	LastCheckedAt        *time.Time `json:"last_checked_at,omitempty"`
+	LastStatus           string     `json:"last_status,omitempty"`
+	LastError            string     `json:"last_error,omitempty"`
+	DraftID              string     `json:"draft_id,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	FailureCount         int        `json:"-"`
 }
 
 // CreateInput — тело POST /admin/program-sources после нормализации.
@@ -71,6 +82,8 @@ type SourcePatch struct {
 // CheckUpdate — то, что проверка разрешает записать в строку реестра. Указатели
 // на валидаторы позволяют отличить «не трогать» (nil) от «очистить» (пустая
 // строка): при 304 и сетевой ошибке старые ETag/Last-Modified/хэш сохраняются.
+// Owner — владелец lease-блокировки: репозиторий снимает блокировку только
+// если locked_by совпадает с ним.
 type CheckUpdate struct {
 	CheckedAt    time.Time
 	Status       string
@@ -79,7 +92,15 @@ type CheckUpdate struct {
 	ETag         *string
 	LastModified *string
 	LastHash     *string
-	FailureCount int
+	// DocumentURL/DocumentHash/DocumentETag/DocumentLastModified — отпечаток
+	// документа. nil означает «оставить прежнее значение», поэтому 304
+	// документа и ошибка разбора не затирают сохранённый отпечаток.
+	DocumentURL          *string
+	DocumentHash         *string
+	DocumentETag         *string
+	DocumentLastModified *string
+	FailureCount         int
+	Owner                string
 }
 
 // CheckResult — публичный ответ проверки.
@@ -107,13 +128,26 @@ type DraftCreator interface {
 }
 
 // Store — реестр источников, нужный API и воркеру.
+//
+// Проверяющая сторона сначала атомарно берёт lease-блокировку через
+// ClaimDueWatchSources (воркер) или ClaimWatchSource (ручная проверка), затем
+// сохраняет результат через SaveWatchCheck, который снимает блокировку, либо
+// освобождает её через ReleaseWatchSource при ошибке. Пока блокировка жива,
+// второй претендент получает ErrWatchSourceBusy вместо повторной проверки.
 type Store interface {
 	CreateWatchSource(ctx context.Context, input CreateInput) (Source, error)
 	ListWatchSources(ctx context.Context) ([]Source, error)
 	GetWatchSource(ctx context.Context, id string) (Source, error)
 	UpdateWatchSource(ctx context.Context, id string, patch SourcePatch) (Source, error)
 	DeleteWatchSource(ctx context.Context, id string) error
-	DueWatchSources(ctx context.Context, now time.Time, limit int) ([]Source, error)
+	// ClaimDueWatchSources выбирает до limit просроченных источников и в одном
+	// UPDATE ставит на них lease-блокировку с владельцем owner.
+	ClaimDueWatchSources(ctx context.Context, now time.Time, limit int, lease time.Duration, owner string) ([]Source, error)
+	// ClaimWatchSource ставит lease-блокировку на один источник. Занятый
+	// источник возвращает ErrWatchSourceBusy, отсутствующий — ErrNotFound.
+	ClaimWatchSource(ctx context.Context, id string, lease time.Duration, owner string) (Source, error)
+	// ReleaseWatchSource снимает блокировку, если её владелец совпадает с owner.
+	ReleaseWatchSource(ctx context.Context, id, owner string) error
 	SaveWatchCheck(ctx context.Context, id string, update CheckUpdate) error
 }
 

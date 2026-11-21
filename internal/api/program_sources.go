@@ -1,15 +1,25 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/logging"
 	"activity-descriptor/internal/programwatch"
 )
+
+// programSourceCheckLease — lease ручной проверки. Он больше таймаута HTTP-
+// запроса и разбора документа, но если процесс упал, источник освободится
+// автоматически через 5 минут.
+const programSourceCheckLease = 5 * time.Minute
+
+// programSourceReleaseTimeout ограничивает освобождение блокировки при ошибке.
+const programSourceReleaseTimeout = 5 * time.Second
 
 type programSourceCreateRequest struct {
 	ProgramKey    string `json:"program_key"`
@@ -223,7 +233,7 @@ func (s *Server) handleDeleteProgramSource(w http.ResponseWriter, r *http.Reques
 
 // handleCheckProgramSource godoc
 // @Summary      Проверить источник образовательной программы синхронно
-// @Description  Скачивает источник, учитывает ETag/Last-Modified/хэш, при изменении разбирает документ и создаёт черновик. Результат сохраняется в реестре.
+// @Description  Скачивает источник, учитывает ETag/Last-Modified/хэш, при изменении разбирает документ и создаёт черновик. Результат сохраняется в реестре. Пока идёт проверка, источник защищён lease-блокировкой: параллельный запрос или воркер получает 409 PROGRAM_SOURCE_BUSY.
 // @Tags         academic
 // @Produce      json
 // @Param        id   path      string  true  "Program source ID"
@@ -231,6 +241,7 @@ func (s *Server) handleDeleteProgramSource(w http.ResponseWriter, r *http.Reques
 // @Failure      401  {object}  errorBody
 // @Failure      403  {object}  errorBody
 // @Failure      404  {object}  errorBody
+// @Failure      409  {object}  errorBody
 // @Failure      500  {object}  errorBody
 // @Failure      501  {object}  errorBody
 // @Security     BearerAuth
@@ -254,18 +265,47 @@ func (s *Server) handleCheckProgramSource(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "не указан идентификатор источника")
 		return
 	}
-	source, err := store.GetWatchSource(r.Context(), id)
-	if err != nil {
-		writeProgramWatchError(w, err, "источник программы не найден")
-		return
+	owner := programwatch.NewOwner("api")
+	// С LLM-адаптером ручная проверка PDF/DOCX может занять до пяти минут:
+	// lease должен перекрывать этот срок, иначе воркер перехватит источник и
+	// запустит второй разбор.
+	lease := programSourceCheckLease
+	if s.programTextExtractor != nil {
+		lease = programImportLLMTimeout + time.Minute
 	}
-	checker := programwatch.NewChecker(store, drafts)
-	checker.Logger = logging.L()
-	result, err := checker.CheckAndSave(r.Context(), source)
+	source, err := store.ClaimWatchSource(r.Context(), id, lease, owner)
 	if err != nil {
 		writeProgramWatchError(w, err, "не удалось проверить источник программы")
 		return
 	}
+	logging.L().Info("program_watch_check_claimed",
+		"source_id", id, "owner", owner, "lease", lease.String())
+	// До успешного SaveWatchCheck блокировка наша: при ошибке или панике
+	// освобождаем её, чтобы не ждать истечения lease.
+	checked := false
+	defer func() {
+		if checked {
+			return
+		}
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), programSourceReleaseTimeout)
+		defer cancel()
+		if releaseErr := store.ReleaseWatchSource(releaseCtx, id, owner); releaseErr != nil {
+			logging.L().Warn("program_watch_release_failed",
+				"source_id", id, "owner", owner, "error", releaseErr)
+		}
+	}()
+	checker := programwatch.NewChecker(store, drafts)
+	checker.Logger = logging.L()
+	// Тот же адаптер, что и у импорта: иначе «Проверить сейчас» для PDF/DOCX
+	// всегда возвращал бы needs_parser при настроенном LLM.
+	checker.PDFExtractor = s.programTextExtractor
+	result, err := checker.CheckAndSave(r.Context(), source, owner)
+	if err != nil {
+		writeProgramWatchError(w, err, "не удалось проверить источник программы")
+		return
+	}
+	// SaveWatchCheck снял блокировку вместе с сохранением результата.
+	checked = true
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -273,6 +313,8 @@ func writeProgramWatchError(w http.ResponseWriter, err error, message string) {
 	switch {
 	case errors.Is(err, programwatch.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "источник программы не найден")
+	case errors.Is(err, programwatch.ErrWatchSourceBusy):
+		writeErr(w, http.StatusConflict, "PROGRAM_SOURCE_BUSY", "источник уже проверяется")
 	case errors.Is(err, programwatch.ErrDuplicate):
 		writeErr(w, http.StatusConflict, "PROGRAM_SOURCE_ALREADY_EXISTS", "источник с таким program_key и url уже существует")
 	case errors.Is(err, programwatch.ErrUnavailable):

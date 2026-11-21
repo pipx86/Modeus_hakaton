@@ -5,6 +5,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/githubprofile"
 	"activity-descriptor/internal/idempotency"
 	"activity-descriptor/internal/ingestion"
@@ -65,6 +66,9 @@ type Server struct {
 	// programPublisher публикует проверенные черновики программ. В тестах
 	// подменяется заглушкой; для PostgreSQL по умолчанию используется PGStore.
 	programPublisher programPublisher
+	// programTextExtractor разбирает PDF/DOCX ФГОС через LLM. nil означает, что
+	// адаптер не настроен: импорт таких файлов отвечает 422.
+	programTextExtractor fgos.DocumentExtractor
 }
 
 func NewServer(store Store) *Server {
@@ -106,6 +110,13 @@ func (s *Server) SetLearningPlanner(planner LearningPlanner) { s.learningPlan = 
 // SetProgramMatcher wires the language model used for evidence-grounded
 // curriculum mapping. Without it, suggestions are unavailable rather than guessed.
 func (s *Server) SetProgramMatcher(client llm.ChatClient) { s.programMatcher = client }
+
+// SetProgramTextExtractor wires the optional LLM adapter that extracts
+// competencies from PDF/DOCX FGOS documents. Without it the import endpoint
+// rejects such files with 422 instead of silently returning an empty draft.
+func (s *Server) SetProgramTextExtractor(extractor fgos.DocumentExtractor) {
+	s.programTextExtractor = extractor
+}
 
 // batchPipeline returns the configured batch plan, or the vacancy-only default
 // when the server was built without the cmd/server LLM wiring (tests, demo

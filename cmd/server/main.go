@@ -20,6 +20,7 @@ import (
 	"activity-descriptor/internal/auth"
 	"activity-descriptor/internal/chat"
 	"activity-descriptor/internal/domain"
+	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/githubprofile"
 	"activity-descriptor/internal/ingestion"
 	"activity-descriptor/internal/llm"
@@ -243,6 +244,18 @@ func run(ctx context.Context, c config) error {
 	}
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetProgramMatcher(analystClient)
+	if analystClient != nil {
+		// PDF/DOCX ФГОС разбирает тот же analyst-клиент: у него самый большой
+		// token budget и temperature 0.2. Импорт синхронный, таймаут 5 минут.
+		app.SetProgramTextExtractor(fgos.NewExtractor(analystClient))
+		logging.Logger.Info("program_import_llm_adapter_enabled",
+			"prompt", "fgos/"+fgos.PromptVersion,
+			"timeout", fgos.DefaultTimeout.String(),
+			"max_pages", fgos.DefaultMaxPages)
+	} else {
+		logging.Logger.Info("program_import_pdf_docx_disabled",
+			"reason", "LLM analyst client is not configured; PDF/DOCX imports return 422")
+	}
 	app.SetGitHubEvaluator(githubprofile.New(os.Getenv("GITHUB_TOKEN")))
 	app.SetBatchPlan(batchPlan)
 	if learningPlanner != nil {

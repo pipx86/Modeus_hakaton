@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"activity-descriptor/internal/auth"
+	"activity-descriptor/internal/fgos"
 	"activity-descriptor/internal/ingestion"
 )
 
@@ -22,6 +23,9 @@ const (
 
 	programImportRequestLimit = ingestion.MaxDocumentSize + (1 << 20)
 	programDecisionBodyLimit  = 1 << 20
+	// programImportLLMTimeout — бюджет синхронного разбора PDF/DOCX через LLM:
+	// импорт не должен держать HTTP-запрос дольше пяти минут.
+	programImportLLMTimeout = 5 * time.Minute
 )
 
 // errProgramDraftDecided означает гонку: черновик уже опубликован или отклонён
@@ -131,11 +135,11 @@ func (s *Server) programPublisherForStore() programPublisher {
 
 // handleProgramImport godoc
 // @Summary      Импортировать образовательную программу в черновик
-// @Description  Принимает multipart-файл CSV/XLSX/JSON/TXT/MD и постоянный key программы, разбирает и валидирует его, но не публикует: создаётся черновик для проверки человеком. Ошибки строк возвращаются списком details.
+// @Description  Принимает multipart-файл CSV/XLSX/JSON/TXT/MD, а также PDF/DOCX при настроенном LLM-адаптере ФГОС, и постоянный key программы. Файл разбирается и валидируется, но не публикуется: создаётся черновик для проверки человеком. PDF/DOCX разбираются синхронно через LLM (таймаут 5 минут); если адаптер не настроен, возвращается 422, если модель недоступна — 503. Ошибки строк возвращаются списком details.
 // @Tags         academic
 // @Accept       multipart/form-data
 // @Produce      json
-// @Param        file  formData  file    true   "Файл программы (CSV, XLSX, JSON, TXT, MD)"
+// @Param        file  formData  file    true   "Файл программы (CSV, XLSX, JSON, TXT, MD, PDF, DOCX)"
 // @Param        key   formData  string  true   "Постоянный код программы"
 // @Success      201   {object}  programImportResult
 // @Failure      400   {object}  errorBody
@@ -144,6 +148,7 @@ func (s *Server) programPublisherForStore() programPublisher {
 // @Failure      422   {object}  programImportErrorBody
 // @Failure      500   {object}  errorBody
 // @Failure      501   {object}  errorBody
+// @Failure      503   {object}  errorBody
 // @Security     BearerAuth
 // @Router       /api/v1/admin/programs/import [post]
 func (s *Server) handleProgramImport(w http.ResponseWriter, r *http.Request) {
@@ -202,14 +207,25 @@ func (s *Server) handleProgramImport(w http.ResponseWriter, r *http.Request) {
 	if sourceName == "" || sourceName == "." {
 		sourceName = "program"
 	}
-	program, warnings, err := ingestion.ParseProgramFile(sourceName, bytes.NewReader(data))
-	if err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
-			Code:    "PROGRAM_IMPORT_INVALID",
-			Message: "файл программы не прошёл проверку",
-			Details: programImportProblems(err),
-		})
-		return
+	var program ingestion.EducationProgram
+	var warnings []string
+	format := documentFormat(sourceName)
+	if format == "pdf" || format == "docx" {
+		var extracted bool
+		program, warnings, extracted = s.importProgramDocument(w, r, sourceName, format, data)
+		if !extracted {
+			return
+		}
+	} else {
+		program, warnings, err = ingestion.ParseProgramFile(sourceName, bytes.NewReader(data))
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+				Code:    "PROGRAM_IMPORT_INVALID",
+				Message: "файл программы не прошёл проверку",
+				Details: programImportProblems(err),
+			})
+			return
+		}
 	}
 	warnings = nonNilStrings(warnings)
 	if keyWarning != "" {
@@ -250,6 +266,82 @@ func (s *Server) handleProgramImport(w http.ResponseWriter, r *http.Request) {
 		Report:  created.Report,
 		Status:  created.Status,
 	})
+}
+
+// documentFormat возвращает расширение файла без точки и без регистра.
+func documentFormat(name string) string {
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(strings.TrimSpace(name))), ".")
+}
+
+// importProgramDocument разбирает PDF/DOCX через LLM-адаптер ФГОС. В отличие от
+// CSV/XLSX здесь нет детерминированного парсера: программу и цитаты возвращает
+// модель, поэтому статус ошибки зависит от причины. При ошибке хендлер уже
+// записал ответ, и extracted=false.
+func (s *Server) importProgramDocument(w http.ResponseWriter, r *http.Request, sourceName, format string, data []byte) (ingestion.EducationProgram, []string, bool) {
+	if s == nil || s.programTextExtractor == nil {
+		// 422, а не 501: запрос осмысленный, но сервер не умеет разбирать
+		// PDF/DOCX без LLM. Администратор может загрузить CSV/XLSX.
+		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_LLM_NOT_CONFIGURED",
+			Message: "PDF и DOCX требуют LLM-адаптера ФГОС: задайте LLM_API_KEY на сервере или загрузите программу в CSV/XLSX/JSON",
+			Details: []string{"без LLM нельзя извлечь компетенции и цитаты из PDF/DOCX"},
+		})
+		return ingestion.EducationProgram{}, nil, false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), programImportLLMTimeout)
+	defer cancel()
+	pages, err := s.programTextExtractor.ExtractPages(sourceName, data)
+	if err != nil {
+		s.writeProgramDocumentError(w, err)
+		return ingestion.EducationProgram{}, nil, false
+	}
+	program, warnings, err := s.programTextExtractor.Extract(ctx, pages)
+	if err != nil {
+		s.writeProgramDocumentError(w, err)
+		return ingestion.EducationProgram{}, nil, false
+	}
+	if strings.TrimSpace(program.Title) == "" {
+		// Модель возвращает только компетенции, поэтому название программы
+		// берём из имени файла: черновик должен быть читаемым до публикации.
+		program.Title = programTitleFromFileName(sourceName)
+	}
+	if warning := fgos.ApproximatePageNumbersWarningFor(format); warning != "" {
+		warnings = append([]string{warning}, warnings...)
+	}
+	return program, warnings, true
+}
+
+// programTitleFromFileName — запасное название черновика, если LLM не вернул
+// title программы.
+func programTitleFromFileName(name string) string {
+	base := filepath.Base(strings.TrimSpace(name))
+	base = strings.TrimSpace(strings.TrimSuffix(base, filepath.Ext(base)))
+	if base == "" || base == "." {
+		return "Образовательная программа"
+	}
+	return base
+}
+
+// writeProgramDocumentError переводит ошибку адаптера в HTTP-ответ: 422 — файл
+// или содержимое не подходят, 503 — модель недоступна или не успела ответить.
+func (s *Server) writeProgramDocumentError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, fgos.ErrTimeout), errors.Is(err, context.DeadlineExceeded):
+		writeErr(w, http.StatusServiceUnavailable, "PROGRAM_IMPORT_LLM_TIMEOUT",
+			"LLM-адаптер не успел разобрать документ за 5 минут")
+	case errors.Is(err, fgos.ErrNoTextLayer),
+		errors.Is(err, fgos.ErrNoCompetencies),
+		errors.Is(err, fgos.ErrUnsupportedFormat),
+		errors.Is(err, fgos.ErrInvalidDocument):
+		writeJSON(w, http.StatusUnprocessableEntity, programImportErrorBody{
+			Code:    "PROGRAM_IMPORT_INVALID",
+			Message: "документ программы не прошёл извлечение",
+			Details: programImportProblems(err),
+		})
+	default:
+		writeErr(w, http.StatusServiceUnavailable, "PROGRAM_IMPORT_LLM_UNAVAILABLE",
+			"LLM-адаптер недоступен: проверьте настройки модели и повторите позже")
+	}
 }
 
 // handleListProgramDrafts godoc

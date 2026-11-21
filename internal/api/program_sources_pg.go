@@ -65,6 +65,30 @@ func (p *PGStore) DueWatchSources(ctx context.Context, now time.Time, limit int)
 	return repository.DueWatchSources(ctx, now, limit)
 }
 
+func (p *PGStore) ClaimDueWatchSources(ctx context.Context, now time.Time, limit int, lease time.Duration, owner string) ([]programwatch.Source, error) {
+	repository := p.watchRepository()
+	if repository == nil {
+		return nil, programwatch.ErrUnavailable
+	}
+	return repository.ClaimDueWatchSources(ctx, now, limit, lease, owner)
+}
+
+func (p *PGStore) ClaimWatchSource(ctx context.Context, id string, lease time.Duration, owner string) (programwatch.Source, error) {
+	repository := p.watchRepository()
+	if repository == nil {
+		return programwatch.Source{}, programwatch.ErrUnavailable
+	}
+	return repository.ClaimWatchSource(ctx, id, lease, owner)
+}
+
+func (p *PGStore) ReleaseWatchSource(ctx context.Context, id, owner string) error {
+	repository := p.watchRepository()
+	if repository == nil {
+		return programwatch.ErrUnavailable
+	}
+	return repository.ReleaseWatchSource(ctx, id, owner)
+}
+
 func (p *PGStore) SaveWatchCheck(ctx context.Context, id string, update programwatch.CheckUpdate) error {
 	repository := p.watchRepository()
 	if repository == nil {
