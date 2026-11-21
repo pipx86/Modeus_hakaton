@@ -103,19 +103,33 @@ func NormalizeSkillModel(m *SkillModel) {
 func (d SkillDefinition) Gaps() []string {
 	gaps := []string{}
 	for _, f := range []struct{ v, n string }{{d.Action, "действие"}, {d.Object, "объект"}, {d.Conditions, "условия"}, {d.Result, "результат"}, {d.Criterion, "критерий проверки"}} {
-		if strings.TrimSpace(f.v) == "" {
+		if SkillFieldMissing(f.v) {
 			gaps = append(gaps, f.n)
 		}
 	}
 	if d.Kind == "proficiency" {
-		if strings.TrimSpace(d.Autonomy) == "" {
+		if SkillFieldMissing(d.Autonomy) {
 			gaps = append(gaps, "самостоятельность")
 		}
-		if strings.TrimSpace(d.Scope) == "" {
+		if SkillFieldMissing(d.Scope) {
 			gaps = append(gaps, "диапазон ситуаций и устойчивость")
 		}
 	}
 	return gaps
+}
+
+// A statement that information was not supplied cannot satisfy a requirement.
+func SkillFieldMissing(value string) bool {
+	text := SkillText(value)
+	if text == "" {
+		return true
+	}
+	for _, phrase := range []string{"не обсуждал", "не уточнен", "не уточнял", "не указан", "не сообщ", "не установл", "не описан", "не определен"} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidateSkillModel preserves all accepted definition versions and checks links.

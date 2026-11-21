@@ -17,6 +17,44 @@ import (
 
 const validInterviewerAnswer = `{"question":{"id":"q1","level":"role","text":"What do you do?"},"rationale":"r","is_clarification":false}`
 
+func TestPoolTaskClientUsesTaskContract(t *testing.T) {
+	const taskAnswer = `{"revision":0,"tools":[],"definitions":[],"links":[]}`
+	for _, primaryValid := range []bool{true, false} {
+		t.Run(map[bool]string{true: "valid primary avoids tree fallback", false: "invalid task uses fallback"}[primaryValid], func(t *testing.T) {
+			primaryAnswer := taskAnswer
+			if !primaryValid {
+				primaryAnswer = `{"wrong":"shape"}`
+			}
+			provider := newFakeProvider(t, map[string]providerResponse{"primary-model": {status: 200, body: chatCompletion(primaryAnswer)}, "backup-model": {status: 200, body: chatCompletion(taskAnswer)}})
+			cfg := testPoolConfig(t, provider.server.URL, map[AgentName]Spec{Interviewer: testSpec("primary-model", "", 2*time.Second), Analyst: testSpec("primary-model", "backup-model", 2*time.Second), Synthesizer: testSpec("primary-model", "", 2*time.Second)})
+			pool, err := NewPool(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := pool.TaskClient(Analyst, func(answer string) error {
+				if answer != taskAnswer {
+					return errors.New("wrong task shape")
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			answer, err := client.Chat(context.Background(), benignMessages())
+			if err != nil || answer != taskAnswer {
+				t.Fatal(answer, err)
+			}
+			want := 1
+			if !primaryValid {
+				want = 2
+			}
+			if len(provider.requestedModels()) != want {
+				t.Fatal(provider.requestedModels())
+			}
+		})
+	}
+}
+
 // fakeProvider is an OpenAI-compatible test provider that records requested
 // models and replies per model. It never touches the network.
 type fakeProvider struct {

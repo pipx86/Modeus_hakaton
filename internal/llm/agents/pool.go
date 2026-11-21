@@ -34,9 +34,11 @@ func WithClientDecorator(decorate ClientDecorator) PoolOption {
 
 // Pool holds one gated client per product agent.
 type Pool struct {
-	gate    *Gate
-	clients map[AgentName]llm.ChatClient
-	metrics *agentmetrics.Registry
+	config   Config
+	decorate ClientDecorator
+	gate     *Gate
+	clients  map[AgentName]llm.ChatClient
+	metrics  *agentmetrics.Registry
 }
 
 // NewPool builds a gated client for every agent. All clients share one
@@ -60,7 +62,7 @@ func NewPoolWithGate(cfg Config, gate *Gate, opts ...PoolOption) (*Pool, error) 
 		opt(&options)
 	}
 	registry := agentmetrics.New()
-	pool := &Pool{gate: gate, clients: make(map[AgentName]llm.ChatClient, len(Names())), metrics: registry}
+	pool := &Pool{config: cfg, decorate: options.decorate, gate: gate, clients: make(map[AgentName]llm.ChatClient, len(Names())), metrics: registry}
 	for _, name := range Names() {
 		spec, ok := cfg.Agents[name]
 		if !ok {
@@ -189,6 +191,32 @@ func (p *Pool) Client(name AgentName) (llm.ChatClient, error) {
 		return nil, fmt.Errorf("agents: unknown agent %q", name)
 	}
 	return client, nil
+}
+
+// TaskClient uses a task validator with the same guarded provider and shared gate.
+func (p *Pool) TaskClient(name AgentName, validate llm.AnswerValidator) (llm.ChatClient, error) {
+	if p == nil {
+		return nil, fmt.Errorf("agents: nil pool")
+	}
+	spec, ok := p.config.Agents[name]
+	if !ok {
+		return nil, fmt.Errorf("agents: unknown agent %q", name)
+	}
+	primary, err := buildAgentClient(p.config, p.gate, name, spec, p.metrics, p.decorate)
+	if err != nil {
+		return nil, err
+	}
+	attempts := []llm.FallbackAttempt{{Model: spec.Model, Client: primary}}
+	if spec.FallbackModel != "" && spec.FallbackModel != spec.Model {
+		fallbackSpec := spec
+		fallbackSpec.Model = spec.FallbackModel
+		fallback, err := buildAgentClient(p.config, p.gate, name, fallbackSpec, p.metrics, p.decorate)
+		if err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, llm.FallbackAttempt{Model: spec.FallbackModel, Client: fallback})
+	}
+	return llm.NewFallbackClient(attempts, llm.WithAnswerValidator(validate))
 }
 
 // Clients returns all gated clients keyed by agent name.

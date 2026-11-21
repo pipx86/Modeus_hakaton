@@ -127,6 +127,7 @@ func run(ctx context.Context, c config) error {
 	var agentMetrics *agentmetrics.Registry
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
+	var skillExtractor llm.ChatClient
 	var synthesizerClient llm.ChatClient
 	// fgosLLM — отдельный клиент для разбора ФГОС (FGOS_MODEL), если задан.
 	var fgosLLM llm.ChatClient
@@ -153,6 +154,11 @@ func run(ctx context.Context, c config) error {
 			}
 			if client, clientErr := agentPool.Client(agents.Analyst); clientErr == nil {
 				analystClient = client
+			}
+			if client, clientErr := agentPool.TaskClient(agents.Analyst, api.ValidateSkillExtractionAnswer); clientErr == nil {
+				skillExtractor = client
+			} else {
+				logging.Logger.Warn("skill extraction client unavailable", "error", clientErr)
 			}
 			// The synthesizer client powers the best-effort LLM normalization
 			// pass. Its calls are recorded by the pool metrics with
@@ -248,6 +254,7 @@ func run(ctx context.Context, c config) error {
 	chatService.SetFinalizer(newHybridFinalizer(pgStore, newEmergencyFinalizer(treeFinalizer, pgStore), learningPlanner))
 	app = api.NewServerWithChat(pgStore, chatService)
 	app.SetProgramMatcher(analystClient)
+	app.SetSkillExtractor(skillExtractor)
 	if analystClient != nil {
 		// PDF/DOCX ФГОС разбирает тот же analyst-клиент: у него самый большой
 		// token budget и temperature 0.2. Импорт синхронный; бюджет задаётся

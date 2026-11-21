@@ -59,12 +59,13 @@ export const extractSkills = (run: string) => requestApi<SkillModel>(base(run) +
 export const validateSkillModel = (run: string, model: SkillModel) => requestApi<SkillModel>(base(run) + "/validate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(model)}, true);
 export const compareSkills = (run: string, a: SkillDefinition, b: SkillDefinition) => requestApi<SkillComparison>(base(run) + "/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected: { definition_id: a.id, version: a.version }, actual: { definition_id: b.id, version: b.version } }) }, true);
 export const KIND_LABELS = { knowledge: "Знание", skill: "Умение", proficiency: "Владение" };
+const fieldMissing = (value:string) => !value.trim() || ["не обсуждал","не уточнен","не уточнял","не указан","не сообщ","не установл","не описан","не определен"].some(phrase=>value.toLowerCase().replaceAll("ё","е").includes(phrase));
 export function skillGaps(d: SkillDefinition): string[] {
-    const gaps = ([['action', 'действие'], ['object', 'объект'], ['conditions', 'условия'], ['result', 'результат'], ['criterion', 'критерий']] as const).filter(([key]) => !d[key].trim()).map(([, label]) => String(label));
+    const gaps = ([['action', 'действие'], ['object', 'объект'], ['conditions', 'условия'], ['result', 'результат'], ['criterion', 'критерий']] as const).filter(([key]) => fieldMissing(d[key])).map(([, label]) => String(label));
     if (d.kind === "proficiency") {
-        if (!d.autonomy.trim())
+        if (fieldMissing(d.autonomy))
             gaps.push("самостоятельность");
-        if (!d.scope.trim())
+        if (fieldMissing(d.scope))
             gaps.push("диапазон ситуаций и устойчивость");
     }
     return gaps;

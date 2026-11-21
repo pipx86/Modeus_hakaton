@@ -55,6 +55,7 @@ type Server struct {
 	deferredAPI    bool
 	learningPlan   LearningPlanner
 	programMatcher llm.ChatClient
+	skillExtractor llm.ChatClient
 	github         githubEvaluator
 	// indexSource — фоновая индексация новых источников (фрагменты + векторы).
 	// nil означает, что автоиндексация не включена (in-memory store, demo API
@@ -118,6 +119,7 @@ func (s *Server) SetLearningPlanner(planner LearningPlanner) { s.learningPlan = 
 // SetProgramMatcher wires the language model used for evidence-grounded
 // curriculum mapping. Without it, suggestions are unavailable rather than guessed.
 func (s *Server) SetProgramMatcher(client llm.ChatClient) { s.programMatcher = client }
+func (s *Server) SetSkillExtractor(client llm.ChatClient) { s.skillExtractor = client }
 
 // SetProgramTextExtractor wires the optional LLM adapter that extracts
 // competencies from PDF/DOCX FGOS documents. Without it the import endpoint
