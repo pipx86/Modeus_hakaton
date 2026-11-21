@@ -303,3 +303,24 @@ func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	}
 	return time.Duration(seconds) * time.Second, nil
 }
+
+// OverrideModel возвращает копию конфигурации с другим моделью для одного
+// агента. Используется для узких задач (например, FGOS_MODEL для ФГОС),
+// чтобы не менять модель остального конвейера. Карта агентов копируется,
+// исходная конфигурация не мутирует.
+func OverrideModel(cfg Config, name AgentName, model string) Config {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return cfg
+	}
+	agentsCopy := make(map[AgentName]Spec, len(cfg.Agents))
+	for key, spec := range cfg.Agents {
+		agentsCopy[key] = spec
+	}
+	spec := agentsCopy[name]
+	spec.Model = model
+	spec.FallbackModel = ""
+	agentsCopy[name] = spec
+	cfg.Agents = agentsCopy
+	return cfg
+}

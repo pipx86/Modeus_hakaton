@@ -214,6 +214,7 @@ export FGOS_SECTION_WINDOW=1
 
 # HTML-режим: брать текст ФГОС прямо со страницы (по умолчанию включён).
 # false — прежнее поведение: искать на странице ссылку на PDF/DOCX:
+export FGOS_MODEL=deepseek-v4.1-flash-1017   # отдельная модель только для ФГОС
 export FGOS_HTML_TEXT=true
 # сколько соседних страниц проверять при сверке цитаты (0 — только указанная):
 export FGOS_CITATION_WINDOW=1

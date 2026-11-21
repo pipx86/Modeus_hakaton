@@ -128,6 +128,8 @@ func run(ctx context.Context, c config) error {
 	var chatClient llm.ChatClient = chat.UnavailableClient{}
 	var analystClient llm.ChatClient
 	var synthesizerClient llm.ChatClient
+	// fgosLLM — отдельный клиент для разбора ФГОС (FGOS_MODEL), если задан.
+	var fgosLLM llm.ChatClient
 	if cfg, cfgErr := agents.FromEnv(); cfgErr == nil {
 		logging.Logger.Info("LLM provider configured",
 			"base_url", cfg.BaseURL,
@@ -250,7 +252,11 @@ func run(ctx context.Context, c config) error {
 		// token budget и temperature 0.2. Импорт синхронный; бюджет задаётся
 		// PROGRAM_IMPORT_TIMEOUT_S (по умолчанию 15 минут) и общий для OCR и LLM.
 		importBudget := api.ProgramImportTimeoutFromEnv()
-		extractor := fgos.NewExtractor(analystClient)
+		fgosClient := analystClient
+		if fgosLLM != nil {
+			fgosClient = fgosLLM
+		}
+		extractor := fgos.NewExtractor(fgosClient)
 		extractor.Timeout = importBudget
 		var documentExtractor fgos.DocumentExtractor = extractor
 		ocrConfig := ocr.ConfigFromEnv()

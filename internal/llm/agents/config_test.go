@@ -204,3 +204,25 @@ func TestFromEnvReadsGenericProviderKeyFile(t *testing.T) {
 		t.Fatalf("configured provider did not read its key file: %v", err)
 	}
 }
+func TestOverrideModel(t *testing.T) {
+	original := Config{DefaultModel: "base", Agents: map[AgentName]Spec{
+		Analyst:     {Model: "minimax", FallbackModel: "fallback"},
+		Interviewer: {Model: "deepseek"},
+	}}
+	overridden := OverrideModel(original, Analyst, " deepseek-v4.1-flash-1017 ")
+	if got := overridden.Agents[Analyst].Model; got != "deepseek-v4.1-flash-1017" {
+		t.Fatalf("модель аналитика = %q", got)
+	}
+	if got := overridden.Agents[Analyst].FallbackModel; got != "" {
+		t.Fatalf("fallback должен сбрасываться, получено %q", got)
+	}
+	if got := original.Agents[Analyst].Model; got != "minimax" {
+		t.Fatalf("исходная конфигурация изменилась: %q", got)
+	}
+	if got := overridden.Agents[Interviewer].Model; got != "deepseek" {
+		t.Fatalf("другой агент изменился: %q", got)
+	}
+	if same := OverrideModel(original, Analyst, "   "); same.Agents[Analyst].Model != "minimax" {
+		t.Fatal("пустая модель не должна менять конфигурацию")
+	}
+}

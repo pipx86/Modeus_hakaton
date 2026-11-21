@@ -147,7 +147,19 @@ func newFGOSExtractor(ocrConfig ocr.Config) programwatch.PDFExtractor {
 		logging.L().Warn("fgos_llm_client_failed", "error", err)
 		return nil
 	}
-	extractor := fgos.NewExtractor(client)
+	// FGOS_MODEL позволяет разбирать стандарты отдельной моделью, не меняя
+	// модель аналитика для остального конвейера.
+	extractorClient := client
+	if model := strings.TrimSpace(os.Getenv("FGOS_MODEL")); model != "" {
+		override := agents.OverrideModel(cfg, agents.Analyst, model)
+		if overridePool, overrideErr := agents.NewPool(override); overrideErr == nil {
+			if overrideClient, clientErr := overridePool.Client(agents.Analyst); clientErr == nil {
+				extractorClient = overrideClient
+				logging.L().Info("fgos_model_override", "model", model)
+			}
+		}
+	}
+	extractor := fgos.NewExtractor(extractorClient)
 	// Воркер разбирает те же PDF/сканы, что и импорт, поэтому берёт тот же
 	// бюджет времени. По умолчанию 15 минут: живой ФГОС на 10 страниц
 	// занимает около 6 минут.
